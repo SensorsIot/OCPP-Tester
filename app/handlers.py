@@ -8,7 +8,7 @@ OCPP response payload.
 """
 import logging
 import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 # Corrected relative imports to find modules in the same directory
 from .messages import (
@@ -38,6 +38,8 @@ from .messages import (
     StartTransactionResponse,
     StopTransactionRequest,
     StopTransactionResponse,
+    MeterValue,  # Import MeterValue for proper instantiation
+    SampledValue # Import SampledValue for proper instantiation
 )
 
 # In-memory storage moved directly into this module since no database file exists
@@ -46,6 +48,7 @@ AUTHORIZATION_LIST: Dict[str, Dict[str, Any]] = {}
 TRANSACTIONS: Dict[int, Dict[str, Any]] = {}
 
 # Configure logging for this module
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 async def handle_boot_notification(charge_point_id: str, payload: BootNotificationRequest) -> BootNotificationResponse:
@@ -256,12 +259,23 @@ async def handle_trigger_message_response(charge_point_id: str, payload: Trigger
 async def handle_meter_values(charge_point_id: str, payload: MeterValuesRequest) -> MeterValuesResponse:
     """
     Handles a MeterValues.req message from a Charge Point.
+    
+    This has been updated to correctly parse the nested MeterValue and
+    SampledValue objects from the raw dictionaries.
     """
     logger.info(f"Received MeterValues from Charge Point {charge_point_id} for transaction {payload.transactionId}")
     
-    for meter_value in payload.meterValue:
+    # The payload.meterValue is a list of MeterValue objects.
+    # We need to iterate through them to access the attributes.
+    for meter_value_dict in payload.meterValue:
+        # Instantiate MeterValue from the dictionary
+        meter_value = MeterValue(**meter_value_dict)
         logger.info(f"  Timestamp: {meter_value.timestamp}")
-        for sampled_value in meter_value.sampledValue:
+        
+        # The meter_value.sampledValue is a list of SampledValue objects.
+        # We need to instantiate each one from its dictionary representation.
+        for sampled_value_dict in meter_value.sampledValue:
+            sampled_value = SampledValue(**sampled_value_dict)
             logger.info(f"    - Measurand: {sampled_value.measurand}, Value: {sampled_value.value} {sampled_value.unit}")
             
     return MeterValuesResponse()
