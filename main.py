@@ -4,7 +4,7 @@ This is the main entry point for the OCPP server application.
 It starts a WebSocket server to listen for connections from a Wallbox.
 """
 import asyncio
-from ocpp.server import serve_ocpp # Import the server handler
+from app.server import serve_ocpp as server_main
 from websockets.server import serve as websockets_serve
 
 async def main():
@@ -16,7 +16,7 @@ async def main():
     server_port = 8887
     
     # Start the server task (our program listening for connections from a Wallbox)
-    async with websockets_serve(serve_ocpp, server_host, server_port):
+    async with websockets_serve(server_main, server_host, server_port):
         await asyncio.Future()  # Run forever
 
 if __name__ == "__main__":
