@@ -24,7 +24,9 @@ from .handlers import (
     handle_change_configuration_response,
     handle_trigger_message_response,
     handle_meter_values,
-    handle_get_composite_schedule_response
+    handle_get_composite_schedule_response,
+    # Import the in-memory storage dictionaries
+    CHARGE_POINTS
 )
 from .messages import (
     BootNotificationRequest,
@@ -49,8 +51,10 @@ from .messages import (
 )
 
 # Configure logging for this module
+# Changing the level to DEBUG or TRACE will show all sent and received messages.
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
 
 # A simple in-memory mapping of message actions to their handlers and payload classes
 # This allows for dynamic dispatch based on the incoming message's "Action" field.
@@ -119,9 +123,14 @@ def create_ocpp_message(
     """
     # Use the payload's dictionary representation if available, otherwise use the payload directly
     payload_to_send = payload.__dict__ if hasattr(payload, '__dict__') else payload
+    
     if action:
-        return json.dumps([message_type_id, unique_id, action, payload_to_send])
-    return json.dumps([message_type_id, unique_id, payload_to_send])
+        message = [message_type_id, unique_id, action, payload_to_send]
+    else:
+        message = [message_type_id, unique_id, payload_to_send]
+        
+    logger.debug(f"Sending message: {json.dumps(message)}")
+    return json.dumps(message)
 
 
 # =================================================================================
@@ -188,15 +197,17 @@ async def configure_meter_values(websocket: WebSocketServerProtocol):
     combined = ",".join(values)
     await send_change_configuration(websocket, "MeterValuesSampledData", combined)
 
+# Define the number of periodic check cycles to run before shutting down
+PERIODIC_CHECK_CYCLES = 3
 
-async def periodic_status_checks(websocket: WebSocketServerProtocol, charge_point_id: str):
+async def periodic_status_checks(websocket: WebSocketServerProtocol, charge_point_id: str, stop_server_event: asyncio.Event):
     """
     A coroutine that periodically requests status and meter values.
-    This runs indefinitely until the connection is closed.
+    This runs for a predefined number of cycles before signaling the main loop to stop.
     """
     try:
-        while True:
-            logger.info("Initiating periodic status and meter value checks...")
+        for i in range(PERIODIC_CHECK_CYCLES):
+            logger.info(f"Initiating periodic status and meter value checks... (Cycle {i+1}/{PERIODIC_CHECK_CYCLES})")
             await send_trigger_message(websocket, "StatusNotification")
             await send_trigger_message(websocket, "MeterValues")
             await asyncio.sleep(60)  # Check every minute
@@ -207,6 +218,9 @@ async def periodic_status_checks(websocket: WebSocketServerProtocol, charge_poin
         logger.info(f"Periodic check for {charge_point_id} stopped due to connection closure.")
     except Exception as e:
         logger.error(f"An error occurred during periodic checks for {charge_point_id}: {e}")
+    finally:
+        logger.info(f"Periodic checks for {charge_point_id} complete. Signaling server shutdown.")
+        stop_server_event.set()
 
 
 async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id: str):
@@ -238,9 +252,6 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
     
     logger.info(f"Initialization sequence for {charge_point_id} complete.")
 
-# Global set to track initialized charge points to avoid re-running the initialization on every reconnection.
-initialized_charge_points = set()
-
 async def serve_ocpp(websocket: WebSocketServerProtocol, path: str, stop_server_event: asyncio.Event):
     """
     The main WebSocket handler function for the OCPP server.
@@ -256,16 +267,15 @@ async def serve_ocpp(websocket: WebSocketServerProtocol, path: str, stop_server_
         await websocket.close()
         return
 
-    # Check to see if we've already initialized this charge point
-    if charge_point_id not in initialized_charge_points:
+    # Check to see if we've already initialized this charge point using the in-memory store
+    if charge_point_id not in CHARGE_POINTS:
         # Run the initialization sequence and periodic checks when a new connection is established
         await initialize_wallbox(websocket, charge_point_id)
         # The periodic checks run in the background as a separate task.
-        periodic_task = asyncio.create_task(periodic_status_checks(websocket, charge_point_id))
-        initialized_charge_points.add(charge_point_id)
+        periodic_task = asyncio.create_task(periodic_status_checks(websocket, charge_point_id, stop_server_event))
     else:
         logger.info(f"Charge Point {charge_point_id} is already initialized. Skipping setup.")
-        periodic_task = asyncio.create_task(periodic_status_checks(websocket, charge_point_id))
+        periodic_task = asyncio.create_task(periodic_status_checks(websocket, charge_point_id, stop_server_event))
 
 
     try:

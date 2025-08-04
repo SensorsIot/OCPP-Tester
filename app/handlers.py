@@ -8,6 +8,7 @@ OCPP response payload.
 """
 import logging
 import datetime
+import random
 from typing import Dict, Any, List
 
 # Corrected relative imports to find modules in the same directory
@@ -42,9 +43,14 @@ from .messages import (
     SampledValue # Import SampledValue for proper instantiation
 )
 
-# In-memory storage moved directly into this module since no database file exists
+# In-memory storage for Charge Point data, Authorization list, and Transactions
+# This data will be reset each time the server starts.
 CHARGE_POINTS: Dict[str, Dict[str, Any]] = {}
-AUTHORIZATION_LIST: Dict[str, Dict[str, Any]] = {}
+AUTHORIZATION_LIST: Dict[str, IdTagInfo] = {
+    "test_id_1": IdTagInfo(status="Accepted"),
+    "test_id_2": IdTagInfo(status="Accepted"),
+    "test_id_3": IdTagInfo(status="Blocked"),
+}
 TRANSACTIONS: Dict[int, Dict[str, Any]] = {}
 
 # Configure logging for this module
@@ -55,7 +61,7 @@ async def handle_boot_notification(charge_point_id: str, payload: BootNotificati
     """
     Handles a BootNotification.req message from a Charge Point.
     
-    Server Action: Registers the Charge Point and its configuration.
+    Server Action: Registers the Charge Point and its configuration in the in-memory store.
     
     Returns: A BootNotification.conf payload.
     """
@@ -68,7 +74,7 @@ async def handle_boot_notification(charge_point_id: str, payload: BootNotificati
         "chargePointVendor": payload.chargePointVendor,
         "firmwareVersion": payload.firmwareVersion,
         "status": "Booting", # Initial status
-        # Other fields can be stored here as needed
+        "connectors": {} # A dictionary to store connector statuses
     }
 
     # For this simple implementation, we'll always accept the request
@@ -89,7 +95,7 @@ async def handle_authorize(charge_point_id: str, payload: AuthorizeRequest) -> A
     """
     Handles an Authorize.req message from a Charge Point.
     
-    Server Action: Validates the idTag against the internal database.
+    Server Action: Validates the idTag against the in-memory authorization list.
     
     Returns: An Authorize.conf payload.
     """
@@ -97,12 +103,11 @@ async def handle_authorize(charge_point_id: str, payload: AuthorizeRequest) -> A
     logger.debug(f"Payload: {payload}")
 
     # Validate the idTag against our in-memory authorization list.
-    if payload.idTag in AUTHORIZATION_LIST:
-        id_tag_info = AUTHORIZATION_LIST[payload.idTag]
-    else:
-        # For this simple implementation, we'll accept any ID tag
-        id_tag_info = IdTagInfo(status="Accepted")
-        AUTHORIZATION_LIST[payload.idTag] = id_tag_info
+    id_tag_info = AUTHORIZATION_LIST.get(payload.idTag)
+    
+    if id_tag_info is None:
+        id_tag_info = IdTagInfo(status="Invalid")
+        logger.warning(f"ID Tag '{payload.idTag}' not found. Authorization rejected.")
 
     logger.info(f"Authorization status for idTag {payload.idTag}: {id_tag_info.status}")
 
@@ -134,7 +139,7 @@ async def handle_status_notification(charge_point_id: str, payload: StatusNotifi
     """
     Handles a StatusNotification.req message from a Charge Point.
     
-    Server Action: Updates the status of the Charge Point/connector in the database.
+    Server Action: Updates the status of the Charge Point/connector in the in-memory store.
     
     Returns: A StatusNotification.conf payload.
     """
@@ -175,7 +180,7 @@ async def handle_start_transaction(charge_point_id: str, payload: StartTransacti
     """
     Handles a StartTransaction.req message from a Charge Point.
     
-    Server Action: Validates the idTag and logs the start of a new transaction.
+    Server Action: Validates the idTag and logs the start of a new transaction in the in-memory store.
     
     Returns: A StartTransaction.conf payload.
     """
@@ -183,15 +188,20 @@ async def handle_start_transaction(charge_point_id: str, payload: StartTransacti
     logger.debug(f"Payload: {payload}")
     
     # Generate a unique transactionId
-    transaction_id = hash(f"{charge_point_id}{payload.timestamp}")
+    transaction_id = random.randint(100000, 999999)
     
     # Validate the idTag
-    if payload.idTag in AUTHORIZATION_LIST:
-        id_tag_info = AUTHORIZATION_LIST[payload.idTag]
-    else:
-        id_tag_info = IdTagInfo(status="Accepted")
-        AUTHORIZATION_LIST[payload.idTag] = id_tag_info
-        
+    id_tag_info = AUTHORIZATION_LIST.get(payload.idTag)
+    
+    if id_tag_info is None or id_tag_info.status != "Accepted":
+        id_tag_info = IdTagInfo(status="Invalid")
+        logger.warning(f"Authorization failed for idTag '{payload.idTag}'. Cannot start transaction.")
+        # If transaction is not authorized, we should return the response and not proceed
+        return StartTransactionResponse(
+            idTagInfo=id_tag_info,
+            transactionId=0
+        )
+    
     # Log the transaction in our in-memory storage
     TRANSACTIONS[transaction_id] = {
         "charge_point_id": charge_point_id,
@@ -212,7 +222,7 @@ async def handle_stop_transaction(charge_point_id: str, payload: StopTransaction
     """
     Handles a StopTransaction.req message from a Charge Point.
     
-    Server Action: Logs the end of the transaction and finalizes billing data.
+    Server Action: Logs the end of the transaction and finalizes billing data in the in-memory store.
     
     Returns: a StopTransaction.conf payload.
     """
@@ -242,19 +252,21 @@ async def handle_get_configuration_response(charge_point_id: str, payload: GetCo
     Handles a GetConfiguration.conf message from a Charge Point.
     """
     logger.info(f"Received GetConfiguration.conf from Charge Point: {charge_point_id}")
-    logger.debug(f"Configuration Keys: {payload.configurationKey}")
+    logger.debug(f"Payload: {payload}")
 
 async def handle_change_configuration_response(charge_point_id: str, payload: ChangeConfigurationResponse) -> None:
     """
     Handles a ChangeConfiguration.conf message from a Charge Point.
     """
     logger.info(f"Received ChangeConfiguration.conf from Charge Point: {charge_point_id} with status: {payload.status}")
+    logger.debug(f"Payload: {payload}")
 
 async def handle_trigger_message_response(charge_point_id: str, payload: TriggerMessageResponse) -> None:
     """
     Handles a TriggerMessage.conf message from a Charge Point.
     """
     logger.info(f"Received TriggerMessage.conf from Charge Point: {charge_point_id} with status: {payload.status}")
+    logger.debug(f"Payload: {payload}")
 
 async def handle_meter_values(charge_point_id: str, payload: MeterValuesRequest) -> MeterValuesResponse:
     """
@@ -285,5 +297,7 @@ async def handle_get_composite_schedule_response(charge_point_id: str, payload: 
     Handles a GetCompositeSchedule.conf message from a Charge Point.
     """
     logger.info(f"Received GetCompositeSchedule.conf from Charge Point: {charge_point_id}")
+    logger.debug(f"Payload: {payload}")
+
     if payload.status == "Accepted":
         logger.info(f"Schedule start: {payload.scheduleStart}")
