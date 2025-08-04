@@ -1,0 +1,19 @@
+# Python virtual environment
+venv/
+
+# Python compiled files
+__pycache__/
+*.pyc
+
+# Operating System files (e.g., macOS specific files)
+.DS_Store
+
+# User-specific history/cache files (common to omit)
+.lesshst
+.cache/
+
+# Personal Git config - generally not part of a project repo
+# This assumes .gitconfig is in /home/opcc and is your global config.
+# If it's truly a project-specific .gitconfig, you might include it,
+# but that's rare for typical projects.
+.gitconfig
