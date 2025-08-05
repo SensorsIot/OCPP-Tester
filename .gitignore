@@ -1,3 +1,7 @@
+.local/
+.ssh/
+.dotnet/
+.cache/
 .vscode-server/
 # Python virtual environment
 venv/
