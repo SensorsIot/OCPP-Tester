@@ -1,144 +1,3 @@
-# Sollte zeigen: /home/opcc/ocpp-tester
-ls -la
-# Zeigt alle Dateien im Verzeichnis
-cc@evcc:/home$ ls
-opcc@evcc:/home$ ^C
-opcc@evcc:/home$ pwd
-# Sollte zeigen: /home/opcc/ocpp-tester
-ls -la
-# Zeigt alle Dateien im Verzeichnis
-/home
-total 8
-drwxr-xr-x  2 root root 4096 Aug  3 21:56 .
-drwxr-xr-x 18 root root 4096 Aug  2 21:34 ..
-opcc@evcc:/home$
-ls
-ls
-cd opcc/
-cd opcc-tester/
-cat > ocpp_tester.py << 'EOF'
-#!/usr/bin/env python3
-"""
-OCPP 1.6 Tester für Wallboxen
-Basierend auf dem EVCC-Log Trace
-"""
-
-import asyncio
-import websockets
-import json
-import uuid
-import logging
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
-from enum import Enum
-
-# Logging Setup
-logging.basicConfig(level=logging.INFO, format='[%(name)s] %(levelname)s %(asctime)s %(message)s')
-logger = logging.getLogger('ocpp_tester')
-
-class MessageType(Enum):
-    CALL = 2
-    CALLRESULT = 3
-    CALLERROR = 4
-
-class OCPPAction(Enum):
-    # Core Profile
-    BOOT_NOTIFICATION = "BootNotification"
-    STATUS_NOTIFICATION = "StatusNotification"
-    GET_CONFIGURATION = "GetConfiguration"
-    CHANGE_CONFIGURATION = "ChangeConfiguration"
-    CHANGE_AVAILABILITY = "ChangeAvailability"
-    TRIGGER_MESSAGE = "TriggerMessage"
-    METER_VALUES = "MeterValues"
-    HEARTBEAT = "Heartbeat"
-    
-    # Smart Charging Profile
-    GET_COMPOSITE_SCHEDULE = "GetCompositeSchedule"
-    SET_CHARGING_PROFILE = "SetChargingProfile"
-    CLEAR_CHARGING_PROFILE = "ClearChargingProfile"
-
-@dataclass
-class OCPPMessage:
-    message_type: MessageType
-    unique_id: str
-    action: Optional[str] = None
-    payload: Dict = None
-    error_code: Optional[str] = None
-    error_description: Optional[str] = None
-
-class OCPPTester:
-    def __init__(self, charge_point_id: str = "TestChargePoint"):
-        self.charge_point_id = charge_point_id
-        self.websocket = None
-        self.is_connected = False
-        self.pending_requests: Dict[str, asyncio.Future] = {}
-        self.test_results: List[Dict] = []
-        
-    async def connect(self, url: str):
-        """Verbindung zur Wallbox aufbauen"""
-        try:
-            logger.info(f"Connecting to {url}")
-            self.websocket = await websockets.connect(url)
-            self.is_connected = True
-            logger.info("Connected successfully")
-            
-            # Message Handler starten
-            asyncio.create_task(self._message_handler())
-            
-        except Exception as e:
-            logger.error(f"Connection failed: {e}")
-            raise
-
-    async def disconnect(self):
-        """Verbindung trennen"""
-        if self.websocket:
-            await self.websocket.close()
-            self.is_connected = False
-            logger.info("Disconnected")
-
-    async def _message_handler(self):
-        """Eingehende Nachrichten verarbeiten"""
-        try:
-            async for raw_message in self.websocket:
-                logger.debug(f"Received: {raw_message}")
-                
-                try:
-                    message_data = json.loads(raw_message)
-                    message = self._parse_message(message_data)
-                    
-                    if message.message_type == MessageType.CALLRESULT:
-                        # Antwort auf unsere Anfrage
-                        if message.unique_id in self.pending_requests:
-                            future = self.pending_requests.pop(message.unique_id)
-                            future.set_result(message.payload)
-                    
-                    elif message.message_type == MessageType.CALLERROR:
-                        # Fehlerantwort
-                        if message.unique_id in self.pending_requests:
-                            future = self.pending_requests.pop(message.unique_id)
-                            future.set_exception(Exception(f"{message.error_code}: {message.error_description}"))
-                    
-                    elif message.message_type == MessageType.CALL:
-                        # Eingehende Anfrage von der Wallbox
-                        await self._handle_incoming_call(message)
-                        
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse message: {e}")
-                    
-        except websockets.exceptions.ConnectionClosed:
-            logger.info("Connection closed")
-            self.is_connected = False
-
-    def _parse_message(self, data: List) -> OCPPMessage:
-        """OCPP Message parsen"""
-        message_type = MessageType(data[0])
-        unique_id = data[1]
-        
-        if message_type == MessageType.CALL:
-            return OCPPMessage(message_type, unique_id, data[2], data[3])
-        elif message_type == MessageType.CALLRESULT:
-            return OCPPMessage(message_type, unique_id, payload=data[2])
         elif message_type == MessageType.CALLERROR:
             return OCPPMessage(message_type, unique_id, error_code=data[2], 
                              error_description=data[3], payload=data[4])
@@ -498,3 +357,144 @@ claer
 clear
 git status
 git reset venv/
+git reset venv/git add .
+pwd
+ls
+nano .gitignore
+git status
+git add .gitignore
+git commit -m "Add .gitignore to exclude common temporary and user files"
+git status
+git rm --cached .bash_history
+git rm --cached .gitconfig
+git rm --cached -r .cache/ # Use -r for directories
+git commit -m "Stop tracking irrelevant user and cache files"
+git add main.py app/ requirements.txt
+git status
+git commit -m "Add core application logic and dependencies"
+clear
+git status
+git push origin master
+git status
+git add .
+git commit -m "Your concise and descriptive commit message"
+git push
+git status
+ssh-keygen -t ed25519 -C "your_email@example.com"
+ssh-keygen -t ed25519 -C "andreas.spiess@arumba.com"
+ls
+ls -R
+cd  .ssh
+ls
+cd ..
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+nano ~/.bashrc
+source ~/.bashrc
+ssh-add ~/.ssh/id_ed25519
+ssh-add -l
+cat ~/.ssh/id_ed25519.pub
+git push origin master
+git remote -v
+git remote set-url origin git@github.com:SensorsIot/OCPP-Tester.git
+git remote -v
+git push origin master
+git push origin master
+python3 main.py
+python3 main.py
+python3 main.py
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+git status
+git add .
+git commit -m "working prototype"
+git push
+git status
+git status
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+git status
+git add .
+git commit -m "working prototype"
+git push
+git status
+python3 main.py 
+lo
+exit
+ls -ld ~/.ssh
+ls -l ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+ls -l ~/.ssh/authorized_keys
+ssh opcc@192.168.0.35
+cat ~/.ssh/authorized_keys
+sudo nano /etc/ssh/sshd_config
+sudo nano /etc/ssh/sshd_config
+sudo nano /etc/ssh/sshd_config
+sudo systemctl restart ssh
+exit
+sudo apt-get update && sudo apt-get install openssh-server
+sudo systemctl start sshd
+sudo systemctl enable sshd
+opcc@evcc:~$ sudo systemctl enable sshd
+Failed to enable unit: Refusing to operate on alias name or linked unit file: sshd.service
+opcc@evcc:~$
+sudo systemctl stop ssh
+sudo systemctl stop ssh
+sudo systemctl enable ssh
+sudo systemctl start ssh
+ssh opcc@192.168.0.35
+ssh opcc@192.168.0.35
+exit
+cat /etc/ssh/sshd_config
+ls -l /etc/ssh/sshd_config.d/
+sudo tail -f /var/log/auth.log
+sudo tail -f /var/log/auth.log
+sudo journalctl -u ssh -f
+ls -ld ~
+chmod go-w ~
+exit
+exit
+ssh-copy-id -i C:\Users\AndreasSpiess\.ssh\id_rsa.pub opcc@192.168.0.35
+ssh-copy-id -i C:\Users\AndreasSpiess\.ssh\id_rsa.pub opcc@192.168.0.35
+ssh-copy-id -i C:\Users\AndreasSpiess\.ssh\id_rsa.pub opcc@192.168.0.35
+python3 main.y
+python3 main.py
+python3 main.py
+python3 main.py
+python3 main.py
+chmod 777 /home/opcc/app/server.py
+sudo chmod 777 /home/opcc/app/server.py
+ls -l /home/opcc/app/server.py
+sudo chown -R opcc:opcc /home/opcc/app
+ls -l /home/opcc/app/server.py
+chmod 644 /home/opcc/app/server.py
+python3 main.py
+python3 main.py
+/usr/bin/python3 /home/opcc/.vscode-server/extensions/ms-python.python-2025.10.1-linux-x64/python_files/printEnvVariablesToFile.py /home/opcc/.vscode-server/extensions/ms-python.python-2025.10.1-linux-x64/python_files/deactivate/bash/envVars.txt
+python3 main.py
+ls
+python3 main.py
+python3 main.py
+clear
+python3 main.py
+cd app
+ls
+cd ..
+cd OCPP_1.6_documentation/
+ls
