@@ -104,6 +104,36 @@ class StatusNotificationResponse:
     # This message has no payload, so the class is empty.
     pass
 
+@dataclass
+class FirmwareStatusNotificationRequest:
+    """
+    Represents the payload for a FirmwareStatusNotification.req message.
+    """
+    status: str # "Downloaded", "DownloadFailed", "Downloading", "Idle", "InstallationFailed", "Installed", "Installing"
+
+@dataclass
+class FirmwareStatusNotificationResponse:
+    """
+    Represents the payload for a FirmwareStatusNotification.conf message.
+    """
+    # This message has no payload.
+    pass
+
+@dataclass
+class DiagnosticsStatusNotificationRequest:
+    """
+    Represents the payload for a DiagnosticsStatusNotification.req message.
+    """
+    status: str # "Idle", "Uploaded", "UploadFailed", "Uploading"
+
+@dataclass
+class DiagnosticsStatusNotificationResponse:
+    """
+    Represents the payload for a DiagnosticsStatusNotification.conf message.
+    """
+    # This message has no payload.
+    pass
+
 # ---- New Payloads for Server-Initiated Commands (and their responses) ----
 
 @dataclass

@@ -3,10 +3,9 @@ This module contains the core WebSocket server implementation for the OCPP serve
 It uses the `websockets` library to listen for connections, handle incoming
 OCPP messages, and dispatch them to the appropriate handler functions.
 """
-import asyncio
+import asyncio, uuid
 import json
 import logging
-import uuid
 from typing import Any, Callable, Dict, List
 from websockets.server import serve, WebSocketServerProtocol
 from websockets.exceptions import ConnectionClosedOK
@@ -16,6 +15,8 @@ from .handlers import (
     handle_authorize,
     handle_data_transfer,
     handle_status_notification,
+    handle_firmware_status_notification,
+    handle_diagnostics_status_notification,
     handle_heartbeat,
     handle_start_transaction,
     handle_stop_transaction,
@@ -33,6 +34,8 @@ from .messages import (
     AuthorizeRequest,
     DataTransferRequest,
     StatusNotificationRequest,
+    FirmwareStatusNotificationRequest,
+    DiagnosticsStatusNotificationRequest,
     HeartbeatRequest,
     StartTransactionRequest,
     StopTransactionRequest,
@@ -56,6 +59,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 
+# A dictionary to track pending server-initiated requests and their corresponding events.
+# This allows us to wait for a specific response before proceeding.
+# Format: { "unique_id": {"action": str, "event": asyncio.Event} }
+PENDING_REQUESTS: Dict[str, Dict[str, Any]] = {}
+
 # A simple in-memory mapping of message actions to their handlers and payload classes
 # This allows for dynamic dispatch based on the incoming message's "Action" field.
 MESSAGE_HANDLERS: Dict[str, Dict[str, Any]] = {
@@ -75,6 +83,14 @@ MESSAGE_HANDLERS: Dict[str, Dict[str, Any]] = {
     "StatusNotification": {
         "handler": handle_status_notification,
         "payload_class": StatusNotificationRequest,
+    },
+    "FirmwareStatusNotification": {
+        "handler": handle_firmware_status_notification,
+        "payload_class": FirmwareStatusNotificationRequest,
+    },
+    "DiagnosticsStatusNotification": {
+        "handler": handle_diagnostics_status_notification,
+        "payload_class": DiagnosticsStatusNotificationRequest,
     },
     "Heartbeat": {
         "handler": handle_heartbeat,
@@ -96,22 +112,18 @@ MESSAGE_HANDLERS: Dict[str, Dict[str, Any]] = {
     "GetConfiguration": {
         "handler": handle_get_configuration_response,
         "payload_class": GetConfigurationResponse,
-        "is_response": True,
     },
     "ChangeConfiguration": {
         "handler": handle_change_configuration_response,
         "payload_class": ChangeConfigurationResponse,
-        "is_response": True,
     },
     "TriggerMessage": {
         "handler": handle_trigger_message_response,
         "payload_class": TriggerMessageResponse,
-        "is_response": True,
     },
     "GetCompositeSchedule": {
         "handler": handle_get_composite_schedule_response,
         "payload_class": GetCompositeScheduleResponse,
-        "is_response": True,
     },
 }
 
@@ -138,39 +150,59 @@ def create_ocpp_message(
 # =================================================================================
 
 async def send_change_availability(websocket: WebSocketServerProtocol, connector_id: int, type: str):
-    """Sends a ChangeAvailability request to the Charge Point."""
+    """Sends a ChangeAvailability request and waits for a response."""
+    unique_id = str(uuid.uuid4())
+    event = asyncio.Event()
+    PENDING_REQUESTS[unique_id] = {"action": "ChangeAvailability", "event": event}
     request = ChangeAvailabilityRequest(connectorId=connector_id, type=type)
-    message = create_ocpp_message(2, str(uuid.uuid4()), request, "ChangeAvailability")
+    message = create_ocpp_message(2, unique_id, request, "ChangeAvailability")
     await websocket.send(message)
     logger.info(f"Sent ChangeAvailability for connector {connector_id} to '{type}'")
+    await event.wait()
 
 async def send_get_configuration(websocket: WebSocketServerProtocol):
-    """Sends a GetConfiguration request to the Charge Point."""
+    """Sends a GetConfiguration request and waits for a response."""
+    unique_id = str(uuid.uuid4())
+    event = asyncio.Event()
+    PENDING_REQUESTS[unique_id] = {"action": "GetConfiguration", "event": event}
     request = GetConfigurationRequest()
-    message = create_ocpp_message(2, str(uuid.uuid4()), request, "GetConfiguration")
+    message = create_ocpp_message(2, unique_id, request, "GetConfiguration")
     await websocket.send(message)
     logger.info("Sent GetConfiguration request")
+    await event.wait()
 
 async def send_change_configuration(websocket: WebSocketServerProtocol, key: str, value: str):
-    """Sends a ChangeConfiguration request to the Charge Point."""
+    """Sends a ChangeConfiguration request and waits for a response."""
+    unique_id = str(uuid.uuid4())
+    event = asyncio.Event()
+    PENDING_REQUESTS[unique_id] = {"action": "ChangeConfiguration", "event": event}
     request = ChangeConfigurationRequest(key=key, value=value)
-    message = create_ocpp_message(2, str(uuid.uuid4()), request, "ChangeConfiguration")
+    message = create_ocpp_message(2, unique_id, request, "ChangeConfiguration")
     await websocket.send(message)
     logger.info(f"Sent ChangeConfiguration request for key '{key}' with value '{value}'")
+    await event.wait()
 
 async def send_trigger_message(websocket: WebSocketServerProtocol, requested_message: str, connector_id: int = None):
-    """Sends a TriggerMessage request to the Charge Point."""
+    """Sends a TriggerMessage request and waits for a response."""
+    unique_id = str(uuid.uuid4())
+    event = asyncio.Event()
+    PENDING_REQUESTS[unique_id] = {"action": "TriggerMessage", "event": event}
     request = TriggerMessageRequest(requestedMessage=requested_message, connectorId=connector_id)
-    message = create_ocpp_message(2, str(uuid.uuid4()), request, "TriggerMessage")
+    message = create_ocpp_message(2, unique_id, request, "TriggerMessage")
     await websocket.send(message)
     logger.info(f"Sent TriggerMessage for '{requested_message}'" + (f" for connector {connector_id}" if connector_id is not None else ""))
+    await event.wait()
 
 async def send_get_composite_schedule(websocket: WebSocketServerProtocol, connector_id: int, duration: int):
-    """Sends a GetCompositeSchedule request to the Charge Point."""
+    """Sends a GetCompositeSchedule request and waits for a response."""
+    unique_id = str(uuid.uuid4())
+    event = asyncio.Event()
+    PENDING_REQUESTS[unique_id] = {"action": "GetCompositeSchedule", "event": event}
     request = GetCompositeScheduleRequest(connectorId=connector_id, duration=duration)
-    message = create_ocpp_message(2, str(uuid.uuid4()), request, "GetCompositeSchedule")
+    message = create_ocpp_message(2, unique_id, request, "GetCompositeSchedule")
     await websocket.send(message)
     logger.info(f"Sent GetCompositeSchedule for connector {connector_id} with duration {duration}")
+    await event.wait()
 
 
 async def configure_meter_values(websocket: WebSocketServerProtocol):
@@ -197,17 +229,17 @@ async def configure_meter_values(websocket: WebSocketServerProtocol):
     combined = ",".join(values)
     await send_change_configuration(websocket, "MeterValuesSampledData", combined)
 
-# Define the number of periodic check cycles to run before shutting down
-PERIODIC_CHECK_CYCLES = 3
-
-async def periodic_status_checks(websocket: WebSocketServerProtocol, charge_point_id: str, stop_server_event: asyncio.Event):
+async def periodic_status_checks(websocket: WebSocketServerProtocol, charge_point_id: str):
     """
     A coroutine that periodically requests status and meter values.
-    This runs for a predefined number of cycles before signaling the main loop to stop.
+    This runs for as long as the WebSocket connection is active.
     """
     try:
-        for i in range(PERIODIC_CHECK_CYCLES):
-            logger.info(f"Initiating periodic status and meter value checks... (Cycle {i+1}/{PERIODIC_CHECK_CYCLES})")
+        # This loop now runs indefinitely until the task is cancelled (e.g., on disconnect).
+        cycle_count = 0
+        while True:
+            cycle_count += 1
+            logger.info(f"Initiating periodic status and meter value checks for {charge_point_id}... (Cycle {cycle_count})")
             await send_trigger_message(websocket, "StatusNotification")
             await send_trigger_message(websocket, "MeterValues")
             await asyncio.sleep(60)  # Check every minute
@@ -218,9 +250,6 @@ async def periodic_status_checks(websocket: WebSocketServerProtocol, charge_poin
         logger.info(f"Periodic check for {charge_point_id} stopped due to connection closure.")
     except Exception as e:
         logger.error(f"An error occurred during periodic checks for {charge_point_id}: {e}")
-    finally:
-        logger.info(f"Periodic checks for {charge_point_id} complete. Signaling server shutdown.")
-        stop_server_event.set()
 
 
 async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id: str):
@@ -229,54 +258,52 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
     This function orchestrates the requests based on the provided log file analysis.
     """
     logger.info(f"Starting initialization sequence for {charge_point_id}...")
-    
     # 1. Initial Setup Requests
     await send_change_availability(websocket, connector_id=0, type="Operative")
     await send_get_configuration(websocket)
-    
     # 2. Boot Sequence
     await send_trigger_message(websocket, requested_message="BootNotification")
-    
     # 3. Configuration Updates
     await configure_meter_values(websocket)
     await send_change_configuration(websocket, "MeterValueSampleInterval", "10")
-    
     # 4. Status Monitoring
     await send_trigger_message(websocket, "StatusNotification")
-    
     # 5. Meter Values Collection
     await send_trigger_message(websocket, "MeterValues", connector_id=1)
 
     # 6. Advanced Features
     await send_get_composite_schedule(websocket, connector_id=1, duration=60)
     
-    logger.info(f"Initialization sequence for {charge_point_id} complete.")
+    logger.info(f"Initialization test sequence for {charge_point_id} complete.")
+    print("\n------------------------END----------------------------")
 
-async def serve_ocpp(websocket: WebSocketServerProtocol, path: str, stop_server_event: asyncio.Event):
+async def serve_ocpp(websocket: WebSocketServerProtocol):
     """
     The main WebSocket handler function for the OCPP server.
-    It handles incoming connections and processes OCPP messages.
-    
-    The stop_server_event is used to signal a graceful shutdown after the connection closes.
+    It handles incoming connections and processes OCPP messages for a single charge point.
     """
+    path = websocket.path
     charge_point_id = path.strip("/")
     logger.info(f"New connection from Charge Point: {charge_point_id}")
-    
     if not charge_point_id:
         logger.warning("Connection closed: Charge Point ID is missing in the path.")
         await websocket.close()
         return
 
+    # Initialize a background task for periodic checks. This task will be
+    # cancelled when the connection is closed.
+    periodic_task = None
+
     # Check to see if we've already initialized this charge point using the in-memory store
     if charge_point_id not in CHARGE_POINTS:
-        # Run the initialization sequence and periodic checks when a new connection is established
+        # Run the initialization test sequence. This will now block until all
+        # commands have been sent and their responses received.
         await initialize_wallbox(websocket, charge_point_id)
         # The periodic checks run in the background as a separate task.
-        periodic_task = asyncio.create_task(periodic_status_checks(websocket, charge_point_id, stop_server_event))
+        periodic_task = asyncio.create_task(periodic_status_checks(websocket, charge_point_id))
     else:
         logger.info(f"Charge Point {charge_point_id} is already initialized. Skipping setup.")
-        periodic_task = asyncio.create_task(periodic_status_checks(websocket, charge_point_id, stop_server_event))
-
+        periodic_task = asyncio.create_task(periodic_status_checks(websocket, charge_point_id))
 
     try:
         async for message in websocket:
@@ -338,7 +365,6 @@ async def serve_ocpp(websocket: WebSocketServerProtocol, path: str, stop_server_
         logger.error(f"An error occurred with connection {charge_point_id}: {e}")
     finally:
         logger.info(f"Charge Point {charge_point_id} disconnected.")
-        # Clean up the background task and signal the main loop to stop.
+        # Clean up the background task when the connection is closed.
         if periodic_task:
             periodic_task.cancel()
-        stop_server_event.set()

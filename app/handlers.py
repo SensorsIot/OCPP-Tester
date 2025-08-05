@@ -22,6 +22,10 @@ from .messages import (
     DataTransferResponse,
     StatusNotificationRequest,
     StatusNotificationResponse,
+    FirmwareStatusNotificationRequest,
+    FirmwareStatusNotificationResponse,
+    DiagnosticsStatusNotificationRequest,
+    DiagnosticsStatusNotificationResponse,
     GetConfigurationRequest,
     GetConfigurationResponse,
     ConfigurationKey,
@@ -159,6 +163,35 @@ async def handle_status_notification(charge_point_id: str, payload: StatusNotifi
         logger.debug(f"Updated status for connector {payload.connectorId} on {charge_point_id} to '{payload.status}'")
     
     return StatusNotificationResponse()
+
+async def handle_firmware_status_notification(charge_point_id: str, payload: FirmwareStatusNotificationRequest) -> FirmwareStatusNotificationResponse:
+    """
+    Handles a FirmwareStatusNotification.req message from a Charge Point.
+    
+    Server Action: Logs the firmware update status of the Charge Point.
+    
+    Returns: A FirmwareStatusNotification.conf payload.
+    """
+    logger.info(f"Received FirmwareStatusNotification from {charge_point_id}: Status is '{payload.status}'")
+    
+    # In a real system, you would add logic here to track firmware update progress.
+    
+    return FirmwareStatusNotificationResponse()
+
+async def handle_diagnostics_status_notification(charge_point_id: str, payload: DiagnosticsStatusNotificationRequest) -> DiagnosticsStatusNotificationResponse:
+    """
+    Handles a DiagnosticsStatusNotification.req message from a Charge Point.
+    
+    Server Action: Logs the diagnostics upload status of the Charge Point.
+    
+    Returns: A DiagnosticsStatusNotification.conf payload.
+    """
+    logger.info(f"Received DiagnosticsStatusNotification from {charge_point_id}: Status is '{payload.status}'")
+    
+    # In a real system, you would add logic here to handle the uploaded diagnostics file.
+    
+    return DiagnosticsStatusNotificationResponse()
+
 
 async def handle_heartbeat(charge_point_id: str, payload: HeartbeatRequest) -> HeartbeatResponse:
     """
