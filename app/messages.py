@@ -6,7 +6,7 @@ Using classes for message payloads provides structure, type hinting, and
 validation, which is crucial for a robust server implementation.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass, field
 
 @dataclass
@@ -57,6 +57,13 @@ class AuthorizeResponse:
     """
     idTagInfo: IdTagInfo # Must contain a "status" key
 
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dict
+        # into an IdTagInfo object for type safety and easier access.
+        if self.idTagInfo and isinstance(self.idTagInfo, dict):
+            self.idTagInfo = IdTagInfo(**self.idTagInfo)
+
+
 @dataclass
 class DataTransferRequest:
     """
@@ -91,7 +98,6 @@ class StatusNotificationRequest:
     # Add 'info' field to correctly capture the incoming value
     info: Optional[str] = None
     # Use a post-init method to handle other extra vendor-specific fields
-    extra_fields: Dict[str, Any] = field(init=False, default_factory=dict)
 
     def __post_init__(self, **kwargs):
         self.extra_fields = kwargs
@@ -134,6 +140,75 @@ class DiagnosticsStatusNotificationResponse:
     # This message has no payload.
     pass
 
+@dataclass
+class HeartbeatRequest:
+    """
+    Represents the payload for a Heartbeat.req message.
+    """
+    # This message has no payload.
+    pass
+
+@dataclass
+class HeartbeatResponse:
+    """
+    Represents the payload for a Heartbeat.conf message.
+    """
+    currentTime: str # ISO 8601 timestamp
+
+@dataclass
+class StartTransactionRequest:
+    """
+    Represents the payload for a StartTransaction.req message.
+    """
+    connectorId: int
+    idTag: str
+    timestamp: str
+    meterStart: int
+    reservationId: Optional[int] = None
+
+@dataclass
+class StartTransactionResponse:
+    """
+    Represents the payload for a StartTransaction.conf message.
+    """
+    transactionId: int
+    idTagInfo: IdTagInfo
+
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dict
+        # into an IdTagInfo object for type safety and easier access.
+        if self.idTagInfo and isinstance(self.idTagInfo, dict):
+            self.idTagInfo = IdTagInfo(**self.idTagInfo)
+
+@dataclass
+class StopTransactionRequest:
+    """
+    Represents the payload for a StopTransaction.req message.
+    """
+    transactionId: int
+    timestamp: str
+    meterStop: int
+    idTag: Optional[str] = None
+    reason: Optional[str] = None
+    transactionData: Optional[List['MeterValue']] = None
+
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dicts
+        # into MeterValue objects for type safety and easier access.
+        if self.transactionData and self.transactionData and isinstance(self.transactionData[0], dict):
+            self.transactionData = [MeterValue(**mv) for mv in self.transactionData]
+
+@dataclass
+class StopTransactionResponse:
+    """
+    Represents the payload for a StopTransaction.conf message.
+    """
+    idTagInfo: Optional[IdTagInfo] = None
+
+    def __post_init__(self):
+        if self.idTagInfo and isinstance(self.idTagInfo, dict):
+            self.idTagInfo = IdTagInfo(**self.idTagInfo)
+
 # ---- New Payloads for Server-Initiated Commands (and their responses) ----
 
 @dataclass
@@ -174,6 +249,12 @@ class GetConfigurationResponse:
     """
     configurationKey: List[ConfigurationKey]
     unknownKey: Optional[List[str]] = None
+
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dicts
+        # into ConfigurationKey objects for type safety and easier access.
+        if self.configurationKey and isinstance(self.configurationKey[0], dict):
+            self.configurationKey = [ConfigurationKey(**key) for key in self.configurationKey]
 
 @dataclass
 class ChangeConfigurationRequest:
@@ -226,6 +307,12 @@ class MeterValue:
     timestamp: str
     sampledValue: List[SampledValue]
 
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dicts
+        # into SampledValue objects for type safety and easier access.
+        if self.sampledValue and isinstance(self.sampledValue[0], dict):
+            self.sampledValue = [SampledValue(**sv) for sv in self.sampledValue]
+
 @dataclass
 class MeterValuesRequest:
     """
@@ -234,6 +321,12 @@ class MeterValuesRequest:
     connectorId: int
     meterValue: List[MeterValue]
     transactionId: Optional[int] = None
+
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dicts
+        # into MeterValue objects for type safety and easier access.
+        if self.meterValue and isinstance(self.meterValue[0], dict):
+            self.meterValue = [MeterValue(**mv) for mv in self.meterValue]
 
 @dataclass
 class MeterValuesResponse:
@@ -251,6 +344,23 @@ class GetCompositeScheduleRequest:
     connectorId: int
     duration: int
     chargingRateUnit: Optional[str] = None
+
+@dataclass
+class GetCompositeScheduleResponse:
+    """
+    Represents the payload for a GetCompositeSchedule.conf message.
+    """
+    status: str  # "Accepted" or "Rejected"
+    connectorId: Optional[int] = None
+    scheduleStart: Optional[str] = None
+    chargingSchedule: Optional['ChargingSchedule'] = None
+
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dict
+        # into a ChargingSchedule object for type safety and easier access.
+        if self.chargingSchedule and isinstance(self.chargingSchedule, dict):
+            self.chargingSchedule = ChargingSchedule(**self.chargingSchedule)
+
 
 @dataclass
 class ChargingSchedulePeriod:
@@ -274,65 +384,81 @@ class ChargingSchedule:
     startSchedule: Optional[str] = None
     minChargingRate: Optional[float] = None
 
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dicts
+        # into ChargingSchedulePeriod objects for type safety and easier access.
+        if self.chargingSchedulePeriod and isinstance(self.chargingSchedulePeriod[0], dict):
+            self.chargingSchedulePeriod = [ChargingSchedulePeriod(**p) for p in self.chargingSchedulePeriod]
+
+
+# ---- Payloads for Smart Charging (SetChargingProfile) ----
+
+class ChargingProfilePurposeType:
+    """Enum for ChargingProfilePurposeType."""
+    ChargePointMaxProfile = "ChargePointMaxProfile"
+    TxDefaultProfile = "TxDefaultProfile"
+    TxProfile = "TxProfile"
+
+class ChargingProfileKindType:
+    """Enum for ChargingProfileKindType."""
+    Absolute = "Absolute"
+    Recurring = "Recurring"
+    Relative = "Relative"
+
+class RecurrencyKindType:
+    """Enum for RecurrencyKindType."""
+    Daily = "Daily"
+    Weekly = "Weekly"
+
+class ChargingRateUnitType:
+    """Enum for ChargingRateUnitType."""
+    W = "W"
+    A = "A"
+
+class ChargingProfileStatusType:
+    """Enum for ChargingProfileStatus."""
+    Accepted = "Accepted"
+    Rejected = "Rejected"
+    NotSupported = "NotSupported"
+
 @dataclass
-class GetCompositeScheduleResponse:
+class ChargingProfile:
     """
-    Represents the payload for a GetCompositeSchedule.conf message.
+    A nested object in the SetChargingProfile.req payload.
     """
-    status: str # "Accepted", "Rejected"
+    chargingProfileId: int
+    stackLevel: int
+    chargingProfilePurpose: str
+    chargingProfileKind: str
+    chargingSchedule: 'ChargingSchedule'
+    transactionId: Optional[int] = None
+    recurrencyKind: Optional[str] = None
+    validFrom: Optional[str] = None
+    validTo: Optional[str] = None
+
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dict
+        # into a ChargingSchedule object for type safety and easier access.
+        if self.chargingSchedule and isinstance(self.chargingSchedule, dict):
+            self.chargingSchedule = ChargingSchedule(**self.chargingSchedule)
+
+@dataclass
+class SetChargingProfileRequest:
+    """
+    Represents the payload for a SetChargingProfile.req message.
+    """
     connectorId: int
-    scheduleStart: Optional[str] = None
-    chargingSchedule: Optional[ChargingSchedule] = None
+    csChargingProfiles: ChargingProfile
+
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dict
+        # into a ChargingProfile object for type safety and easier access.
+        if self.csChargingProfiles and isinstance(self.csChargingProfiles, dict):
+            self.csChargingProfiles = ChargingProfile(**self.csChargingProfiles)
 
 @dataclass
-class HeartbeatRequest:
+class SetChargingProfileResponse:
     """
-    Represents the payload for a Heartbeat.req message.
-    As per the specification, this message has no payload.
+    Represents the payload for a SetChargingProfile.conf message.
     """
-    pass
-
-@dataclass
-class HeartbeatResponse:
-    """
-    Represents the payload for a Heartbeat.conf message.
-    """
-    currentTime: str
-
-@dataclass
-class StartTransactionRequest:
-    """
-    Represents the payload for a StartTransaction.req message.
-    """
-    connectorId: int
-    idTag: str
-    meterStart: int
-    timestamp: str
-    reservationId: Optional[int] = None
-
-@dataclass
-class StartTransactionResponse:
-    """
-    Represents the payload for a StartTransaction.conf message.
-    """
-    idTagInfo: IdTagInfo
-    transactionId: int
-
-@dataclass
-class StopTransactionRequest:
-    """
-    Represents the payload for a StopTransaction.req message.
-    """
-    meterStop: int
-    timestamp: str
-    transactionId: int
-    idTag: Optional[str] = None
-    reason: Optional[str] = None
-    transactionData: Optional[List[MeterValue]] = None
-
-@dataclass
-class StopTransactionResponse:
-    """
-    Represents the payload for a StopTransaction.conf message.
-    """
-    idTagInfo: Optional[IdTagInfo] = None
+    status: str # "Accepted", "Rejected", "NotSupported"

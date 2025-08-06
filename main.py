@@ -53,6 +53,7 @@ async def main():
         # `websockets.serve()` would normally do automatically.
         ws_server.server = server
         logger.info(f"Server created and listening on {server.sockets[0].getsockname()}")
+        logger.info("Server is now running. Waiting for a Charge Point to connect...")
     except Exception as e:
         logger.error(f"Failed to create server: {e}", exc_info=True)
         return

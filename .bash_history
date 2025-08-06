@@ -1,103 +1,3 @@
-        elif message_type == MessageType.CALLERROR:
-            return OCPPMessage(message_type, unique_id, error_code=data[2], 
-                             error_description=data[3], payload=data[4])
-
-    async def _handle_incoming_call(self, message: OCPPMessage):
-        """Eingehende Calls von der Wallbox behandeln"""
-        logger.info(f"Received {message.action}: {message.payload}")
-        
-        # Standard-Antworten für häufige Nachrichten
-        response_payload = {}
-        
-        if message.action == OCPPAction.BOOT_NOTIFICATION.value:
-            response_payload = {
-                "currentTime": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
-                "interval": 60,
-                "status": "Accepted"
-            }
-        elif message.action == OCPPAction.STATUS_NOTIFICATION.value:
-            response_payload = {}
-        elif message.action == OCPPAction.METER_VALUES.value:
-            response_payload = {}
-        elif message.action == OCPPAction.HEARTBEAT.value:
-            response_payload = {
-                "currentTime": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-            }
-        
-        # Antwort senden
-        await self._send_call_result(message.unique_id, response_payload)
-
-    async def _send_call_result(self, unique_id: str, payload: Dict):
-        """CALLRESULT senden"""
-        message = [MessageType.CALLRESULT.value, unique_id, payload]
-        await self._send_message(message)
-
-    async def _send_message(self, message: List):
-        """Nachricht senden"""
-        if not self.is_connected:
-            raise Exception("Not connected")
-        
-        raw_message = json.dumps(message)
-        logger.debug(f"Sending: {raw_message}")
-        await self.websocket.send(raw_message)
-
-    async def send_command(self, action: OCPPAction, payload: Dict, timeout: int = 30) -> Dict:
-        """OCPP Command senden und auf Antwort warten"""
-        unique_id = str(uuid.uuid4()).replace('-', '')[:10]  # Kurze ID wie im Log
-        
-        message = [MessageType.CALL.value, unique_id, action.value, payload]
-        
-        # Future für Antwort erstellen
-        future = asyncio.Future()
-        self.pending_requests[unique_id] = future
-        
-        try:
-            await self._send_message(message)
-            result = await asyncio.wait_for(future, timeout=timeout)
-            
-            # Testergebnis speichern
-            test_result = {
-                "timestamp": datetime.now().isoformat(),
-                "action": action.value,
-                "payload": payload,
-                "response": result,
-                "success": True
-            }
-            self.test_results.append(test_result)
-            
-            return result
-            
-        except asyncio.TimeoutError:
-            self.pending_requests.pop(unique_id, None)
-            logger.error(f"Timeout waiting for {action.value}")
-            
-            test_result = {
-                "timestamp": datetime.now().isoformat(),
-                "action": action.value,
-                "payload": payload,
-                "response": None,
-                "success": False,
-                "error": "Timeout"
-            }
-            self.test_results.append(test_result)
-            raise
-            
-        except Exception as e:
-            logger.error(f"Error in {action.value}: {e}")
-            
-            test_result = {
-                "timestamp": datetime.now().isoformat(),
-                "action": action.value,
-                "payload": payload,
-                "response": None,
-                "success": False,
-                "error": str(e)
-            }
-            self.test_results.append(test_result)
-            raise
-
-    # Test-Methoden basierend auf dem EVCC-Log
-    async def test_change_availability(self, connector_id: int = 0, availability_type: str = "Operative"):
         """ChangeAvailability testen"""
         payload = {
             "connectorId": connector_id,
@@ -498,3 +398,103 @@ ls
 cd ..
 cd OCPP_1.6_documentation/
 ls
+ls
+python3 main.py
+ls
+git rm -r --cached .vscode-server/
+git commit -m "Remove .vscode-server/ directory from tracking"
+git commit -m "Remove .vscode-server/ directory from tracking"
+git push origin master
+pip install git-filter-repo
+export PATH="/home/opcc/.local/bin:$PATH"
+iwhich git-filter-repo
+export PATH="/home/opcc/.local/bin:$PATH"
+which git-filter-repo
+git filter-repo --path .vscode-server/ --invert-paths
+git filter-repo --path .vscode-server/ --invert-paths --force
+git push --force origin master
+git remote add origin git@github.com:SensorsIot/OCPP-Tester.git
+git push --force origin master
+git add .gitignore
+git commit -m "Add .local/ to .gitignore"
+git reflog expire --expire=now --all
+git gc --prune=now
+git reset HEAD~1
+git rm -r --cached .local/
+git add .gitignore
+git commit -m "Add .local/ to .gitignore"
+git push --force origin master
+clear
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+python3 -m venv venv
+source venv/bin/activate
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+sudo reboot now
