@@ -47,7 +47,9 @@ from .messages import (
     StopTransactionResponse,
     MeterValue,
     SampledValue,
-    # === NEW: Import SetChargingProfile response payload ===
+    # Import Smart Charging payloads
+    ClearChargingProfileRequest,
+    ClearChargingProfileResponse,
     SetChargingProfileRequest,
     SetChargingProfileResponse
 )
@@ -398,4 +400,12 @@ async def handle_set_charging_profile_response(charge_point_id: str, payload: Se
     Handles a SetChargingProfile.conf message from a Charge Point.
     """
     logger.info(f"Received SetChargingProfile.conf from Charge Point: {charge_point_id} with status: {payload.status}")
+    logger.info(f"Payload: {payload}")
+
+# === NEW: Handler for ClearChargingProfile response ===
+async def handle_clear_charging_profile_response(charge_point_id: str, payload: ClearChargingProfileResponse) -> None:
+    """
+    Handles a ClearChargingProfile.conf message from a Charge Point.
+    """
+    logger.info(f"Received ClearChargingProfile.conf from Charge Point: {charge_point_id} with status: {payload.status}")
     logger.info(f"Payload: {payload}")

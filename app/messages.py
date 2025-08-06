@@ -462,3 +462,27 @@ class SetChargingProfileResponse:
     Represents the payload for a SetChargingProfile.conf message.
     """
     status: str # "Accepted", "Rejected", "NotSupported"
+
+# ---- Payloads for Smart Charging (ClearChargingProfile) ----
+
+class ClearChargingProfileStatus:
+    """Enum for ClearChargingProfileStatus."""
+    Accepted = "Accepted"
+    Unknown = "Unknown"
+
+@dataclass
+class ClearChargingProfileRequest:
+    """
+    Represents the payload for a ClearChargingProfile.req message.
+    """
+    id: Optional[int] = None
+    connectorId: Optional[int] = None
+    chargingProfilePurpose: Optional[str] = None
+    stackLevel: Optional[int] = None
+
+@dataclass
+class ClearChargingProfileResponse:
+    """
+    Represents the payload for a ClearChargingProfile.conf message.
+    """
+    status: str # "Accepted" or "Unknown"

@@ -29,9 +29,11 @@ from .handlers import (
     handle_meter_values,
     handle_get_composite_schedule_response,
     # === NEW: Import handler for SetChargingProfile response ===
+    handle_clear_charging_profile_response,
     handle_set_charging_profile_response,
     # Import the in-memory storage dictionaries
-    CHARGE_POINTS
+    CHARGE_POINTS,
+    TRANSACTIONS,
 )
 from .messages import (
     BootNotificationRequest,
@@ -56,6 +58,9 @@ from .messages import (
     TriggerMessageRequest,
     ChangeConfigurationRequest,
     GetCompositeScheduleRequest,
+    # === NEW: Import ClearChargingProfile payloads ===
+    ClearChargingProfileRequest,
+    ClearChargingProfileResponse,
     # === NEW: Import SetChargingProfile payloads ===
     SetChargingProfileRequest,
     SetChargingProfileResponse,
@@ -143,6 +148,11 @@ MESSAGE_HANDLERS: Dict[str, Dict[str, Any]] = {
     "GetCompositeSchedule": {
         "handler": handle_get_composite_schedule_response,
         "payload_class": GetCompositeScheduleResponse,
+    },
+    # === NEW: Handler for ClearChargingProfile response ===
+    "ClearChargingProfile": {
+        "handler": handle_clear_charging_profile_response,
+        "payload_class": ClearChargingProfileResponse,
     },
     # === NEW: Handler for SetChargingProfile response ===
     "SetChargingProfile": {
@@ -301,6 +311,26 @@ async def send_set_charging_profile(
     await event.wait()
     logger.info(f"Response received for SetChargingProfile (id={unique_id}). Proceeding.")
 
+async def send_clear_charging_profile(
+    websocket: WebSocketServerProtocol, connector_id: int = None, charging_profile_purpose: str = None
+):
+    """Sends a ClearChargingProfile request and waits for a response."""
+    unique_id = str(uuid.uuid4())
+    event = asyncio.Event()
+    PENDING_REQUESTS[unique_id] = {"action": "ClearChargingProfile", "event": event}
+    logger.debug(f"PENDING_REQUESTS: Added {unique_id} for ClearChargingProfile")
+    
+    request = ClearChargingProfileRequest(
+        connectorId=connector_id,
+        chargingProfilePurpose=charging_profile_purpose
+    )
+    
+    message = create_ocpp_message(2, unique_id, request, "ClearChargingProfile")
+    await websocket.send(message)
+    logger.info(f"Sent ClearChargingProfile (id={unique_id}) for connector {connector_id} with purpose '{charging_profile_purpose}'. Waiting for response...")
+    await event.wait()
+    logger.info(f"Response received for ClearChargingProfile (id={unique_id}). Proceeding.")
+
 
 async def configure_meter_values(websocket: WebSocketServerProtocol):
     """
@@ -385,9 +415,20 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
 
     # === NEW: Step 5. Set Charging Power ===
     print("\n---------------5. Set Charging Power-------------------")
-    await send_set_charging_profile(
-        websocket, connector_id=1, limit_watts=5000, duration_seconds=60, profile_purpose=ChargingProfilePurposeType.TxProfile
+    # A TxProfile can only be set during an active transaction.
+    # First, check if there is an active transaction for this charge point.
+    active_transaction = any(
+        t.get("charge_point_id") == charge_point_id and "stop_time" not in t
+        for t in TRANSACTIONS.values()
     )
+
+    if active_transaction:
+        logger.info(f"Active transaction found for {charge_point_id}. Proceeding with SetChargingProfile(TxProfile).")
+        await send_set_charging_profile(
+            websocket, connector_id=1, limit_watts=5000, duration_seconds=60, profile_purpose=ChargingProfilePurposeType.TxProfile
+        )
+    else:
+        logger.warning(f"No active transaction for {charge_point_id}. Skipping SetChargingProfile with TxProfile as it would be rejected.")
 
     # === NEW: Step 6. Set Default Profile ===
     print("\n----------------------6:Set default profile-----------------------")
@@ -397,6 +438,15 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
         websocket, connector_id=1, limit_watts=7000, duration_seconds=3600, profile_purpose=ChargingProfilePurposeType.TxDefaultProfile
     )
 
+    # === NEW: Step 7. Clear Default Profile ===
+    print("\n----------------------7:Clear default profile-----------------------")
+    # This removes the default profile that was set in the previous step.
+    await send_clear_charging_profile(
+        websocket, connector_id=1, charging_profile_purpose=ChargingProfilePurposeType.TxDefaultProfile
+    )
+
+    logger.info("")
+    logger.info("")
     logger.info(f"Initialization test sequence for {charge_point_id} complete.")
     logger.info("========================END OF TEST SEQUENCE==============================")
 
@@ -424,7 +474,9 @@ async def serve_ocpp(websocket: WebSocketServerProtocol):
                 await initialize_wallbox(websocket, charge_point_id)
             else:
                 logger.info(f"Charge Point {charge_point_id} is already initialized. Skipping setup.")
-            
+
+            # The initialization sequence is complete. The server will now stop sending
+            # requests and will passively listen for messages from the charge point.
             logger.info(f"Logic sequence for {charge_point_id} completed. Server is now in passive listening mode.")
         except ConnectionClosedOK:
             logger.info(f"Logic sequence for {charge_point_id} stopped due to connection closure.")
