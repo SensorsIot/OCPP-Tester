@@ -82,6 +82,9 @@ async def main():
     root_logger.addHandler(console_handler)
     # --- End of Logging Configuration ---
 
+    # Set the logging level for the websockets library to INFO to reduce noise.
+    logging.getLogger("websockets").setLevel(logging.INFO)
+
     server_host = "0.0.0.0"
     server_port = 8887
 

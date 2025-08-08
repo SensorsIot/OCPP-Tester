@@ -26,6 +26,9 @@ from .messages import (
     GetCompositeScheduleResponse,
     ClearChargingProfileResponse,
     SetChargingProfileResponse,
+    # === NEW: Import Remote Start/Stop response payloads ===
+    RemoteStartTransactionResponse,
+    RemoteStopTransactionResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -179,3 +182,17 @@ async def handle_clear_charging_profile_response(charge_point_id: str, payload: 
 async def handle_set_charging_profile_response(charge_point_id: str, payload: SetChargingProfileResponse):
     """Handles the response to a SetChargingProfile request."""
     logger.info(f"Received SetChargingProfile.conf from {charge_point_id}: {payload.status}")
+
+# === NEW: Handlers for Remote Start/Stop responses ===
+
+async def handle_remote_start_transaction_response(charge_point_id: str, payload: RemoteStartTransactionResponse):
+    """Handles the response to a RemoteStartTransaction request."""
+    logger.info(f"Received RemoteStartTransaction.conf from {charge_point_id}: {payload.status}")
+    if payload.status == "Rejected":
+        logger.warning(f"Charge point {charge_point_id} rejected the RemoteStartTransaction request.")
+
+async def handle_remote_stop_transaction_response(charge_point_id: str, payload: RemoteStopTransactionResponse):
+    """Handles the response to a RemoteStopTransaction request."""
+    logger.info(f"Received RemoteStopTransaction.conf from {charge_point_id}: {payload.status}")
+    if payload.status == "Rejected":
+        logger.warning(f"Charge point {charge_point_id} rejected the RemoteStopTransaction request.")

@@ -31,6 +31,9 @@ from .handlers import (
     # === NEW: Import handler for SetChargingProfile response ===
     handle_clear_charging_profile_response,
     handle_set_charging_profile_response,
+    # === NEW: Import handlers for Remote Start/Stop responses ===
+    handle_remote_start_transaction_response,
+    handle_remote_stop_transaction_response,
 )
 from .state import CHARGE_POINTS, TRANSACTIONS
 from .messages import (
@@ -68,8 +71,13 @@ from .messages import (
     ChargingProfilePurposeType,
     ChargingProfileKindType,
     ChargingRateUnitType,
-    ChargingProfileStatusType
-)
+    ChargingProfileStatusType,
+    # === NEW: Import Remote Start/Stop payloads ===
+    RemoteStartTransactionRequest,
+    RemoteStartTransactionResponse,
+    RemoteStopTransactionRequest,
+    RemoteStopTransactionResponse,
+ )
 
 # Configure logging for this module
 # Changing the level to DEBUG or TRACE will show all sent and received messages.
@@ -155,7 +163,16 @@ MESSAGE_HANDLERS: Dict[str, Dict[str, Any]] = {
     "SetChargingProfile": {
         "handler": handle_set_charging_profile_response,
         "payload_class": SetChargingProfileResponse,
-    }
+    },
+    # === NEW: Handlers for Remote Start/Stop responses ===
+    "RemoteStartTransaction": {
+        "handler": handle_remote_start_transaction_response,
+        "payload_class": RemoteStartTransactionResponse,
+    },
+    "RemoteStopTransaction": {
+        "handler": handle_remote_stop_transaction_response,
+        "payload_class": RemoteStopTransactionResponse,
+    },
 }
 
 def create_ocpp_message(
@@ -193,7 +210,6 @@ async def send_and_wait(websocket: WebSocketServerProtocol, action: str, request
     unique_id = str(uuid.uuid4())
     event = asyncio.Event()
     PENDING_REQUESTS[unique_id] = {"action": action, "event": event}
-    logger.debug(f"PENDING_REQUESTS: Added {unique_id} for {action}")
 
     message = create_ocpp_message(2, unique_id, request_payload, action)
     await websocket.send(message)
@@ -284,19 +300,31 @@ async def send_clear_charging_profile(
     )
     await send_and_wait(websocket, "ClearChargingProfile", request)
 
+# === NEW: Helper functions for Remote Start/Stop Transaction ===
+
+async def send_remote_start_transaction(websocket: WebSocketServerProtocol, id_tag: str, connector_id: int = 1):
+    """Builds and sends a RemoteStartTransaction request."""
+    request = RemoteStartTransactionRequest(idTag=id_tag, connectorId=connector_id)
+    await send_and_wait(websocket, "RemoteStartTransaction", request)
+
+async def send_remote_stop_transaction(websocket: WebSocketServerProtocol, transaction_id: int):
+    """Builds and sends a RemoteStopTransaction request."""
+    request = RemoteStopTransactionRequest(transactionId=transaction_id)
+    await send_and_wait(websocket, "RemoteStopTransaction", request)
+
 async def test_user_initiated_transaction(charge_point_id: str):
     """
     A test sequence to guide the user through a manual, user-initiated transaction.
     The server will wait for the charge point to send Authorize and StartTransaction requests.
     """
-    logger.info("\n\n\n\n\n--- Step 3: User-Initiated Transaction Test ---")
+    logger.info("\n\n\n\n\n--- Step 4: User-Initiated Transaction Test ---")
     logger.info("This step tests the server's ability to handle a standard, user-initiated charging session.")
-    logger.info("The server will now wait for 30 seconds for a manual authorization.")
+    logger.info("The server will now wait for 60 seconds for a manual authorization.")
     logger.info("ACTION REQUIRED: To proceed with this test, please present a valid ID tag (e.g., 'test_id_1') to the physical charge point.")
     logger.info("The server will automatically handle the Authorize.req, StartTransaction.req, and subsequent StatusNotification (to 'Charging').")
 
     # Wait for the user to interact with the charge point
-    await asyncio.sleep(30)
+    await asyncio.sleep(60)
 
     # After waiting, check if a transaction was successfully created.
     # This confirms the server correctly handled the sequence of messages from the charge point.
@@ -309,8 +337,45 @@ async def test_user_initiated_transaction(charge_point_id: str):
         logger.info("SUCCESS: An active transaction was detected for this charge point.")
         logger.info("The server successfully processed the Authorize.req and StartTransaction.req messages.")
     else:
-        logger.warning("NOTICE: No new transaction was detected for this charge point in the last 30 seconds.")
+        logger.warning("NOTICE: No new transaction was detected for this charge point in the last 60 seconds.")
         logger.warning("The test will continue, but the user-initiated transaction flow was not verified.")
+
+async def test_remote_transaction(websocket: WebSocketServerProtocol, charge_point_id: str):
+    """
+    A test sequence to guide the user through a remote, server-initiated transaction.
+    """
+    logger.info("\n\n\n\n\n--- Step 3: Remote Transaction Test ---")
+    logger.info("This step tests the server's ability to remotely start and stop a charging session.")
+
+    # --- Remote Start ---
+    logger.info(f"Attempting to remotely start a transaction for idTag 'test_id_2' on connector 1.")
+    await send_remote_start_transaction(websocket, id_tag="test_id_2", connector_id=1)
+
+    logger.info("RemoteStartTransaction request sent. Waiting 30 seconds for the charge point to send a StartTransaction.req...")
+    logger.info("ACTION REQUIRED: If your charger requires it, please connect an EV to connector 1 now.")
+    await asyncio.sleep(30)
+
+    # --- Check for active transaction and Remote Stop ---
+    # Find the transaction that was just started.
+    active_transaction_id = None
+    for t_id, t_data in TRANSACTIONS.items():
+        if (
+            t_data.get("charge_point_id") == charge_point_id
+            and t_data.get("id_tag") == "test_id_2"
+            and "stop_time" not in t_data
+        ):
+            active_transaction_id = t_id
+            break
+
+    if active_transaction_id:
+        logger.info(f"SUCCESS: Detected active transaction {active_transaction_id}. The charge point accepted the remote start.")
+        logger.info("Simulating a short charging period of 15 seconds...")
+        await asyncio.sleep(15)
+        logger.info(f"Attempting to remotely stop transaction {active_transaction_id}.")
+        await send_remote_stop_transaction(websocket, active_transaction_id)
+        logger.info("The transaction should now be concluded. The charge point will send a StopTransaction.req.")
+    else:
+        logger.warning("NOTICE: No new transaction for 'test_id_2' was detected. The remote start may have been rejected or timed out. Skipping remote stop.")
 
 async def configure_meter_values(websocket: WebSocketServerProtocol):
     """
@@ -340,6 +405,12 @@ async def periodic_status_checks(websocket: WebSocketServerProtocol, charge_poin
     """
     A coroutine that periodically requests status and meter values.
     This runs for as long as the WebSocket connection is active.
+
+    This polling mechanism is a crucial part of a robust Central System.
+    While OCPP is primarily event-driven, periodic polling provides resiliency
+    against missed messages (e.g., due to network issues) and allows for
+    proactive health checks, ensuring the server's state for the charge point
+    remains accurate and up-to-date.
     """
     try:
         # This loop now runs indefinitely until the task is cancelled (e.g., on disconnect).
@@ -383,21 +454,24 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
     # Set a ping interval, which the wallbox might not support (as per logs).
     await send_change_configuration(websocket, "WebSocketPingInterval", "60")
     
+    # === NEW: Add remote transaction test to the sequence ===
+    await test_remote_transaction(websocket, charge_point_id)
+
     # This test simulates a user starting a charge session from the wallbox itself.
     # This test simulates a user starting a charge session from the wallbox itself.
     await test_user_initiated_transaction(charge_point_id)
 
     # Status and Meter Value Acquisition.
-    logger.info("\n\n\n\n\n--- Step 4: Status and Meter Value Acquisition ---")
+    logger.info("\n\n\n\n\n--- Step 5: Status and Meter Value Acquisition ---")
     await send_trigger_message(websocket, "StatusNotification", connector_id=1)
     await send_trigger_message(websocket, "MeterValues", connector_id=1)
 
     # Smart Charging Capability Test.
-    logger.info("\n\n\n\n\n--- Step 5: Smart Charging Capability Test ---")
+    logger.info("\n\n\n\n\n--- Step 6: Smart Charging Capability Test ---")
     await send_get_composite_schedule(websocket, connector_id=1, duration=60, charging_rate_unit="W")
 
     # Set Charging Power for an active transaction.
-    logger.info("\n\n\n\n\n--- Step 6: Set Charging Power (for Active Transaction) ---")
+    logger.info("\n\n\n\n\n--- Step 7: Set Charging Power (for Active Transaction) ---")
     # A TxProfile can only be set during an active transaction.
     # First, check if there is an active transaction for this charge point.
     active_transaction = any(
@@ -405,7 +479,7 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
         for t in TRANSACTIONS.values()
     )
     if active_transaction:
-        logger.info(f"Active transaction found for {charge_point_id}. Proceeding with SetChargingProfile(TxProfile).")
+        logger.info(f"Active transaction found for {charge_point_id}. Proceeding with SetChargingProfile (TxProfile).")
         await send_set_charging_profile(
             websocket, connector_id=1, limit_watts=5000, duration_seconds=60, profile_purpose=ChargingProfilePurposeType.TxProfile
         )
@@ -413,7 +487,7 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
         logger.warning(f"No active transaction for {charge_point_id}. Skipping SetChargingProfile with TxProfile as it would be rejected.")
 
     # Set a default charging profile for the connector.
-    logger.info("\n\n\n\n\n--- Step 7: Set Default Charging Profile ---")
+    logger.info("\n\n\n\n\n--- Step 8: Set Default Charging Profile ---")
     # This profile sets a default for all transactions on connector 1.
     # We use a different limit and a longer duration to distinguish it.
     await send_set_charging_profile(
@@ -421,7 +495,7 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
     )
 
     # Clear the default charging profile.
-    logger.info("\n\n\n\n\n--- Step 8: Clear Default Charging Profile ---")
+    logger.info("\n\n\n\n\n--- Step 9: Clear Default Charging Profile ---")
     # This removes the default profile that was set in the previous step.
     await send_clear_charging_profile(
         websocket, connector_id=1, charging_profile_purpose=ChargingProfilePurposeType.TxDefaultProfile
@@ -541,9 +615,7 @@ async def serve_ocpp(websocket: WebSocketServerProtocol):
             # Handle CALLRESULT messages (responses to server-initiated commands)
             elif message_type_id == 3:
                 payload_dict = msg[2]
-                logger.debug(f"Received CALLRESULT with unique_id: {unique_id}")
                 if unique_id in PENDING_REQUESTS:
-                    logger.debug(f"Found matching unique_id {unique_id} in PENDING_REQUESTS.")
                     pending_request = PENDING_REQUESTS.pop(unique_id)
                     action = pending_request["action"]
                     event = pending_request["event"]
@@ -563,7 +635,6 @@ async def serve_ocpp(websocket: WebSocketServerProtocol):
                         logger.warning(f"No handler found for response action '{action}'")
 
                     # Unblock the waiting coroutine regardless of the outcome
-                    logger.debug(f"Setting event for unique_id {unique_id} to unblock waiting task.")
                     event.set()
                 else:
                     logger.warning(f"Received unsolicited CALLRESULT with unique_id: {unique_id}. PENDING_REQUESTS: {list(PENDING_REQUESTS.keys())}")
@@ -576,13 +647,11 @@ async def serve_ocpp(websocket: WebSocketServerProtocol):
                 logger.error(f"Received CALLERROR from {charge_point_id}: {error_code} - {error_description} {error_details}")
 
                 if unique_id in PENDING_REQUESTS:
-                    logger.debug(f"Found matching unique_id {unique_id} in PENDING_REQUESTS for CALLERROR.")
                     pending_request = PENDING_REQUESTS.pop(unique_id)
                     action = pending_request["action"]
                     event = pending_request["event"]
                     logger.warning(f"Server-initiated action '{action}' failed.")
                     # Unblock the waiting coroutine, even on error
-                    logger.debug(f"Setting event for unique_id {unique_id} to unblock waiting task.")
                     event.set()
     finally:
         # This block executes when the `async for` loop exits, which typically
