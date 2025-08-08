@@ -486,3 +486,46 @@ class ClearChargingProfileResponse:
     Represents the payload for a ClearChargingProfile.conf message.
     """
     status: str # "Accepted" or "Unknown"
+
+# === NEW: Payloads for Remote Start/Stop Transaction ===
+
+class RemoteStartStopStatus:
+    """Enum for RemoteStartStopStatus."""
+    Accepted = "Accepted"
+    Rejected = "Rejected"
+
+@dataclass
+class RemoteStartTransactionRequest:
+    """
+    Represents the payload for a RemoteStartTransaction.req message.
+    """
+    idTag: str
+    connectorId: Optional[int] = None
+    chargingProfile: Optional[ChargingProfile] = None
+
+    def __post_init__(self):
+        # The JSON library decodes to dicts. We need to convert the nested dict
+        # into a ChargingProfile object for type safety and easier access.
+        if self.chargingProfile and isinstance(self.chargingProfile, dict):
+            self.chargingProfile = ChargingProfile(**self.chargingProfile)
+
+@dataclass
+class RemoteStartTransactionResponse:
+    """
+    Represents the payload for a RemoteStartTransaction.conf message.
+    """
+    status: str # "Accepted" or "Rejected"
+
+@dataclass
+class RemoteStopTransactionRequest:
+    """
+    Represents the payload for a RemoteStopTransaction.req message.
+    """
+    transactionId: int
+
+@dataclass
+class RemoteStopTransactionResponse:
+    """
+    Represents the payload for a RemoteStopTransaction.conf message.
+    """
+    status: str # "Accepted" or "Rejected"

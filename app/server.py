@@ -31,10 +31,8 @@ from .handlers import (
     # === NEW: Import handler for SetChargingProfile response ===
     handle_clear_charging_profile_response,
     handle_set_charging_profile_response,
-    # Import the in-memory storage dictionaries
-    CHARGE_POINTS,
-    TRANSACTIONS,
 )
+from .state import CHARGE_POINTS, TRANSACTIONS
 from .messages import (
     BootNotificationRequest,
     AuthorizeRequest,
@@ -75,7 +73,6 @@ from .messages import (
 
 # Configure logging for this module
 # Changing the level to DEBUG or TRACE will show all sent and received messages.
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -180,7 +177,7 @@ def create_ocpp_message(
     else:
         message = [message_type_id, unique_id, payload_to_send]
         
-    logger.debug(f"Sending message: {json.dumps(message)}")
+    logger.debug("\n\n------------OCPP Call----------")
     return json.dumps(message)
 
 
@@ -188,99 +185,70 @@ def create_ocpp_message(
 # Helper functions for server-initiated commands
 # =================================================================================
 
-async def send_change_availability(websocket: WebSocketServerProtocol, connector_id: int, type: str):
-    """Sends a ChangeAvailability request and waits for a response."""
+async def send_and_wait(websocket: WebSocketServerProtocol, action: str, request_payload: Any, timeout: int = 30):
+    """
+    A generic function to send a server-initiated request and wait for its response.
+    This centralizes the logic for sending, tracking pending requests, and handling timeouts.
+    """
     unique_id = str(uuid.uuid4())
     event = asyncio.Event()
-    PENDING_REQUESTS[unique_id] = {"action": "ChangeAvailability", "event": event}
-    logger.debug(f"PENDING_REQUESTS: Added {unique_id} for ChangeAvailability")
-    request = ChangeAvailabilityRequest(connectorId=connector_id, type=type)
-    message = create_ocpp_message(2, unique_id, request, "ChangeAvailability")
+    PENDING_REQUESTS[unique_id] = {"action": action, "event": event}
+    logger.debug(f"PENDING_REQUESTS: Added {unique_id} for {action}")
+
+    message = create_ocpp_message(2, unique_id, request_payload, action)
     await websocket.send(message)
-    logger.info(f"Sent ChangeAvailability (id={unique_id}) for connector {connector_id} to '{type}'. Waiting for response...")
-    await event.wait()
-    logger.info(f"Response received for ChangeAvailability (id={unique_id}). Proceeding.")
+    logger.info(f"Sent {action} (id={unique_id}). Waiting for response...")
+
+    try:
+        # Wait for the event to be set, with a timeout.
+        await asyncio.wait_for(event.wait(), timeout=timeout)
+        logger.info(f"Response received for {action} (id={unique_id}). Proceeding.")
+    except asyncio.TimeoutError:
+        logger.error(f"Timeout: No response received for {action} (id={unique_id}) within {timeout} seconds.")
+        # Clean up the pending request to prevent memory leaks.
+        if unique_id in PENDING_REQUESTS:
+            PENDING_REQUESTS.pop(unique_id)
+
+async def send_change_availability(websocket: WebSocketServerProtocol, connector_id: int, type: str):
+    """Sends a ChangeAvailability request."""
+    request = ChangeAvailabilityRequest(connectorId=connector_id, type=type)
+    await send_and_wait(websocket, "ChangeAvailability", request)
 
 async def send_get_configuration(websocket: WebSocketServerProtocol):
-    """Sends a GetConfiguration request and waits for a response."""
-    unique_id = str(uuid.uuid4())
-    event = asyncio.Event()
-    PENDING_REQUESTS[unique_id] = {"action": "GetConfiguration", "event": event}
-    logger.debug(f"PENDING_REQUESTS: Added {unique_id} for GetConfiguration")
+    """Sends a GetConfiguration request."""
     request = GetConfigurationRequest()
-    message = create_ocpp_message(2, unique_id, request, "GetConfiguration")
-    await websocket.send(message)
-    logger.info(f"Sent GetConfiguration request (id={unique_id}). Waiting for response...")
-    await event.wait()
-    logger.info(f"Response received for GetConfiguration (id={unique_id}). Proceeding.")
+    await send_and_wait(websocket, "GetConfiguration", request)
 
 async def send_change_configuration(websocket: WebSocketServerProtocol, key: str, value: str):
-    """Sends a ChangeConfiguration request and waits for a response."""
-    unique_id = str(uuid.uuid4())
-    event = asyncio.Event()
-    PENDING_REQUESTS[unique_id] = {"action": "ChangeConfiguration", "event": event}
-    logger.debug(f"PENDING_REQUESTS: Added {unique_id} for ChangeConfiguration")
+    """Sends a ChangeConfiguration request."""
     request = ChangeConfigurationRequest(key=key, value=value)
-    message = create_ocpp_message(2, unique_id, request, "ChangeConfiguration")
-    await websocket.send(message)
-    logger.info(f"Sent ChangeConfiguration request (id={unique_id}) for key '{key}' with value '{value}'. Waiting for response...")
-    await event.wait()
-    logger.info(f"Response received for ChangeConfiguration (id={unique_id}). Proceeding.")
+    await send_and_wait(websocket, "ChangeConfiguration", request)
 
 async def send_trigger_message(websocket: WebSocketServerProtocol, requested_message: str, connector_id: int = None):
-    """Sends a TriggerMessage request and waits for a response."""
-    # Your analysis is correct. Messages like StatusNotification and MeterValues
-    # require a valid integer connectorId. This validation prevents sending a malformed
-    # request that would result in a TypeConstraintViolation from the charge point.
+    """Sends a TriggerMessage request."""
     if requested_message in ["StatusNotification", "MeterValues"] and not isinstance(connector_id, int):
         logger.error(
             f"Cannot send TriggerMessage for '{requested_message}': a valid integer connectorId is required."
         )
-        # Returning here prevents the server from sending a message that is guaranteed to fail.
         return
 
-    unique_id = str(uuid.uuid4())
-    event = asyncio.Event()
-    PENDING_REQUESTS[unique_id] = {"action": "TriggerMessage", "event": event}
-    logger.debug(f"PENDING_REQUESTS: Added {unique_id} for TriggerMessage")
     request = TriggerMessageRequest(requestedMessage=requested_message, connectorId=connector_id)
-    message = create_ocpp_message(2, unique_id, request, "TriggerMessage")
-    await websocket.send(message)
-    logger.info(f"Sent TriggerMessage (id={unique_id}) for '{requested_message}'" + (f" for connector {connector_id}" if connector_id is not None else "") + ". Waiting for response...")
-    await event.wait()
-    logger.info(f"Response received for TriggerMessage (id={unique_id}). Proceeding.")
+    await send_and_wait(websocket, "TriggerMessage", request)
 
 async def send_get_composite_schedule(
     websocket: WebSocketServerProtocol, connector_id: int, duration: int, charging_rate_unit: str = None
 ):
-    """Sends a GetCompositeSchedule request and waits for a response."""
-    unique_id = str(uuid.uuid4())
-    event = asyncio.Event()
-    PENDING_REQUESTS[unique_id] = {"action": "GetCompositeSchedule", "event": event}
-    logger.debug(f"PENDING_REQUESTS: Added {unique_id} for GetCompositeSchedule")
+    """Sends a GetCompositeSchedule request."""
     request = GetCompositeScheduleRequest(
         connectorId=connector_id, duration=duration, chargingRateUnit=charging_rate_unit
     )
-    message = create_ocpp_message(2, unique_id, request, "GetCompositeSchedule")
-    await websocket.send(message)
-    log_message = f"Sent GetCompositeSchedule (id={unique_id}) for connector {connector_id} with duration {duration}"
-    if charging_rate_unit:
-        log_message += f" and chargingRateUnit '{charging_rate_unit}'"
-    log_message += ". Waiting for response..."
-    logger.info(log_message)
-    await event.wait()
-    logger.info(f"Response received for GetCompositeSchedule (id={unique_id}). Proceeding.")
+    await send_and_wait(websocket, "GetCompositeSchedule", request)
 
 # === NEW: Helper function for SetChargingProfile ===
 async def send_set_charging_profile(
     websocket: WebSocketServerProtocol, connector_id: int, limit_watts: int, duration_seconds: int, profile_purpose: str
 ):
-    """Sends a SetChargingProfile request and waits for a response."""
-    unique_id = str(uuid.uuid4())
-    event = asyncio.Event()
-    PENDING_REQUESTS[unique_id] = {"action": "SetChargingProfile", "event": event}
-    logger.debug(f"PENDING_REQUESTS: Added {unique_id} for SetChargingProfile")
-    
+    """Builds and sends a SetChargingProfile request."""
     # The chargingProfileId should be unique for each profile set.
     # A simple approach is to use a random number.
     profile_id = random.randint(1, 100)
@@ -304,33 +272,45 @@ async def send_set_charging_profile(
             )
         )
     )
-    
-    message = create_ocpp_message(2, unique_id, request, "SetChargingProfile")
-    await websocket.send(message)
-    logger.info(f"Sent SetChargingProfile (id={unique_id}, purpose={profile_purpose}) for connector {connector_id} with a limit of {limit_watts}W for {duration_seconds}s. Waiting for response...")
-    await event.wait()
-    logger.info(f"Response received for SetChargingProfile (id={unique_id}). Proceeding.")
+    await send_and_wait(websocket, "SetChargingProfile", request)
 
 async def send_clear_charging_profile(
     websocket: WebSocketServerProtocol, connector_id: int = None, charging_profile_purpose: str = None
 ):
-    """Sends a ClearChargingProfile request and waits for a response."""
-    unique_id = str(uuid.uuid4())
-    event = asyncio.Event()
-    PENDING_REQUESTS[unique_id] = {"action": "ClearChargingProfile", "event": event}
-    logger.debug(f"PENDING_REQUESTS: Added {unique_id} for ClearChargingProfile")
-    
+    """Builds and sends a ClearChargingProfile request."""
     request = ClearChargingProfileRequest(
         connectorId=connector_id,
         chargingProfilePurpose=charging_profile_purpose
     )
-    
-    message = create_ocpp_message(2, unique_id, request, "ClearChargingProfile")
-    await websocket.send(message)
-    logger.info(f"Sent ClearChargingProfile (id={unique_id}) for connector {connector_id} with purpose '{charging_profile_purpose}'. Waiting for response...")
-    await event.wait()
-    logger.info(f"Response received for ClearChargingProfile (id={unique_id}). Proceeding.")
+    await send_and_wait(websocket, "ClearChargingProfile", request)
 
+async def test_user_initiated_transaction(charge_point_id: str):
+    """
+    A test sequence to guide the user through a manual, user-initiated transaction.
+    The server will wait for the charge point to send Authorize and StartTransaction requests.
+    """
+    logger.info("\n\n\n\n\n--- Step 3: User-Initiated Transaction Test ---")
+    logger.info("This step tests the server's ability to handle a standard, user-initiated charging session.")
+    logger.info("The server will now wait for 30 seconds for a manual authorization.")
+    logger.info("ACTION REQUIRED: To proceed with this test, please present a valid ID tag (e.g., 'test_id_1') to the physical charge point.")
+    logger.info("The server will automatically handle the Authorize.req, StartTransaction.req, and subsequent StatusNotification (to 'Charging').")
+
+    # Wait for the user to interact with the charge point
+    await asyncio.sleep(30)
+
+    # After waiting, check if a transaction was successfully created.
+    # This confirms the server correctly handled the sequence of messages from the charge point.
+    active_transaction = any(
+        t.get("charge_point_id") == charge_point_id and "stop_time" not in t
+        for t in TRANSACTIONS.values()
+    )
+
+    if active_transaction:
+        logger.info("SUCCESS: An active transaction was detected for this charge point.")
+        logger.info("The server successfully processed the Authorize.req and StartTransaction.req messages.")
+    else:
+        logger.warning("NOTICE: No new transaction was detected for this charge point in the last 30 seconds.")
+        logger.warning("The test will continue, but the user-initiated transaction flow was not verified.")
 
 async def configure_meter_values(websocket: WebSocketServerProtocol):
     """
@@ -386,14 +366,13 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
     """
     logger.info(f"Starting initialization sequence for {charge_point_id}...")
 
-    # Step 1: Initial Connection and Registration.
     # Set the charge point to be operative. The charge point should respond with
     # a StatusNotification confirming it is "Available".
-    print("\n--------------------- 1. Initial Connection and Registration --------------------")
+    logger.info("\n\n\n\n\n--- Step 1: Initial Connection and Registration ---")
     await send_change_availability(websocket, connector_id=0, type="Operative")
 
-    # Step 2: Configuration Exchange.
-    print("\n--------------------- 2. Configuration Exchange --------------------")
+    # Configuration Exchange.
+    logger.info("\n\n\n\n\n--- Step 2: Configuration Exchange ---")
     # Retrieve the wallbox's current settings.
     await send_get_configuration(websocket)
     # Trigger a boot notification to ensure the charge point is fully registered.
@@ -403,25 +382,28 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
     await send_change_configuration(websocket, "MeterValueSampleInterval", "10")
     # Set a ping interval, which the wallbox might not support (as per logs).
     await send_change_configuration(websocket, "WebSocketPingInterval", "60")
+    
+    # This test simulates a user starting a charge session from the wallbox itself.
+    # This test simulates a user starting a charge session from the wallbox itself.
+    await test_user_initiated_transaction(charge_point_id)
 
-    # Step 3: Status and Meter Value Acquisition.
-    print("\n--------------------- 3. Status and Meter Value Acquisition --------------------")
+    # Status and Meter Value Acquisition.
+    logger.info("\n\n\n\n\n--- Step 4: Status and Meter Value Acquisition ---")
     await send_trigger_message(websocket, "StatusNotification", connector_id=1)
     await send_trigger_message(websocket, "MeterValues", connector_id=1)
 
-    # Step 4: Smart Charging Capability Test.
-    print("\n--------------------- 4. Smart Charging Capability Test --------------------")
+    # Smart Charging Capability Test.
+    logger.info("\n\n\n\n\n--- Step 5: Smart Charging Capability Test ---")
     await send_get_composite_schedule(websocket, connector_id=1, duration=60, charging_rate_unit="W")
 
-    # === NEW: Step 5. Set Charging Power ===
-    print("\n---------------5. Set Charging Power-------------------")
+    # Set Charging Power for an active transaction.
+    logger.info("\n\n\n\n\n--- Step 6: Set Charging Power (for Active Transaction) ---")
     # A TxProfile can only be set during an active transaction.
     # First, check if there is an active transaction for this charge point.
     active_transaction = any(
         t.get("charge_point_id") == charge_point_id and "stop_time" not in t
         for t in TRANSACTIONS.values()
     )
-
     if active_transaction:
         logger.info(f"Active transaction found for {charge_point_id}. Proceeding with SetChargingProfile(TxProfile).")
         await send_set_charging_profile(
@@ -430,16 +412,16 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
     else:
         logger.warning(f"No active transaction for {charge_point_id}. Skipping SetChargingProfile with TxProfile as it would be rejected.")
 
-    # === NEW: Step 6. Set Default Profile ===
-    print("\n----------------------6:Set default profile-----------------------")
+    # Set a default charging profile for the connector.
+    logger.info("\n\n\n\n\n--- Step 7: Set Default Charging Profile ---")
     # This profile sets a default for all transactions on connector 1.
     # We use a different limit and a longer duration to distinguish it.
     await send_set_charging_profile(
         websocket, connector_id=1, limit_watts=7000, duration_seconds=3600, profile_purpose=ChargingProfilePurposeType.TxDefaultProfile
     )
 
-    # === NEW: Step 7. Clear Default Profile ===
-    print("\n----------------------7:Clear default profile-----------------------")
+    # Clear the default charging profile.
+    logger.info("\n\n\n\n\n--- Step 8: Clear Default Charging Profile ---")
     # This removes the default profile that was set in the previous step.
     await send_clear_charging_profile(
         websocket, connector_id=1, charging_profile_purpose=ChargingProfilePurposeType.TxDefaultProfile
@@ -449,12 +431,31 @@ async def initialize_wallbox(websocket: WebSocketServerProtocol, charge_point_id
     logger.info("")
     logger.info(f"Initialization test sequence for {charge_point_id} complete.")
     logger.info("========================END OF TEST SEQUENCE==============================")
+    # Add 10 empty lines for better log separation before periodic checks begin.
+    for _ in range(10):
+        logger.info("")
+
 
 
 async def serve_ocpp(websocket: WebSocketServerProtocol):
     """
     The main WebSocket handler function for the OCPP server.
-    It handles incoming connections and processes OCPP messages for a single charge point.
+    It handles an incoming connection and processes OCPP messages for a single charge point.
+
+    This function uses a two-task design pattern which is essential for this
+    kind of bidirectional communication:
+
+    1. The Main Task (this function): Runs an `async for` loop to continuously
+       listen for and process all incoming messages from the charge point.
+
+    2. The Background "Logic" Task (`logic_task`): Is created to run all
+       server-initiated logic, such as the initialization sequence and
+       periodic status checks.
+
+    This separation is crucial because the server-initiated logic needs to send a
+    request and then wait (`await`) for a specific response. The main task is
+    responsible for receiving that response and notifying the background task
+    (via an asyncio.Event), thus avoiding a deadlock.
     """
     path = websocket.path
     charge_point_id = path.strip("/")
@@ -464,32 +465,41 @@ async def serve_ocpp(websocket: WebSocketServerProtocol):
         await websocket.close()
         return
 
-    logic_task = None
-
-    async def run_logic_sequence():
-        """A wrapper function to run initialization and then periodic checks."""
-        logger.info(f"Starting logic sequence task for {charge_point_id}...")
+    async def run_logic_and_periodic_tasks():
+        """
+        Runs the main logic for a charge point connection. It first performs
+        the full initialization sequence and, upon completion, runs periodic
+        status checks for the lifetime of the connection.
+        """
         try:
-            if charge_point_id not in CHARGE_POINTS:
-                await initialize_wallbox(websocket, charge_point_id)
-            else:
-                logger.info(f"Charge Point {charge_point_id} is already initialized. Skipping setup.")
+            # Step 1: Run the full initialization sequence and wait for it to complete.
+            # This ensures the charge point is in a known state before periodic tasks begin.
+            logger.info(f"Starting initialization sequence for {charge_point_id}...")
+            await initialize_wallbox(websocket, charge_point_id)
 
-            # The initialization sequence is complete. The server will now stop sending
-            # requests and will passively listen for messages from the charge point.
-            logger.info(f"Logic sequence for {charge_point_id} completed. Server is now in passive listening mode.")
+            # Step 2: After successful initialization, start the long-running periodic checks.
+            # This task will run until the connection is closed or an error occurs.
+            logger.info(f"Initialization complete. Starting periodic status checks for {charge_point_id}...")
+            await periodic_status_checks(websocket, charge_point_id)
+
         except ConnectionClosedOK:
-            logger.info(f"Logic sequence for {charge_point_id} stopped due to connection closure.")
+            # This is an expected way to exit when the connection is closed by the client.
+            logger.info(f"Connection closed for {charge_point_id}. Logic and periodic tasks are stopping.")
         except Exception as e:
-            logger.error(f"An error occurred in the logic sequence for {charge_point_id}: {e}", exc_info=True)
+            # Catch any other exceptions from the logic sequence.
+            logger.error(f"An error occurred in the logic for {charge_point_id}: {e}", exc_info=True)
 
-
-    logic_task = asyncio.create_task(run_logic_sequence())
-    logger.info(f"Logic task for {charge_point_id} created and running in background.")
+    # Create a single, managed task for all server-initiated logic. This task
+    # runs in the background, allowing the main loop below to handle incoming
+    # messages concurrently. The task's lifecycle is tied to the connection.
+    logic_task = asyncio.create_task(run_logic_and_periodic_tasks())
+    logger.info(f"Main logic task for {charge_point_id} created and running.")
 
     try:
+        # This is the main message-receiving loop. It will run for the entire
+        # duration of the WebSocket connection, processing any message sent
+        # by the charge point.
         async for message in websocket:
-            logger.debug(f"RAW << {charge_point_id}: {message}")
             try:
                 msg = json.loads(message)
                 message_type_id = msg[0]
@@ -572,17 +582,14 @@ async def serve_ocpp(websocket: WebSocketServerProtocol):
                     event = pending_request["event"]
                     logger.warning(f"Server-initiated action '{action}' failed.")
                     # Unblock the waiting coroutine, even on error
-                    logger.debug(f"Setting event for unique_id {unique_id} to unblock waiting task after error.")
+                    logger.debug(f"Setting event for unique_id {unique_id} to unblock waiting task.")
                     event.set()
-                else:
-                    logger.warning(f"Received unsolicited CALLERROR with unique_id: {unique_id}. PENDING_REQUESTS: {list(PENDING_REQUESTS.keys())}")
-                
-    except ConnectionClosedOK:
-        logger.info(f"Connection from Charge Point {charge_point_id} closed gracefully.")
-    except Exception as e:
-        logger.error(f"An error occurred with connection {charge_point_id}: {e}")
     finally:
-        logger.info(f"Charge Point {charge_point_id} disconnected.")
-        # Clean up the background task when the connection is closed.
-        if logic_task:
-            logic_task.cancel()
+        # This block executes when the `async for` loop exits, which typically
+        # happens when the WebSocket connection is closed by the client.
+        logger.info(f"Connection with {charge_point_id} is closing. Cancelling background logic task.")
+        logic_task.cancel()
+        try:
+            await logic_task
+        except asyncio.CancelledError:
+            logger.info(f"Background logic task for {charge_point_id} was successfully cancelled.")

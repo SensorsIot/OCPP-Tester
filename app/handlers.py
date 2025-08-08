@@ -1,411 +1,181 @@
 """
-This module contains handler functions for each of the Charge Point-initiated
-OCPP messages, as specified in the provided documents.
-
-Each handler takes a parsed message payload and the WebSocket connection
-as input, performs the required server actions, and returns the appropriate
-OCPP response payload.
+This module contains the handler functions for each type of OCPP message.
+Each handler is responsible for processing the incoming request, updating the
+server's state, and returning an appropriate response payload.
 """
-import logging
-import datetime
-import random
-import json
-from typing import Dict, Any, List
 
-# Corrected relative imports to find modules in the same directory
+import logging
+from datetime import datetime, timezone
+from .state import CHARGE_POINTS, TRANSACTIONS
 from .messages import (
-    BootNotificationRequest,
-    BootNotificationResponse,
-    AuthorizeRequest,
-    AuthorizeResponse,
-    DataTransferRequest,
-    DataTransferResponse,
-    StatusNotificationRequest,
-    StatusNotificationResponse,
-    FirmwareStatusNotificationRequest,
-    FirmwareStatusNotificationResponse,
-    DiagnosticsStatusNotificationRequest,
-    DiagnosticsStatusNotificationResponse,
-    GetConfigurationRequest,
-    GetConfigurationResponse,
+    BootNotificationRequest, BootNotificationResponse,
+    AuthorizeRequest, AuthorizeResponse, IdTagInfo,
+    DataTransferRequest, DataTransferResponse,
+    StatusNotificationRequest, StatusNotificationResponse,
+    FirmwareStatusNotificationRequest, FirmwareStatusNotificationResponse,
+    DiagnosticsStatusNotificationRequest, DiagnosticsStatusNotificationResponse,
+    HeartbeatRequest, HeartbeatResponse,
+    StartTransactionRequest, StartTransactionResponse,
+    StopTransactionRequest, StopTransactionResponse,
+    MeterValuesRequest, MeterValuesResponse,
+    # Payloads for responses to server-initiated messages
     ChangeAvailabilityResponse,
-    ConfigurationKey,
-    ChangeConfigurationRequest,
+    GetConfigurationResponse,
     ChangeConfigurationResponse,
-    TriggerMessageRequest,
     TriggerMessageResponse,
-    MeterValuesRequest,
-    MeterValuesResponse,
-    GetCompositeScheduleRequest,
     GetCompositeScheduleResponse,
-    HeartbeatRequest,
-    HeartbeatResponse,
-    IdTagInfo,
-    StartTransactionRequest,
-    StartTransactionResponse,
-    StopTransactionRequest,
-    StopTransactionResponse,
-    MeterValue,
-    SampledValue,
-    # Import Smart Charging payloads
-    ClearChargingProfileRequest,
     ClearChargingProfileResponse,
-    SetChargingProfileRequest,
-    SetChargingProfileResponse
+    SetChargingProfileResponse,
 )
 
-# In-memory storage for Charge Point data, Authorization list, and Transactions
-# This data will be reset each time the server starts.
-CHARGE_POINTS: Dict[str, Dict[str, Any]] = {}
-AUTHORIZATION_LIST: Dict[str, IdTagInfo] = {
-    "test_id_1": IdTagInfo(status="Accepted"),
-    "test_id_2": IdTagInfo(status="Accepted"),
-    "test_id_3": IdTagInfo(status="Blocked"),
-}
-TRANSACTIONS: Dict[int, Dict[str, Any]] = {}
-
-# Configure logging for this module
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# A simple, hardcoded list of valid ID tags for authorization.
+VALID_ID_TAGS = ["test_id_1", "test_id_2"]
+
+# --- Mapping from OCPP Status to Charge Point (CP) State ---
+# As per your request, this maps the status from a StatusNotification
+# to a more descriptive internal state for logging. I've assumed that
+# "Charging" maps to "CP State C" to follow the logical pattern.
+CP_STATE_MAP = {
+    "Available": "CP State A",
+    "Preparing": "CP State B",
+    "Charging": "CP State C",
+    "Finishing": "CP State X",
+}
+
 async def handle_boot_notification(charge_point_id: str, payload: BootNotificationRequest) -> BootNotificationResponse:
-    """
-    Handles a BootNotification.req message from a Charge Point.
+    """Handles a BootNotification request from a charge point."""
+    logger.info(f"Received BootNotification from {charge_point_id}: {payload}")
     
-    Server Action: Registers the Charge Point and its configuration in the in-memory store.
-    
-    Returns: A BootNotification.conf payload.
-    """
-    logger.info(f"Received BootNotification from Charge Point: {charge_point_id}")
-    logger.info("--- Boot Notification Details ---")
-    logger.info(f"  - Vendor: {payload.chargePointVendor}")
-    logger.info(f"  - Model:  {payload.chargePointModel}")
-    if payload.firmwareVersion:
-        logger.info(f"  - Firmware Version: {payload.firmwareVersion}")
-    if payload.chargePointSerialNumber:
-        logger.info(f"  - Serial Number: {payload.chargePointSerialNumber}")
-    logger.info("---------------------------------")
-    # Register or update the Charge Point in our in-memory storage
+    # Store the charge point's info. In a real system, you'd save this to a database.
     CHARGE_POINTS[charge_point_id] = {
-        "chargePointModel": payload.chargePointModel,
-        "chargePointVendor": payload.chargePointVendor,
-        "firmwareVersion": payload.firmwareVersion,
-        "status": "Booting", # Initial status
-        "connectors": {} # A dictionary to store connector statuses
+        "model": payload.chargePointModel,
+        "vendor": payload.chargePointVendor,
+        "status": "Available", # Initial status
+        "last_heartbeat": datetime.now(timezone.utc).isoformat()
     }
-
-    # Match the heartbeat interval from the original log file.
-    status = "Accepted"
-    heartbeat_interval = 60
-
-    logger.debug(f"Accepted BootNotification. Setting heartbeat interval to {heartbeat_interval} seconds.")
-
-    current_time = datetime.datetime.now(datetime.timezone.utc).isoformat() 
-
+    
+    # Return a confirmation response.
     return BootNotificationResponse(
-        status=status,
-        currentTime=current_time,
-        interval=heartbeat_interval
+        status="Accepted",
+        currentTime=datetime.now(timezone.utc).isoformat(),
+        interval=60  # Heartbeat interval in seconds
     )
 
 async def handle_authorize(charge_point_id: str, payload: AuthorizeRequest) -> AuthorizeResponse:
-    """
-    Handles an Authorize.req message from a Charge Point.
+    """Handles an Authorize request."""
+    logger.info(f"Received Authorize request from {charge_point_id} for idTag: {payload.idTag}")
     
-    Server Action: Validates the idTag against the in-memory authorization list.
+    status = "Accepted" if payload.idTag in VALID_ID_TAGS else "Invalid"
     
-    Returns: An Authorize.conf payload.
-    """
-    logger.debug(f"Received Authorize request from Charge Point {charge_point_id} for idTag: {payload.idTag}")
-    logger.debug(f"Payload: {payload}")
-
-    # Validate the idTag against our in-memory authorization list.
-    id_tag_info = AUTHORIZATION_LIST.get(payload.idTag)
-    
-    if id_tag_info is None:
-        id_tag_info = IdTagInfo(status="Invalid")
-        logger.warning(f"ID Tag '{payload.idTag}' not found. Authorization rejected.")
-
-    logger.debug(f"Authorization status for idTag {payload.idTag}: {id_tag_info.status}")
-
-    return AuthorizeResponse(
-        idTagInfo=id_tag_info
-    )
+    return AuthorizeResponse(idTagInfo=IdTagInfo(status=status))
 
 async def handle_data_transfer(charge_point_id: str, payload: DataTransferRequest) -> DataTransferResponse:
-    """
-    Handles a DataTransfer.req message.
-    
-    Server Action: Receives vendor-specific data.
-    
-    Returns: A DataTransfer.conf payload.
-    """
-    logger.debug(f"Received DataTransfer from Charge Point {charge_point_id}")
-    logger.debug(f"Payload: {payload}")
-    
-    logger.debug(f"Vendor-specific data received from vendor {payload.vendorId}: {payload.data}")
-
-    status = "Accepted"
-    
-    return DataTransferResponse(
-        status=status,
-        data="OK"
-    )
+    """Handles a DataTransfer request."""
+    logger.info(f"Received DataTransfer from {charge_point_id}: {payload}")
+    return DataTransferResponse(status="Accepted")
 
 async def handle_status_notification(charge_point_id: str, payload: StatusNotificationRequest) -> StatusNotificationResponse:
-    """
-    Handles a StatusNotification.req message from a Charge Point.
-    
-    Server Action: Updates the status of the Charge Point/connector in the in-memory store.
-    
-    Returns: A StatusNotification.conf payload.
-    """
-    logger.info(f"Received StatusNotification from Charge Point {charge_point_id}")
-    logger.info("--- Status Notification Details ---")
-    logger.info(f"  - Connector ID: {payload.connectorId}")
-    logger.info(f"  - Status:       {payload.status}")
-    logger.info(f"  - Error Code:   {payload.errorCode}")
-    if payload.timestamp:
-        logger.info(f"  - Timestamp:    {payload.timestamp}")
-    logger.info("-----------------------------------")
+    """Handles a StatusNotification request."""
+    # Get the corresponding CP State from the map, with a fallback for unmapped statuses.
+    cp_state_log_message = ""
+    if payload.status in CP_STATE_MAP:
+        cp_state_log_message = f" (equivalent to {CP_STATE_MAP[payload.status]})"
+
+    logger.info(f"Received StatusNotification from {charge_point_id}: Connector {payload.connectorId} is {payload.status}{cp_state_log_message}")
     if charge_point_id in CHARGE_POINTS:
-        if 'connectors' not in CHARGE_POINTS[charge_point_id]:
-            CHARGE_POINTS[charge_point_id]['connectors'] = {}
-        
-        CHARGE_POINTS[charge_point_id]['connectors'][payload.connectorId] = {
-            'status': payload.status,
-            'errorCode': payload.errorCode,
-            'timestamp': payload.timestamp,
-        }
-        logger.debug(f"Updated status for connector {payload.connectorId} on {charge_point_id} to '{payload.status}'")
-    
+        CHARGE_POINTS[charge_point_id]["status"] = payload.status
     return StatusNotificationResponse()
 
 async def handle_firmware_status_notification(charge_point_id: str, payload: FirmwareStatusNotificationRequest) -> FirmwareStatusNotificationResponse:
-    """
-    Handles a FirmwareStatusNotification.req message from a Charge Point.
-    
-    Server Action: Logs the firmware update status of the Charge Point.
-    
-    Returns: A FirmwareStatusNotification.conf payload.
-    """
-    logger.info(f"Received FirmwareStatusNotification from {charge_point_id}: Status is '{payload.status}'")
-    
-    # In a real system, you would add logic here to track firmware update progress.
-    
+    """Handles a FirmwareStatusNotification request."""
+    logger.info(f"Received FirmwareStatusNotification from {charge_point_id}: {payload.status}")
     return FirmwareStatusNotificationResponse()
 
 async def handle_diagnostics_status_notification(charge_point_id: str, payload: DiagnosticsStatusNotificationRequest) -> DiagnosticsStatusNotificationResponse:
-    """
-    Handles a DiagnosticsStatusNotification.req message from a Charge Point.
-    
-    Server Action: Logs the diagnostics upload status of the Charge Point.
-    
-    Returns: A DiagnosticsStatusNotification.conf payload.
-    """
-    logger.info(f"Received DiagnosticsStatusNotification from {charge_point_id}: Status is '{payload.status}'")
-    
-    # In a real system, you would add logic here to handle the uploaded diagnostics file.
-    
+    """Handles a DiagnosticsStatusNotification request."""
+    logger.info(f"Received DiagnosticsStatusNotification from {charge_point_id}: {payload.status}")
     return DiagnosticsStatusNotificationResponse()
 
-
 async def handle_heartbeat(charge_point_id: str, payload: HeartbeatRequest) -> HeartbeatResponse:
-    """
-    Handles a Heartbeat.req message from a Charge Point.
-    
-    Server Action: Resets the Charge Point's inactivity timer and returns the current time.
-    
-    Returns: A Heartbeat.conf payload.
-    """
-    logger.debug(f"Received Heartbeat from Charge Point: {charge_point_id}")
-    logger.debug(f"Payload: {payload}")
-    
-    current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    
-    return HeartbeatResponse(currentTime=current_time)
-
-# ---- Handlers for Start and Stop Transaction ----
+    """Handles a Heartbeat request."""
+    logger.info(f"Received Heartbeat from {charge_point_id}")
+    if charge_point_id in CHARGE_POINTS:
+        CHARGE_POINTS[charge_point_id]["last_heartbeat"] = datetime.now(timezone.utc).isoformat()
+    return HeartbeatResponse(currentTime=datetime.now(timezone.utc).isoformat())
 
 async def handle_start_transaction(charge_point_id: str, payload: StartTransactionRequest) -> StartTransactionResponse:
-    """
-    Handles a StartTransaction.req message from a Charge Point.
+    """Handles a StartTransaction request."""
+    logger.info(f"Received StartTransaction from {charge_point_id} on connector {payload.connectorId}")
     
-    Server Action: Validates the idTag and logs the start of a new transaction in the in-memory store.
-    
-    Returns: A StartTransaction.conf payload.
-    """
-    logger.debug(f"Received StartTransaction from Charge Point {charge_point_id} for idTag: {payload.idTag}")
-    logger.debug(f"Payload: {payload}")
-    
-    # Generate a unique transactionId
-    transaction_id = random.randint(100000, 999999)
-    
-    # Validate the idTag
-    id_tag_info = AUTHORIZATION_LIST.get(payload.idTag)
-    
-    if id_tag_info is None or id_tag_info.status != "Accepted":
-        id_tag_info = IdTagInfo(status="Invalid")
-        logger.warning(f"Authorization failed for idTag '{payload.idTag}'. Cannot start transaction.")
-        # If transaction is not authorized, we should return the response and not proceed
-        return StartTransactionResponse(
-            idTagInfo=id_tag_info,
-            transactionId=0
-        )
-    
-    # Log the transaction in our in-memory storage
+    # In a real system, you would generate a unique transaction ID and save it.
+    transaction_id = len(TRANSACTIONS) + 1
     TRANSACTIONS[transaction_id] = {
         "charge_point_id": charge_point_id,
-        "connector_id": payload.connectorId,
         "id_tag": payload.idTag,
+        "start_time": payload.timestamp,
         "meter_start": payload.meterStart,
-        "start_time": payload.timestamp
     }
     
-    logger.debug(f"Started new transaction {transaction_id} for idTag {payload.idTag}")
-    
     return StartTransactionResponse(
-        idTagInfo=id_tag_info,
-        transactionId=transaction_id
+        transactionId=transaction_id,
+        idTagInfo=IdTagInfo(status="Accepted")
     )
 
 async def handle_stop_transaction(charge_point_id: str, payload: StopTransactionRequest) -> StopTransactionResponse:
-    """
-    Handles a StopTransaction.req message from a Charge Point.
+    """Handles a StopTransaction request."""
+    logger.info(f"Received StopTransaction from {charge_point_id} for transaction {payload.transactionId}")
     
-    Server Action: Logs the end of the transaction and finalizes billing data in the in-memory store.
-    
-    Returns: a StopTransaction.conf payload.
-    """
-    logger.debug(f"Received StopTransaction from Charge Point {charge_point_id} for transactionId: {payload.transactionId}")
-    logger.debug(f"Payload: {payload}")
-    
-    # Check if the transaction exists and update it
     if payload.transactionId in TRANSACTIONS:
         TRANSACTIONS[payload.transactionId].update({
-            "meter_stop": payload.meterStop,
             "stop_time": payload.timestamp,
+            "meter_stop": payload.meterStop,
             "reason": payload.reason,
-            "transaction_data": payload.transactionData,
         })
-        logger.debug(f"Stopped transaction {payload.transactionId}. Final meter reading: {payload.meterStop}")
-        
-    # Return a response with the idTagInfo if provided
-    id_tag_info = AUTHORIZATION_LIST.get(payload.idTag) if payload.idTag in AUTHORIZATION_LIST else None
-
-    return StopTransactionResponse(idTagInfo=id_tag_info)
-
-
-# ---- Handlers for server-initiated replies ----
-
-async def handle_change_availability_response(charge_point_id: str, payload: ChangeAvailabilityResponse) -> None:
-    """
-    Handles a ChangeAvailability.conf message from a Charge Point.
-    """
-    logger.debug(f"Received ChangeAvailability.conf from Charge Point: {charge_point_id} with status: {payload.status}")
-    logger.debug(f"Payload: {payload}")
-
-
-async def handle_get_configuration_response(charge_point_id: str, payload: GetConfigurationResponse) -> None:
-    """
-    Handles a GetConfiguration.conf message from a Charge Point.
-    """
-    logger.info(f"Received GetConfiguration.conf from Charge Point: {charge_point_id}")
-
-    if payload.configurationKey:
-        logger.info("--- Received Charge Point Configuration ---")
-        # Pretty print the configuration key-value pairs
-        for key_value in payload.configurationKey:
-            # Truncate long values for cleaner log output, as some values can be very long.
-            display_value = str(key_value.value)
-            if len(display_value) > 55:
-                display_value = display_value[:52] + "..."
-            
-            # The key_value is a ConfigurationKey object thanks to the __post_init__ in the message class
-            logger.info(f"  - {key_value.key:<45} | Value: {display_value:<55} | Readonly: {key_value.readonly}")
-        logger.info("-------------------------------------------")
-
-    if payload.unknownKey:
-        logger.warning("--- Received Unknown Configuration Keys ---")
-        for key in payload.unknownKey:
-            logger.warning(f"  - {key}")
-        logger.warning("-------------------------------------------")
-
-async def handle_change_configuration_response(charge_point_id: str, payload: ChangeConfigurationResponse) -> None:
-    """
-    Handles a ChangeConfiguration.conf message from a Charge Point.
-    """
-    logger.debug(f"Received ChangeConfiguration.conf from Charge Point: {charge_point_id} with status: {payload.status}")
-    logger.debug(f"Payload: {payload}")
-
-async def handle_trigger_message_response(charge_point_id: str, payload: TriggerMessageResponse) -> None:
-    """
-    Handles a TriggerMessage.conf message from a Charge Point.
-    """
-    logger.debug(f"Received TriggerMessage.conf from Charge Point: {charge_point_id} with status: {payload.status}")
-    logger.debug(f"Payload: {payload}")
+    
+    return StopTransactionResponse(idTagInfo=IdTagInfo(status="Accepted"))
 
 async def handle_meter_values(charge_point_id: str, payload: MeterValuesRequest) -> MeterValuesResponse:
-    """
-    Handles a MeterValues.req message from a Charge Point.
-    
-    This has been updated to correctly parse the nested MeterValue and
-    SampledValue objects from the raw dictionaries.
-    """
-    logger.info(f"Received MeterValues from Charge Point {charge_point_id} for connector {payload.connectorId}")
-    logger.info("--- Meter Values Details ---")
-    if payload.transactionId:
-        logger.info(f"  - Transaction ID: {payload.transactionId}")
-    
-    # The payload.meterValue is a list of MeterValue objects thanks to the __post_init__ in the message class.
-    for meter_value in payload.meterValue:
-        logger.info(f"  - Timestamp: {meter_value.timestamp}")
-        
-        # The meter_value.sampledValue is a list of SampledValue objects.
-        for sampled_value in meter_value.sampledValue:
-            unit = f" {sampled_value.unit}" if sampled_value.unit else ""
-            logger.info(f"    - {sampled_value.measurand:<30} | Value: {sampled_value.value}{unit}")
-    logger.info("----------------------------")
-            
+    """Handles a MeterValues request."""
+    logger.info(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId}")
+    for mv in payload.meterValue:
+        logger.debug(f"  - Timestamp: {mv.timestamp}, Sampled Values: {mv.sampledValue}")
     return MeterValuesResponse()
 
-async def handle_get_composite_schedule_response(charge_point_id: str, payload: GetCompositeScheduleResponse) -> None:
-    """
-    Handles a GetCompositeSchedule.conf message from a Charge Point.
-    """
-    logger.info(f"Received GetCompositeSchedule.conf from Charge Point: {charge_point_id}")
-    logger.info("--- Composite Schedule Details ---")
-    logger.info(f"  - Status: {payload.status}")
+# --- Handlers for responses to server-initiated commands ---
 
-    if payload.status == "Accepted" and payload.chargingSchedule:
-        logger.info(f"  - Connector ID: {payload.connectorId}")
-        logger.info(f"  - Schedule Start: {payload.scheduleStart}")
-        schedule = payload.chargingSchedule
-        logger.info(f"  - Charging Schedule:")
-        logger.info(f"    - Rate Unit: {schedule.chargingRateUnit}")
-        if schedule.duration:
-            logger.info(f"    - Duration (s): {schedule.duration}")
-        if schedule.minChargingRate:
-            logger.info(f"    - Min Rate: {schedule.minChargingRate}")
-        
-        logger.info("    - Schedule Periods:")
-        for period in schedule.chargingSchedulePeriod:
-            logger.info(f"      - Start: {period.startPeriod}s, Limit: {period.limit} {schedule.chargingRateUnit}")
+async def handle_change_availability_response(charge_point_id: str, payload: ChangeAvailabilityResponse):
+    """Handles the response to a ChangeAvailability request."""
+    logger.info(f"Received ChangeAvailability.conf from {charge_point_id}: {payload.status}")
 
-    logger.info("----------------------------------")
+async def handle_get_configuration_response(charge_point_id: str, payload: GetConfigurationResponse):
+    """Handles the response to a GetConfiguration request."""
+    logger.info(f"Received GetConfiguration.conf from {charge_point_id}.")
+    if payload.configurationKey:
+        for key in payload.configurationKey:
+            logger.debug(f"  - Key: {key.key}, Readonly: {key.readonly}, Value: {key.value}")
+    if payload.unknownKey:
+        logger.warning(f"  - Unknown keys: {payload.unknownKey}")
 
-# === NEW: Handler for SetChargingProfile response ===
-async def handle_set_charging_profile_response(charge_point_id: str, payload: SetChargingProfileResponse) -> None:
-    """
-    Handles a SetChargingProfile.conf message from a Charge Point.
-    """
-    logger.info(f"Received SetChargingProfile.conf from Charge Point: {charge_point_id} with status: {payload.status}")
-    logger.info(f"Payload: {payload}")
+async def handle_change_configuration_response(charge_point_id: str, payload: ChangeConfigurationResponse):
+    """Handles the response to a ChangeConfiguration request."""
+    logger.info(f"Received ChangeConfiguration.conf from {charge_point_id}: {payload.status}")
 
-# === NEW: Handler for ClearChargingProfile response ===
-async def handle_clear_charging_profile_response(charge_point_id: str, payload: ClearChargingProfileResponse) -> None:
-    """
-    Handles a ClearChargingProfile.conf message from a Charge Point.
-    """
-    logger.info(f"Received ClearChargingProfile.conf from Charge Point: {charge_point_id} with status: {payload.status}")
-    logger.info(f"Payload: {payload}")
+async def handle_trigger_message_response(charge_point_id: str, payload: TriggerMessageResponse):
+    """Handles the response to a TriggerMessage request."""
+    logger.info(f"Received TriggerMessage.conf from {charge_point_id}: {payload.status}")
+
+async def handle_get_composite_schedule_response(charge_point_id: str, payload: GetCompositeScheduleResponse):
+    """Handles the response to a GetCompositeSchedule request."""
+    logger.info(f"Received GetCompositeSchedule.conf from {charge_point_id}: {payload.status}")
+    if payload.status == "Accepted":
+        logger.debug(f"  - Schedule: {payload.chargingSchedule}")
+
+async def handle_clear_charging_profile_response(charge_point_id: str, payload: ClearChargingProfileResponse):
+    """Handles the response to a ClearChargingProfile request."""
+    logger.info(f"Received ClearChargingProfile.conf from {charge_point_id}: {payload.status}")
+
+async def handle_set_charging_profile_response(charge_point_id: str, payload: SetChargingProfileResponse):
+    """Handles the response to a SetChargingProfile request."""
+    logger.info(f"Received SetChargingProfile.conf from {charge_point_id}: {payload.status}")

@@ -1,115 +1,3 @@
-        """ChangeAvailability testen"""
-        payload = {
-            "connectorId": connector_id,
-            "type": availability_type
-        }
-        return await self.send_command(OCPPAction.CHANGE_AVAILABILITY, payload)
-
-    async def test_get_configuration(self, keys: Optional[List[str]] = None):
-        """GetConfiguration testen"""
-        payload = {}
-        if keys:
-            payload["key"] = keys
-        return await self.send_command(OCPPAction.GET_CONFIGURATION, payload)
-
-    async def test_change_configuration(self, key: str, value: str):
-        """ChangeConfiguration testen"""
-        payload = {
-            "key": key,
-            "value": value
-        }
-        return await self.send_command(OCPPAction.CHANGE_CONFIGURATION, payload)
-
-    async def test_trigger_message(self, requested_message: str, connector_id: Optional[int] = None):
-        """TriggerMessage testen"""
-        payload = {
-            "requestedMessage": requested_message
-        }
-        if connector_id is not None:
-            payload["connectorId"] = connector_id
-        return await self.send_command(OCPPAction.TRIGGER_MESSAGE, payload)
-
-    async def test_get_composite_schedule(self, connector_id: int, duration: int):
-        """GetCompositeSchedule testen"""
-        payload = {
-            "connectorId": connector_id,
-            "duration": duration
-        }
-        return await self.send_command(OCPPAction.GET_COMPOSITE_SCHEDULE, payload)
-
-    def get_test_results(self) -> List[Dict]:
-        """Alle Testergebnisse zurückgeben"""
-        return self.test_results
-
-    def print_test_summary(self):
-        """Test-Zusammenfassung ausgeben"""
-        total_tests = len(self.test_results)
-        successful_tests = sum(1 for result in self.test_results if result["success"])
-        
-        print(f"\n=== OCPP Test Summary ===")
-        print(f"Total Tests: {total_tests}")
-        print(f"Successful: {successful_tests}")
-        print(f"Failed: {total_tests - successful_tests}")
-        
-        print(f"\n=== Test Details ===")
-        for result in self.test_results:
-            status = "✓" if result["success"] else "✗"
-            print(f"{status} {result['action']}: {result.get('error', 'OK')}")
-
-
-# Beispiel-Verwendung
-async def main():
-    tester = OCPPTester("TestWallbox001")
-    
-    try:
-        # Zur Wallbox verbinden (URL anpassen)
-        await tester.connect("ws://192.168.0.35:8887/")
-        
-        # Warten bis Verbindung steht
-        await asyncio.sleep(2)
-        
-        print("Starting OCPP 1.6 Tests...")
-        
-        # Tests basierend auf EVCC-Log ausführen
-        await tester.test_change_availability(0, "Operative")
-        await tester.test_get_configuration()
-        await tester.test_trigger_message("BootNotification")
-        await tester.test_trigger_message("StatusNotification", 1)
-        await tester.test_trigger_message("MeterValues", 1)
-        
-        # Konfiguration ändern (wie im Log)
-        await tester.test_change_configuration("MeterValueSampleInterval", "10")
-        
-        # Composite Schedule testen (wird Fehler geben wie im Log)
-        try:
-            await tester.test_get_composite_schedule(1, 60)
-        except Exception as e:
-            print(f"Expected error: {e}")
-        
-        # Zusammenfassung
-        tester.print_test_summary()
-        
-    except Exception as e:
-        logger.error(f"Test failed: {e}")
-    finally:
-        await tester.disconnect()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-EOF
-
-# Virtuelle Umgebung sicherstellen
-source venv/bin/activate
-# Datei prüfen
-head -5 ocpp_tester.py
-# Sollte zeigen: #!/usr/bin/env python3
-# Ausführen
-python ocpp_tester.py
-# Virtuelle Umgebung sicherstellen
-source venv/bin/activate
-# Datei prüfen
-head -5 ocpp_tester.py
-# Sollte zeigen: #!/usr/bin/env python3
 # Ausführen
 python ocpp_tester.py
 source venv/bin/activate
@@ -497,4 +385,116 @@ python3 main.py
 clear
 python3 main.py 
 clear
+sudo reboot now
+python3 -m venv venv
+source venv/bin/activate
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+ip a
+sudo reboot now
+pwd
+python3 -m venv venv
+source venv/bin/activate
+python3 main.py 
+python3 -m venv venv
+source venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
+python3 main.py 
+clear
+python3 main.py 
+python3 -m venv venv
+source venv/bin/activate
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+ip a
 sudo reboot now

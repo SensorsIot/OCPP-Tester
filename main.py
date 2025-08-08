@@ -3,10 +3,48 @@ from app.server import serve_ocpp
 import websockets
 from websockets.legacy.server import WebSocketServerProtocol, WebSocketServer
 import logging
+from logging import StreamHandler
 
 # Configure logging for this module
 # Set level to DEBUG to see more details from the websockets library itself.
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+class ColoredFormatter(logging.Formatter):
+    """A custom formatter to add colors to log messages."""
+    # ANSI color codes
+    GREEN = "\033[92m"
+    BLUE = "\033[94m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    BOLD_RED = "\033[1;91m"
+    RESET = "\033[0m"
+    
+    # Define formats for each log level
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    FORMATS = {
+        logging.DEBUG: GREEN + log_format + RESET,
+        logging.INFO: BLUE + log_format + RESET,
+        logging.WARNING: YELLOW + log_format + RESET,
+        logging.ERROR: RED + log_format + RESET,
+        logging.CRITICAL: BOLD_RED + log_format + RESET,
+    }
+
+    def format(self, record):
+        # Get the format string for the record's level
+        log_fmt = self.FORMATS.get(record.levelno, self.log_format)
+        message = record.getMessage()
+        
+        # Special override for step announcements to make them stand out in red.
+        if record.levelno == logging.INFO and message.lstrip().startswith("--- Step"):
+            # For step titles, we only want to print the message itself, without the other log metadata.
+            log_fmt = self.RED + "%(message)s" + self.RESET
+        
+        # Special override for OCPP call separators to make them stand out.
+        elif record.levelno == logging.DEBUG and message.lstrip().startswith("------------OCPP Call----------"):
+            # For separators, we only want to print the message itself, without the other log metadata.
+            log_fmt = self.GREEN + "%(message)s" + self.RESET
+            
+        return logging.Formatter(log_fmt).format(record)
+
 logger = logging.getLogger(__name__)
 
 class OcppProtocol(WebSocketServerProtocol):
@@ -24,10 +62,29 @@ class OcppProtocol(WebSocketServerProtocol):
         super().connection_lost(exc)
 
 async def main():
+    # --- Centralized Logging Configuration ---
+    # Get the root logger, which is the parent of all other loggers.
+    root_logger = logging.getLogger()
+    
+    # Set the application-wide logging level to DEBUG to see all colored messages.
+    root_logger.setLevel(logging.DEBUG)
+
+    # Remove any handlers that may have been added by imported modules.
+    # This is important to prevent duplicate logs from multiple basicConfig calls.
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    # Create a new handler to print to the console (stdout).
+    console_handler = StreamHandler()
+    # Set our custom formatter on the handler. The formatter itself now contains the format string.
+    console_handler.setFormatter(ColoredFormatter())
+    # Add the configured handler to the root logger.
+    root_logger.addHandler(console_handler)
+    # --- End of Logging Configuration ---
+
     server_host = "0.0.0.0"
     server_port = 8887
 
-    print(f"Starting OCPP server on ws://{server_host}:{server_port}")
     logger.info(f"Attempting to start server on {server_host}:{server_port}")
 
     # Replicating the logic from `websockets.serve` to build the server manually.
@@ -64,7 +121,7 @@ async def main():
         await asyncio.Future()  # Run forever
     finally:
         # This block will run when the server is shutting down.
-        print("\n-------------------------E N D --------------------------------")
+        logger.info("\n-------------------------E N D --------------------------------")
         logger.info("Server has been shut down.")
         
 if __name__ == "__main__":
