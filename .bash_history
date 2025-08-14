@@ -1,53 +1,3 @@
-# Ausführen
-python ocpp_tester.py
-source venv/bin/activate
-cd ocpp-tester
-source venv/bin/activate
-python3 -m venv venv
-source venv/bin/activate
-python ocpp_tester.py
-env) opcc@evcc:~/opcc-tester$ python ocpp_tester.py
-Traceback (most recent call last):
-  File "/home/opcc/opcc-tester/ocpp_tester.py", line 8, in <module>
-    import websockets
-ModuleNotFoundError: No module named 'websockets'
-(venv) opcc@evcc:~/opcc-tester$
-pip install websockets
-pip install websockets
-python ocpp_tester.py
-ls
-which
-pwd
-ls
-git init
-git add .
-opcc@evcc:~$ git init
-hint: Using 'master' as the name for the initial branch. This default branch name
-hint: is subject to change. To configure the initial branch name to use in all
-hint: of your new repositories, which will suppress this warning, call:
-hint:
-hint:   git config --global init.defaultBranch <name>
-hint:
-hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
-hint: 'development'. The just-created branch can be renamed via this command:
-hint:
-hint:   git branch -m <name>
-Initialized empty Git repository in /home/opcc/.git/
-opcc@evcc:~$ git add .
-fatal: detected dubious ownership in repository at '/home/opcc'
-To add an exception for this directory, call:
-        git config --global --add safe.directory /home/opcc
-opcc@evcc:~$
-sudo chown -R opcc:opcc /home/opcc
-sudo chown -R opcc:opcc /home/opcc
-git add .
-git commit -m "Initial project setup"
-opcc@evcc:~$ git commit -m "Initial project setup"
-Author identity unknown
-*** Please tell me who you are.
-Run
-  git config --global user.email "you@example.com"
-  git config --global user.name "Your Name"
 to set your account's default identity.
 Omit --global to set the identity only in this repository.
 
@@ -498,3 +448,53 @@ python3 main.py
 python3 main.py 
 ip a
 sudo reboot now
+python3 -m venv venv
+source venv/bin/activate
+clear
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+ls
+cd app
+ls
+cd ..
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+python3 -m venv venv
+source venv/bin/activate
+clear
+python3 -m venv venv
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
+python3 main.py 
