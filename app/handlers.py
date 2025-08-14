@@ -6,8 +6,9 @@ server's state, and returning an appropriate response payload.
 
 import logging
 from datetime import datetime, timezone
-from .state import CHARGE_POINTS, TRANSACTIONS
-from .messages import (
+from typing import Any, Dict
+from app.state import CHARGE_POINTS, TRANSACTIONS
+from app.messages import (
     BootNotificationRequest, BootNotificationResponse,
     AuthorizeRequest, AuthorizeResponse, IdTagInfo,
     DataTransferRequest, DataTransferResponse,
@@ -52,12 +53,15 @@ async def handle_boot_notification(charge_point_id: str, payload: BootNotificati
     logger.info(f"Received BootNotification from {charge_point_id}: {payload}")
     
     # Store the charge point's info. In a real system, you'd save this to a database.
-    CHARGE_POINTS[charge_point_id] = {
+    # Ensure the entry for this charge point exists before updating it.
+    if charge_point_id not in CHARGE_POINTS:
+        CHARGE_POINTS[charge_point_id] = {}
+    CHARGE_POINTS[charge_point_id].update({
         "model": payload.chargePointModel,
         "vendor": payload.chargePointVendor,
         "status": "Available", # Initial status
         "last_heartbeat": datetime.now(timezone.utc).isoformat()
-    }
+    })
     
     # Return a confirmation response.
     return BootNotificationResponse(
@@ -142,8 +146,29 @@ async def handle_stop_transaction(charge_point_id: str, payload: StopTransaction
 async def handle_meter_values(charge_point_id: str, payload: MeterValuesRequest) -> MeterValuesResponse:
     """Handles a MeterValues request."""
     logger.info(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId}")
-    for mv in payload.meterValue:
-        logger.debug(f"  - Timestamp: {mv.timestamp}, Sampled Values: {mv.sampledValue}")
+    for meter_value in payload.meterValue:
+        logger.debug(f"  - MeterValue reading at timestamp: {meter_value.timestamp}")
+        for sampled_value in meter_value.sampledValue:
+            # Build a readable, key-value formatted string for each sampled value,
+            # similar to the GetConfiguration log format.
+            details = [f"Measurand: {sampled_value.measurand}"]
+            
+            # Format the value to a reasonable precision if it's a float string
+            try:
+                val_str = f"{float(sampled_value.value):.2f}"
+            except (ValueError, TypeError):
+                val_str = sampled_value.value
+            
+            details.append(f"Value: {val_str} {sampled_value.unit or ''}".strip())
+
+            if sampled_value.phase:
+                details.append(f"Phase: {sampled_value.phase}")
+            if sampled_value.context:
+                details.append(f"Context: {sampled_value.context}")
+            if sampled_value.location:
+                details.append(f"Location: {sampled_value.location}")
+
+            logger.debug(f"    - {', '.join(details)}")
     return MeterValuesResponse()
 
 # --- Handlers for responses to server-initiated commands ---
@@ -196,3 +221,90 @@ async def handle_remote_stop_transaction_response(charge_point_id: str, payload:
     logger.info(f"Received RemoteStopTransaction.conf from {charge_point_id}: {payload.status}")
     if payload.status == "Rejected":
         logger.warning(f"Charge point {charge_point_id} rejected the RemoteStopTransaction request.")
+
+
+# A simple in-memory mapping of message actions to their handlers and payload classes
+# This allows for dynamic dispatch based on the incoming message's "Action" field.
+MESSAGE_HANDLERS: Dict[str, Dict[str, Any]] = {
+    # Handlers for requests from Charge Point
+    "BootNotification": {
+        "handler": handle_boot_notification,
+        "payload_class": BootNotificationRequest,
+    },
+    "Authorize": {
+        "handler": handle_authorize,
+        "payload_class": AuthorizeRequest,
+    },
+    "DataTransfer": {
+        "handler": handle_data_transfer,
+        "payload_class": DataTransferRequest,
+    },
+    "StatusNotification": {
+        "handler": handle_status_notification,
+        "payload_class": StatusNotificationRequest,
+    },
+    "FirmwareStatusNotification": {
+        "handler": handle_firmware_status_notification,
+        "payload_class": FirmwareStatusNotificationRequest,
+    },
+    "DiagnosticsStatusNotification": {
+        "handler": handle_diagnostics_status_notification,
+        "payload_class": DiagnosticsStatusNotificationRequest,
+    },
+    "Heartbeat": {
+        "handler": handle_heartbeat,
+        "payload_class": HeartbeatRequest,
+    },
+    "StartTransaction": {
+        "handler": handle_start_transaction,
+        "payload_class": StartTransactionRequest,
+    },
+    "StopTransaction": {
+        "handler": handle_stop_transaction,
+        "payload_class": StopTransactionRequest,
+    },
+    "MeterValues": {
+        "handler": handle_meter_values,
+        "payload_class": MeterValuesRequest,
+    },
+    # Handlers for replies to server-initiated messages
+    "ChangeAvailability": {
+        "handler": handle_change_availability_response,
+        "payload_class": ChangeAvailabilityResponse,
+    },
+    "GetConfiguration": {
+        "handler": handle_get_configuration_response,
+        "payload_class": GetConfigurationResponse,
+    },
+    "ChangeConfiguration": {
+        "handler": handle_change_configuration_response,
+        "payload_class": ChangeConfigurationResponse,
+    },
+    "TriggerMessage": {
+        "handler": handle_trigger_message_response,
+        "payload_class": TriggerMessageResponse,
+    },
+    "GetCompositeSchedule": {
+        "handler": handle_get_composite_schedule_response,
+        "payload_class": GetCompositeScheduleResponse,
+    },
+    # === NEW: Handler for ClearChargingProfile response ===
+    "ClearChargingProfile": {
+        "handler": handle_clear_charging_profile_response,
+        "payload_class": ClearChargingProfileResponse,
+    },
+    # === NEW: Handler for SetChargingProfile response ===
+    "SetChargingProfile": {
+        "handler": handle_set_charging_profile_response,
+        "payload_class": SetChargingProfileResponse,
+    },
+    # === NEW: Handlers for Remote Start/Stop responses ===
+    "RemoteStartTransaction": {
+        "handler": handle_remote_start_transaction_response,
+        "payload_class": RemoteStartTransactionResponse,
+    },
+    "RemoteStopTransaction": {
+        "handler": handle_remote_stop_transaction_response,
+        "payload_class": RemoteStopTransactionResponse,
+    },
+}

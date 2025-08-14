@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCPP Server UI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #333;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .status-box {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .status-item {
+            flex: 1;
+            padding: 15px;
+            margin: 0 10px;
+            background-color: #e9ecef;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .status-item h3 {
+            margin-top: 0;
+            font-size: 1em;
+            text-align: center;
+        }
+        #connection-status {
+            color: #dc3545; /* Red for disconnected */
+            font-weight: bold;
+        }
+        #charging-status {
+            color: #6c757d; /* Gray for idle */
+            font-weight: bold;
+        }
+        #charger-info {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .control-panel button.disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .status-message {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            display: none; /* Hidden by default */
+        }
+        .status-message.success { background-color: #d4edda; color: #155724; }
+        .status-message.error { background-color: #f8d7da; color: #721c24;
+        }
+        .control-panel-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 10px;
+        }
+        .test-category {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        .test-category h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 10px;
+            font-size: 1.1em;
+        }
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .button-group button {
+            padding: 10px 15px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            background-color: #007bff;
+            transition: background-color 0.2s ease;
+        }
+        .button-group button:hover:not(.disabled) {
+            background-color: #0056b3;
+        }
+        .log-container {
+            height: 400px;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+        .log-line {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin-bottom: 5px;
+        }
+        .log-line.info { color: #007bff; }
+        .log-line.error { color: #dc3545; font-weight: bold; }
+        .log-line.warning { color: #ffc107; }
+        .log-line.debug { color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OCPP Server Status</h1>
+        
+        <div class="status-box">
+            <div class="status-item">
+                <h3>Connection Status</h3>
+                <span id="connection-status">Polling...</span>
+            </div>
+            <div class="status-item">
+                <h3>Active Charge Point</h3>
+                <select id="charge-point-selector" style="padding: 5px; font-size: 16px;">
+                    <option value="">No charge points connected</option>
+                </select>
+            </div>
+            <div class="status-item">
+                <h3 id="timer-label">Time to Connect</h3>
+                <span id="timer-display">00:00</span>
+            </div>
+        </div>
+
+        <h2>Charger Information</h2>
+        <div id="charger-info">
+            <p><strong>Vendor:</strong> <span id="vendor">N/A</span></p>
+            <p><strong>Model:</strong> <span id="model">N/A</span></p>
+            <p><strong>Status:</strong> <span id="charging-status">N/A</span></p>
+            <p><strong>Last Heartbeat:</strong> <span id="last-heartbeat">N/A</span></p>
+        </div>
+
+        <h2>EV Simulator Status</h2>
+        <div id="ev-info" style="display: flex; gap: 20px;">
+            <div id="charger-info" style="flex: 1;">
+                <p><strong>EV State:</strong> <span id="ev-state">N/A</span></p>
+                <p><strong>Requested Current:</strong> <span id="ev-current">N/A</span></p>
+                <p><strong>CP Voltage:</strong> <span id="ev-voltage">N/A</span></p>
+                <p><strong>Error Status:</strong> <span id="ev-error">N/A</span></p>
+            </div>
+            <div class="button-group" style="flex: 1; align-self: center;">
+                <button onclick="setEvState('A')">Set State A (Disconnected)</button>
+                <button onclick="setEvState('B')">Set State B (Connected)</button>
+                <button onclick="setEvState('C')">Set State C (Charging)</button>
+                <button onclick="setEvState('E')">Set State E (Error)</button>
+            </div>
+        </div>
+
+        <h2>Control Panel</h2>
+        <div class="control-panel-grid">
+            <div class="test-category">
+                <h3>A. Basic Connection & Configuration</h3>
+                <div class="button-group" id="category-a-buttons"></div>
+            </div>
+            <div class="test-category">
+                <h3>B. Data & Status Retrieval</h3>
+                <div class="button-group" id="category-b-buttons"></div>
+            </div>
+            <div class="test-category">
+                <h3>C. Core Transaction Management</h3>
+                <div class="button-group" id="category-c-buttons"></div>
+            </div>
+            <div class="test-category">
+                <h3>D. Advanced Smart Charging</h3>
+                <div class="button-group" id="category-d-buttons"></div>
+            </div>
+        </div>
+        <div id="status-message" class="status-message"></div>
+
+        <h2>Logs</h2>
+        <div class="log-container" id="log-output">
+            <!-- Live logs will be inserted here -->
+        </div>
+    </div>
+
+    <script>
+        const connectionStatusEl = document.getElementById("connection-status");
+        const chargingStatusEl = document.getElementById("charging-status");
+        const chargePointSelector = document.getElementById("charge-point-selector");
+        const vendorEl = document.getElementById("vendor");
+        const modelEl = document.getElementById("model");
+        const lastHeartbeatEl = document.getElementById("last-heartbeat");
+        const statusMessageEl = document.getElementById("status-message");
+        const logOutputEl = document.getElementById("log-output");
+        const timerDisplayEl = document.getElementById("timer-display");
+        const timerLabelEl = document.getElementById("timer-label");
+
+        const evStateEl = document.getElementById("ev-state");
+        const evCurrentEl = document.getElementById("ev-current");
+        const evVoltageEl = document.getElementById("ev-voltage");
+        const evErrorEl = document.getElementById("ev-error");
+
+        let chargePointsData = {};
+        let pageLoadTime = Date.now();
+        let lastCommandTime = null;
+        let isConnected = false;
+
+        // --- UI Update Functions ---
+
+        function updateTimer() {
+            let startTime;
+            if (!isConnected) {
+                // State 1: Waiting for first connection, show time since page load.
+                timerLabelEl.textContent = 'Time to Connect';
+                startTime = pageLoadTime;
+            } else {
+                // State 2: Connected, show time since last command.
+                timerLabelEl.textContent = 'Time Since Last Command';
+                startTime = lastCommandTime;
+            }
+
+            if (startTime) {
+                const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                const minutes = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+                const seconds = String(elapsedSeconds % 60).padStart(2, '0');
+                timerDisplayEl.textContent = `${minutes}:${seconds}`;
+            } else {
+                timerDisplayEl.textContent = '--:--';
+            }
+        }
+
+        function showStatusMessage(message, isError = false) {
+            statusMessageEl.textContent = message;
+            statusMessageEl.className = `status-message ${isError ? 'error' : 'success'}`;
+            statusMessageEl.style.display = 'block';
+            // Hide the message after 5 seconds
+            setTimeout(() => {
+                statusMessageEl.style.display = 'none';
+            }, 5000);
+        }
+
+        function updateChargePointDetails(cpId) {
+            const cp = chargePointsData[cpId];
+            if (cp) {
+                vendorEl.textContent = cp.vendor || 'N/A';
+                modelEl.textContent = cp.model || 'N/A';
+                chargingStatusEl.textContent = cp.status || 'N/A';
+                lastHeartbeatEl.textContent = cp.last_heartbeat ? new Date(cp.last_heartbeat).toLocaleString() : 'N/A';
+                // Enable control panel buttons
+                document.querySelectorAll('.test-category .button-group button').forEach(btn => btn.classList.remove('disabled'));
+            } else {
+                // No charge point selected or data is missing
+                vendorEl.textContent = 'N/A';
+                modelEl.textContent = 'N/A';
+                chargingStatusEl.textContent = 'N/A';
+                lastHeartbeatEl.textContent = 'N/A';
+                // Disable control panel buttons
+                document.querySelectorAll('.test-category .button-group button').forEach(btn => btn.classList.add('disabled'));
+            }
+        }
+
+        // --- API Call Functions ---
+
+        async function fetchChargePoints() {
+            try {
+                const response = await fetch('/api/charge_points');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                chargePointsData = await response.json();
+                
+                const connectedIds = Object.keys(chargePointsData);
+                const previouslySelectedId = chargePointSelector.value;
+
+                // If we find any charge points, we mark the system as "connected".
+                if (connectedIds.length > 0 && !isConnected) {
+                    isConnected = true;
+                }
+
+                // Clear current options
+                chargePointSelector.innerHTML = '';
+
+                if (connectedIds.length === 0) {
+                    chargePointSelector.innerHTML = '<option value="">No charge points connected</option>';
+                    connectionStatusEl.textContent = 'No Connections';
+                    connectionStatusEl.style.color = '#dc3545'; // Red
+                    updateChargePointDetails(null); // Clear details
+                } else {
+                    connectedIds.forEach(id => {
+                        const option = document.createElement('option');
+                        option.value = id;
+                        option.textContent = id;
+                        chargePointSelector.appendChild(option);
+                    });
+
+                    // Try to re-select the previously selected charge point
+                    if (connectedIds.includes(previouslySelectedId)) {
+                        chargePointSelector.value = previouslySelectedId;
+                    } else {
+                        // Otherwise, select the first one
+                        chargePointSelector.value = connectedIds[0];
+                    }
+                    
+                    connectionStatusEl.textContent = 'Connected';
+                    connectionStatusEl.style.color = '#28a745'; // Green
+                    updateChargePointDetails(chargePointSelector.value);
+                }
+            } catch (error) {
+                console.error("Failed to fetch charge points:", error);
+                connectionStatusEl.textContent = 'Server Error';
+                connectionStatusEl.style.color = '#dc3545'; // Red
+            }
+        }
+
+        async function fetchEvSimulatorStatus() {
+            try {
+                const response = await fetch('/api/ev_status');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const status = await response.json();
+                // Use the correct keys from the EV simulator's API response.
+                evStateEl.textContent = status.ev_state || 'N/A';
+                evCurrentEl.textContent = status.requested_current_amps !== undefined ? `${status.requested_current_amps} A` : 'N/A';
+                evVoltageEl.textContent = status.cp_voltage_v !== undefined ? `${status.cp_voltage_v.toFixed(2)} V` : 'N/A';
+                const errorText = status.error_active ? status.error_type : 'None';
+                evErrorEl.textContent = errorText;
+            } catch (error) {
+                evStateEl.textContent = 'Error';
+                evCurrentEl.textContent = 'N/A';
+                evVoltageEl.textContent = 'N/A';
+                evErrorEl.textContent = 'Could not fetch status';
+                console.error("Failed to fetch EV simulator status:", error);
+            }
+        }
+
+        async function fetchAndRenderTestSteps() {
+            try {
+                const testDefinitions = {
+                    'run_a1_initial_registration': { name: 'A.1: Initial Registration', category: 'category-a-buttons' },
+                    'run_a2_configuration_exchange': { name: 'A.2: Configuration Exchange', category: 'category-a-buttons' },
+                    'run_a3_change_configuration_test': { name: 'A.3: Change Configuration Test', category: 'category-a-buttons' },
+                    'run_b1_status_and_meter_value_acquisition': { name: 'B.1: Status & Meter Value Acquisition', category: 'category-b-buttons' },
+                    'run_c1_remote_transaction_test': { name: 'C.1: Remote Transaction Test', category: 'category-c-buttons' },
+                    'run_c2_user_initiated_transaction_test': { name: 'C.2: User-Initiated Transaction Test', category: 'category-c-buttons' },
+                    'run_d1_set_live_charging_power': { name: 'D.1: Set Live Charging Power', category: 'category-d-buttons' },
+                    'run_d2_set_default_charging_profile': { name: 'D.2: Set Default Charging Profile', category: 'category-d-buttons' },
+                    'run_d3_smart_charging_capability_test': { name: 'D.3: Smart Charging Capability Test', category: 'category-d-buttons' },
+                    'run_d4_clear_default_charging_profile': { name: 'D.4: Clear Default Charging Profile', category: 'category-d-buttons' }
+                };
+
+                const response = await fetch('/api/test_steps');
+                const testSteps = await response.json();
+
+                // Clear all button groups within the test categories only, leaving other .button-group divs untouched.
+                document.querySelectorAll('.test-category .button-group').forEach(container => {
+                    container.innerHTML = '';
+                });
+
+                // Use the order from our definition map to ensure buttons are rendered logically.
+                const orderedTestKeys = Object.keys(testDefinitions);
+
+                orderedTestKeys.forEach(stepName => {
+                    // Only render a button if the test exists on the backend
+                    if (!testSteps.includes(stepName)) {
+                        return;
+                    }
+
+                    const testInfo = testDefinitions[stepName];
+                    if (!testInfo) {
+                        console.warn(`No UI category defined for test: ${stepName}`);
+                        return;
+                    }
+
+                    const container = document.getElementById(testInfo.category);
+                    if (!container) {
+                        console.warn(`UI container not found for category: ${testInfo.category}`);
+                        return;
+                    }
+
+                    const button = document.createElement('button');
+                    button.textContent = testInfo.name;
+                    button.classList.add('disabled'); // Start as disabled
+                    button.onclick = () => runTest(stepName);
+                    container.appendChild(button);
+                });
+            } catch (error) {
+                console.error("Failed to fetch test steps:", error);
+            }
+        }
+
+        async function runTest(stepName) {
+            const chargePointId = chargePointSelector.value;
+            if (!chargePointId) {
+                showStatusMessage("No charge point selected.", true);
+                return;
+            }
+
+            // Reset the timer every time a command is issued.
+            lastCommandTime = Date.now();
+
+            showStatusMessage(`Running test: ${stepName}...`);
+            
+            try {
+                const response = await fetch(`/api/test/${chargePointId}/${stepName}`, {
+                    method: 'POST',
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showStatusMessage(result.status || "Test completed successfully.");
+                } else {
+                    showStatusMessage(result.error || "An unknown error occurred.", true);
+                }
+            } catch (error) {
+                console.error(`Error running test ${stepName}:`, error);
+                showStatusMessage(`Failed to run test: ${error.message}`, true);
+            } finally {
+                // After the test, refresh the charge point status immediately
+                fetchChargePoints();
+            }
+        }
+
+        async function setEvState(state) {
+            showStatusMessage(`Setting EV state to ${state}...`);
+            try {
+                const response = await fetch('/api/set_ev_state', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ state: state })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showStatusMessage(result.message || `Successfully set state to ${state}.`);
+                } else {
+                    showStatusMessage(result.error || "An unknown error occurred.", true);
+                }
+            } catch (error) {
+                showStatusMessage(`Failed to set EV state: ${error.message}`, true);
+            }
+        }
+
+        // --- WebSocket Log Streaming ---
+
+        function connectLogStream() {
+            // Use the same host as the web page, but on port 5001
+            const wsUrl = `ws://${window.location.hostname}:5001`;
+            const logWs = new WebSocket(wsUrl);
+
+            logWs.onopen = () => {
+                console.log("Log streaming WebSocket connection established.");
+                // Clear the initial message on successful connection
+                if (logOutputEl.children.length === 0 || logOutputEl.children[0].textContent.includes("Connecting")) {
+                    logOutputEl.innerHTML = '';
+                }
+                const logLine = document.createElement('div');
+                logLine.className = 'log-line info';
+                logLine.textContent = 'Connected to live log stream.';
+                logOutputEl.appendChild(logLine);
+            };
+
+            logWs.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    const logLine = document.createElement('div');
+                    // Use the log level from the server to style the line.
+                    logLine.className = `log-line ${data.level.toLowerCase()}`;
+                    logLine.textContent = data.message;
+                    logOutputEl.appendChild(logLine);
+                    // Auto-scroll to the bottom
+                    logOutputEl.scrollTop = logOutputEl.scrollHeight;
+                } catch (e) {
+                    console.error("Failed to parse log message:", e);
+                }
+            };
+
+            logWs.onclose = () => {
+                console.log("Log streaming WebSocket connection closed. Reconnecting in 3 seconds...");
+                const logLine = document.createElement('div');
+                logLine.className = 'log-line error';
+                logLine.textContent = 'Disconnected from live log stream. Attempting to reconnect...';
+                logOutputEl.appendChild(logLine);
+                logOutputEl.scrollTop = logOutputEl.scrollHeight;
+                // Simple auto-reconnect logic
+                setTimeout(connectLogStream, 3000);
+            };
+        }
+
+        // --- Initialization ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Fetch the list of possible tests when the page loads
+            fetchAndRenderTestSteps();
+
+            // Fetch the list of connected charge points immediately
+            fetchChargePoints();
+
+            // And then poll for updates every 5 seconds
+            setInterval(fetchChargePoints, 5000);
+
+            // Poll for EV simulator status
+            setInterval(fetchEvSimulatorStatus, 5000);
+
+            // Add an event listener to the selector to update details on change
+            chargePointSelector.addEventListener('change', (event) => {
+                updateChargePointDetails(event.target.value);
+            });
+
+            // Start the timer to update every second.
+            setInterval(updateTimer, 1000);
+
+            // Start the log streaming connection
+            const logLine = document.createElement('div');
+            logLine.className = 'log-line debug';
+            logLine.textContent = 'Connecting to live log stream...';
+            logOutputEl.appendChild(logLine);
+            connectLogStream();
+        });
+    </script>
+</body>
+</html>

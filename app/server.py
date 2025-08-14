@@ -10,33 +10,9 @@ from dataclasses import asdict, is_dataclass
 from typing import Any, Callable, Dict, List
 from websockets.server import serve, WebSocketServerProtocol
 from websockets.exceptions import ConnectionClosedOK
-
-from .handlers import (
-    handle_boot_notification,
-    handle_authorize,
-    handle_data_transfer,
-    handle_status_notification,
-    handle_firmware_status_notification,
-    handle_diagnostics_status_notification,
-    handle_heartbeat,
-    handle_start_transaction,
-    handle_stop_transaction,
-    # Import new handlers for responses
-    handle_change_availability_response,
-    handle_get_configuration_response,
-    handle_change_configuration_response,
-    handle_trigger_message_response,
-    handle_meter_values,
-    handle_get_composite_schedule_response,
-    # === NEW: Import handler for SetChargingProfile response ===
-    handle_clear_charging_profile_response,
-    handle_set_charging_profile_response,
-    # === NEW: Import handlers for Remote Start/Stop responses ===
-    handle_remote_start_transaction_response,
-    handle_remote_stop_transaction_response,
-)
-from .state import CHARGE_POINTS, TRANSACTIONS
-from .messages import (
+from app.handlers import MESSAGE_HANDLERS
+from app.state import CHARGE_POINTS, TRANSACTIONS
+from app.messages import (
     BootNotificationRequest,
     AuthorizeRequest,
     DataTransferRequest,
@@ -88,92 +64,6 @@ logger = logging.getLogger(__name__)
 # This allows us to wait for a specific response before proceeding.
 # Format: { "unique_id": {"action": str, "event": asyncio.Event} }
 PENDING_REQUESTS: Dict[str, Dict[str, Any]] = {}
-
-# A simple in-memory mapping of message actions to their handlers and payload classes
-# This allows for dynamic dispatch based on the incoming message's "Action" field.
-MESSAGE_HANDLERS: Dict[str, Dict[str, Any]] = {
-    # Handlers for requests from Charge Point
-    "BootNotification": {
-        "handler": handle_boot_notification,
-        "payload_class": BootNotificationRequest,
-    },
-    "Authorize": {
-        "handler": handle_authorize,
-        "payload_class": AuthorizeRequest,
-    },
-    "DataTransfer": {
-        "handler": handle_data_transfer,
-        "payload_class": DataTransferRequest,
-    },
-    "StatusNotification": {
-        "handler": handle_status_notification,
-        "payload_class": StatusNotificationRequest,
-    },
-    "FirmwareStatusNotification": {
-        "handler": handle_firmware_status_notification,
-        "payload_class": FirmwareStatusNotificationRequest,
-    },
-    "DiagnosticsStatusNotification": {
-        "handler": handle_diagnostics_status_notification,
-        "payload_class": DiagnosticsStatusNotificationRequest,
-    },
-    "Heartbeat": {
-        "handler": handle_heartbeat,
-        "payload_class": HeartbeatRequest,
-    },
-    "StartTransaction": {
-        "handler": handle_start_transaction,
-        "payload_class": StartTransactionRequest,
-    },
-    "StopTransaction": {
-        "handler": handle_stop_transaction,
-        "payload_class": StopTransactionRequest,
-    },
-    "MeterValues": {
-        "handler": handle_meter_values,
-        "payload_class": MeterValuesRequest,
-    },
-    # Handlers for replies to server-initiated messages
-    "ChangeAvailability": {
-        "handler": handle_change_availability_response,
-        "payload_class": ChangeAvailabilityResponse,
-    },
-    "GetConfiguration": {
-        "handler": handle_get_configuration_response,
-        "payload_class": GetConfigurationResponse,
-    },
-    "ChangeConfiguration": {
-        "handler": handle_change_configuration_response,
-        "payload_class": ChangeConfigurationResponse,
-    },
-    "TriggerMessage": {
-        "handler": handle_trigger_message_response,
-        "payload_class": TriggerMessageResponse,
-    },
-    "GetCompositeSchedule": {
-        "handler": handle_get_composite_schedule_response,
-        "payload_class": GetCompositeScheduleResponse,
-    },
-    # === NEW: Handler for ClearChargingProfile response ===
-    "ClearChargingProfile": {
-        "handler": handle_clear_charging_profile_response,
-        "payload_class": ClearChargingProfileResponse,
-    },
-    # === NEW: Handler for SetChargingProfile response ===
-    "SetChargingProfile": {
-        "handler": handle_set_charging_profile_response,
-        "payload_class": SetChargingProfileResponse,
-    },
-    # === NEW: Handlers for Remote Start/Stop responses ===
-    "RemoteStartTransaction": {
-        "handler": handle_remote_start_transaction_response,
-        "payload_class": RemoteStartTransactionResponse,
-    },
-    "RemoteStopTransaction": {
-        "handler": handle_remote_stop_transaction_response,
-        "payload_class": RemoteStopTransactionResponse,
-    },
-}
 
 def create_ocpp_message(
     message_type_id: int, unique_id: str, payload: Any, action: str = None

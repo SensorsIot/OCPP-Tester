@@ -1,53 +1,3 @@
-to set your account's default identity.
-Omit --global to set the identity only in this repository.
-
-fatal: empty ident name (for <opcc@evcc.local>) not allowed
-opcc@evcc:~$
-exit
-quit
-git config --global user.email "andreas.spiess@rumba.com"
-git config --global user.name "Andreas"
-git commit -m "Initial project setup"
-git remote add origin https://github.com/SensorsIot/OCPP-Tester.git
-git push -u origin main
-git branch
-git push -u origin master
-git branch
-git push -u origin master
-git push -u origin master
-git push -u origin master
-where
-pwd
-opcc@evcc:~$ pwd
-/home/opcc
-python3 -m venv venv
-source venv/bin/activate
-pip install websockets
-pip install python-dateutil
-mkdir app
-touch app/__init__.py
-touch app/server.py
-touch app/handlers.py
-touch app/messages.py
-touch app/central_system.py
-touch app/protocol.py
-python main.py
-python3 main.py
-tree
-cd app
-ls
-python3 main.py
-cd ..
-python3 main.py
-
-python3 main.py
-python3 main.py
-python3 main.py
-python3 main.py
-python3 main.py
-python3 main.py
-clear
-python3 main.py
 python3 main.py
 python3 main.py
 python3 main.py
@@ -498,3 +448,53 @@ python3 main.py
 python3 main.py 
 python3 main.py 
 python3 main.py 
+python3 -m venv venv
+source venv/bin/activate
+python main.py 
+ip a
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+pip install Flask
+pip install Flask
+python main.py 
+python main.py 
+pip install uvicorn
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+sudo chown opcc:opcc /home/opcc/app
+sudo chmod u+w /home/opcc/app
+sudo chown -R opcc:opcc /home/opcc/app
+sudo chown -R opcc:opcc /home/opcc/app
+python main.py 
+pip install a2wsgi
+python main.py 
+python main.py 
+python main.py 
+pip uninstall a2wsgi
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+clear
+python main.py 
+python main.py 
+clear
+python main.py 
+python main.py 
+python main.py 
+python main.py 
+sudo reboot now
