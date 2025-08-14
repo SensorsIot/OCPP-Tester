@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>OCPP Server UI</title>
+    <style>
+        /* (unchanged styles trimmed for brevity) */
+        body { font-family: Arial, sans-serif; background:#f4f4f4; margin:0; padding:20px; }
+        .container { max-width:1400px; margin:auto; background:#fff; padding:20px; border-radius:8px; box-shadow:0 0 10px rgba(0,0,0,.1); }
+        h1,h2 { color:#333; border-bottom:2px solid #eee; padding-bottom:10px; }
+        .status-box { display:flex; justify-content:space-between; margin-bottom:20px; }
+        .status-item { flex:1; padding:15px; margin:0 10px; background:#e9ecef; border-radius:8px; text-align:center; }
+        .status-item h3 { margin-top:0; font-size:1em; text-align:center; }
+        #connection-status { font-weight:bold; }
+        #charging-status { font-weight:bold; }
+        .control-panel-grid { display:grid; grid-template-columns:1fr; gap:20px; margin-top:10px; }
+        .test-category { background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; padding:15px; }
+        .button-group { display:flex; flex-wrap:wrap; gap:10px; }
+        .button-group button { padding:10px 15px; font-size:14px; border:none; border-radius:5px; color:#fff; background:#007bff; cursor:pointer; }
+        .button-group button.active-state { background-color: #28a745; }
+        .button-group button.disabled { background:#6c757d; cursor:not-allowed; }
+        .log-container { height:400px; overflow-y:scroll; border:1px solid #ccc; padding:10px; background:#f8f9fa; border-radius:8px; margin-top:20px; font-family:'Courier New', Courier, monospace; font-size:14px; }
+        .log-line { white-space:pre-wrap; word-wrap:break-word; margin-bottom:5px; }
+        .log-line.info { color:#007bff; } .log-line.error { color:#dc3545; font-weight:bold; } .log-line.warning { color:#ffc107; } .log-line.debug { color:#6c757d; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>OCPP Server Status</h1>
+
+    <div class="status-box">
+        <div class="status-item">
+            <h3>Connection Status</h3>
+            <span id="connection-status">Polling...</span>
+        </div>
+        <div class="status-item">
+            <h3>Active Charge Point</h3>
+            <select id="charge-point-selector" style="padding:5px;font-size:16px;">
+                <option value="">No charge points connected</option>
+            </select>
+        </div>
+        <div class="status-item">
+            <h3 id="timer-label">Time to Connect</h3>
+            <span id="timer-display">00:00</span>
+        </div>
+    </div>
+
+    <h2>Charger Information</h2>
+    <div id="charger-info">
+        <p><strong>Vendor:</strong> <span id="vendor">N/A</span></p>
+        <p><strong>Model:</strong> <span id="model">N/A</span></p>
+        <p><strong>Status:</strong> <span id="charging-status">N/A</span></p>
+        <p><strong>Last Heartbeat:</strong> <span id="last-heartbeat">N/A</span></p>
+    </div>
+
+    <h2>EV Simulator Status</h2>
+    <div id="ev-info" style="display:flex; gap:20px;">
+        <div id="ev-status-details" style="flex:1;">
+            <p><strong>EV State:</strong> <span id="ev-state">N/A</span></p>
+            <p><strong>Requested Current:</strong> <span id="ev-current">N/A</span></p>
+            <p><strong>CP Voltage:</strong> <span id="ev-voltage">N/A</span></p>
+            <p><strong>Error Status:</strong> <span id="ev-error">N/A</span></p>
+        </div>
+        <div class="button-group" style="flex:2; align-self:center;">
+            <button id="btn-state-a" onclick="setEvState('A')">Set State A (Disconnected)</button>
+            <button id="btn-state-b" onclick="setEvState('B')">Set State B (Connected)</button>
+            <button id="btn-state-c" onclick="setEvState('C')">Set State C (Charging)</button>
+            <button id="btn-state-e" onclick="setEvState('E')">Set State E (Error)</button>
+        </div>
+    </div>
+
+    <h2>Control Panel</h2>
+    <div class="control-panel-grid">
+        <div class="test-category">
+            <h3>A. Basic Connection & Configuration</h3>
+            <div class="button-group" id="category-a-buttons"></div>
+        </div>
+        <div class="test-category">
+            <h3>B. Data & Status Retrieval</h3>
+            <div class="button-group" id="category-b-buttons"></div>
+        </div>
+        <div class="test-category">
+            <h3>C. Core Transaction Management</h3>
+            <div class="button-group" id="category-c-buttons"></div>
+        </div>
+        <div class="test-category">
+            <h3>D. Advanced Smart Charging</h3>
+            <div class="button-group" id="category-d-buttons"></div>
+        </div>
+    </div>
+    <div id="status-message" class="status-message" style="display:none;"></div>
+
+    <h2>Logs</h2>
+    <div class="log-container" id="log-output"></div>
+</div>
+
+<script>
+    const connectionStatusEl = document.getElementById("connection-status");
+    const chargingStatusEl = document.getElementById("charging-status");
+    const chargePointSelector = document.getElementById("charge-point-selector");
+    const vendorEl = document.getElementById("vendor");
+    const modelEl = document.getElementById("model");
+    const lastHeartbeatEl = document.getElementById("last-heartbeat");
+    const statusMessageEl = document.getElementById("status-message");
+    const logOutputEl = document.getElementById("log-output");
+    const timerDisplayEl = document.getElementById("timer-display");
+    const timerLabelEl = document.getElementById("timer-label");
+
+    const evStateEl = document.getElementById("ev-state");
+    const evCurrentEl = document.getElementById("ev-current");
+    const evVoltageEl = document.getElementById("ev-voltage");
+    const evErrorEl = document.getElementById("ev-error");
+
+    const WS_PORT = {{ ocpp_port }};
+
+    let chargePointsData = {};
+    let pageLoadTime = Date.now();
+    let lastCommandTime = null;
+    let isConnected = false;
+
+    function updateTimer() {
+        let startTime;
+        if (!isConnected) {
+            timerLabelEl.textContent = 'Time to Connect';
+            startTime = pageLoadTime;
+        } else {
+            timerLabelEl.textContent = 'Time Since Last Command';
+            startTime = lastCommandTime || pageLoadTime;
+        }
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const s = String(elapsed % 60).padStart(2, '0');
+        timerDisplayEl.textContent = `${m}:${s}`;
+    }
+
+    function showStatusMessage(message, isError = false) {
+        statusMessageEl.textContent = message;
+        statusMessageEl.className = `status-message ${isError ? 'error' : 'success'}`;
+        statusMessageEl.style.display = 'block';
+        setTimeout(() => statusMessageEl.style.display = 'none', 5000);
+    }
+
+    function updateChargePointDetails(cpId) {
+        const cp = chargePointsData[cpId];
+        if (cp) {
+            vendorEl.textContent = cp.vendor || 'N/A';
+            modelEl.textContent = cp.model || 'N/A';
+            chargingStatusEl.textContent = cp.status || 'N/A';
+            lastHeartbeatEl.textContent = cp.last_heartbeat ? new Date(cp.last_heartbeat).toLocaleString() : 'N/A';
+            document.querySelectorAll('.test-category .button-group button').forEach(btn => btn.classList.remove('disabled'));
+        } else {
+            vendorEl.textContent = 'N/A';
+            modelEl.textContent = 'N/A';
+            chargingStatusEl.textContent = 'N/A';
+            lastHeartbeatEl.textContent = 'N/A';
+            document.querySelectorAll('.test-category .button-group button').forEach(btn => btn.classList.add('disabled'));
+        }
+    }
+
+    async function fetchChargePoints() {
+        try {
+            const r = await fetch('/api/charge_points');
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            chargePointsData = await r.json();
+
+            const ids = Object.keys(chargePointsData);
+            const prev = chargePointSelector.value;
+
+            if (ids.length > 0 && !isConnected) isConnected = true;
+
+            chargePointSelector.innerHTML = '';
+            if (ids.length === 0) {
+                chargePointSelector.innerHTML = '<option value="">No charge points connected</option>';
+                connectionStatusEl.textContent = 'No Connections';
+                connectionStatusEl.style.color = '#dc3545';
+                updateChargePointDetails(null);
+            } else {
+                ids.forEach(id => {
+                    const opt = document.createElement('option');
+                    opt.value = id; opt.textContent = id;
+                    chargePointSelector.appendChild(opt);
+                });
+                chargePointSelector.value = ids.includes(prev) ? prev : ids[0];
+                connectionStatusEl.textContent = 'Connected';
+                connectionStatusEl.style.color = '#28a745';
+                updateChargePointDetails(chargePointSelector.value);
+            }
+        } catch (e) {
+            console.error(e);
+            connectionStatusEl.textContent = 'Server Error';
+            connectionStatusEl.style.color = '#dc3545';
+        }
+    }
+
+    async function fetchAndRenderTestSteps() {
+        const testDefinitions = {
+            'run_a1_initial_registration': { name: 'A.1: Initial Registration', category: 'category-a-buttons' },
+            'run_a2_configuration_exchange': { name: 'A.2: Configuration Exchange', category: 'category-a-buttons' },
+            'run_a3_change_configuration_test': { name: 'A.3: Change Configuration Test', category: 'category-a-buttons' },
+            'run_b1_status_and_meter_value_acquisition': { name: 'B.1: Status & Meter Value Acquisition', category: 'category-b-buttons' },
+            'run_c1_remote_transaction_test': { name: 'C.1: Remote Transaction Test', category: 'category-c-buttons' },
+            'run_c2_user_initiated_transaction_test': { name: 'C.2: User-Initiated Transaction Test', category: 'category-c-buttons' },
+            'run_d1_set_live_charging_power': { name: 'D.1: Set Live Charging Power', category: 'category-d-buttons' },
+            'run_d2_set_default_charging_profile': { name: 'D.2: Set Default Charging Profile', category: 'category-d-buttons' },
+            'run_d3_smart_charging_capability_test': { name: 'D.3: Smart Charging Capability Test', category: 'category-d-buttons' },
+            'run_d4_clear_default_charging_profile': { name: 'D.4: Clear Default Charging Profile', category: 'category-d-buttons' }
+        };
+
+        try {
+            const r = await fetch('/api/test_steps');
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const steps = await r.json();
+
+            document.querySelectorAll('.test-category .button-group').forEach(c => c.innerHTML = '');
+            const ordered = Object.keys(testDefinitions).filter(k => steps.includes(k));
+
+            for (const key of ordered) {
+                const def = testDefinitions[key];
+                const container = document.getElementById(def.category);
+                const btn = document.createElement('button');
+                btn.textContent = def.name;
+                btn.onclick = async () => {
+                    const cpId = chargePointSelector.value;
+                    if (!cpId) {
+                        showStatusMessage("No charge point selected", true);
+                        return;
+                    }
+                    lastCommandTime = Date.now();
+                    try {
+                        const r = await fetch(`/api/test/${encodeURIComponent(cpId)}/${key}`, { method: 'POST' });
+                        const j = await r.json();
+                        if (!r.ok) throw new Error(j.error || 'Unknown error');
+                        showStatusMessage(j.status || 'Done');
+                    } catch (e) {
+                        showStatusMessage(`Failed: ${e.message}`, true);
+                    }
+                };
+                container.appendChild(btn);
+            }
+        } catch (e) {
+            console.error("Failed to load test steps", e);
+        }
+    }
+
+    function updateEvStatusUI(status) {
+        evStateEl.textContent = status.state ?? 'N/A';
+        evCurrentEl.textContent = status.requested_current ?? 'N/A';
+        evVoltageEl.textContent = status.cp_voltage ?? 'N/A';
+        evErrorEl.textContent = status.error ?? 'N/A';
+
+        // Update button styles to show the active state
+        document.querySelectorAll('#ev-info .button-group button').forEach(btn => {
+            btn.classList.remove('active-state');
+        });
+
+        if (status.state) {
+            const activeBtn = document.getElementById(`btn-state-${status.state.toLowerCase()}`);
+            if (activeBtn) {
+                activeBtn.classList.add('active-state');
+            }
+        }
+    }
+
+    async function refreshEvStatus() {
+        try {
+            const r = await fetch('/api/ev_status');
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const s = await r.json();
+            updateEvStatusUI(s);
+        } catch {
+            updateEvStatusUI({}); // Clear UI on error
+        }
+    }
+
+    function connectEvStatusSocket() {
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${proto}//${window.location.hostname}:${WS_PORT}/ev-status`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onmessage = function(event) {
+            try {
+                const message = JSON.parse(event.data);
+                if (message.type === 'ev_status' && message.data) {
+                    updateEvStatusUI(message.data);
+                }
+            } catch (e) {
+                console.error("Failed to parse EV status WebSocket message", e);
+            }
+        };
+
+        ws.onclose = function() {
+            console.log('EV status WebSocket closed. Reconnecting in 3 seconds...');
+            setTimeout(connectEvStatusSocket, 3000);
+        };
+    }
+
+    async function setEvState(state) {
+        try {
+            const r = await fetch('/api/set_ev_state', {
+                method: 'POST',
+                headers: { 'Content-Type':'application/json' },
+                body: JSON.stringify({ state })
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || 'Request failed');
+            showStatusMessage(j.message || 'OK');
+            lastCommandTime = Date.now();
+        } catch (e) {
+            showStatusMessage(e.message, true);
+        }
+    }
+
+    // Periodic tasks
+    setInterval(updateTimer, 1000);
+    setInterval(fetchChargePoints, 3000);
+
+    // Initial
+    fetchChargePoints();
+    fetchAndRenderTestSteps();
+    refreshEvStatus();
+    chargePointSelector.addEventListener('change', () => updateChargePointDetails(chargePointSelector.value));
+    connectEvStatusSocket();
+</script>
+</body>
+</html>
