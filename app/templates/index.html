@@ -244,18 +244,25 @@
     }
 
     function updateEvStatusUI(status) {
-        evStateEl.textContent = status.state ?? 'N/A';
-        evCurrentEl.textContent = status.requested_current ?? 'N/A';
-        evVoltageEl.textContent = status.cp_voltage ?? 'N/A';
-        evErrorEl.textContent = status.error ?? 'N/A';
+        evStateEl.textContent = status.ev_state ?? 'N/A';
+        evCurrentEl.textContent = status.requested_current_amps !== undefined ? `${status.requested_current_amps} A` : 'N/A';
+        evVoltageEl.textContent = status.cp_voltage_v !== undefined ? `${status.cp_voltage_v.toFixed(2)} V` : 'N/A';
+
+        let errorText = 'N/A';
+        if (status.error_active) {
+            errorText = `Active (${status.error_type || 'Unknown'})`;
+        } else if (status.hasOwnProperty('error_active')) {
+            errorText = 'Inactive';
+        }
+        evErrorEl.textContent = errorText;
 
         // Update button styles to show the active state
         document.querySelectorAll('#ev-info .button-group button').forEach(btn => {
             btn.classList.remove('active-state');
         });
 
-        if (status.state) {
-            const activeBtn = document.getElementById(`btn-state-${status.state.toLowerCase()}`);
+        if (status.ev_state) {
+            const activeBtn = document.getElementById(`btn-state-${status.ev_state.toLowerCase()}`);
             if (activeBtn) {
                 activeBtn.classList.add('active-state');
             }
@@ -280,6 +287,7 @@
 
         ws.onmessage = function(event) {
             try {
+                console.log("Received EV status via WebSocket:", event.data);
                 const message = JSON.parse(event.data);
                 if (message.type === 'ev_status' && message.data) {
                     updateEvStatusUI(message.data);
@@ -305,6 +313,9 @@
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || 'Request failed');
             showStatusMessage(j.message || 'OK');
+            if (j.newState) {
+                updateEvStatusUI(j.newState);
+            }
             lastCommandTime = Date.now();
         } catch (e) {
             showStatusMessage(e.message, true);

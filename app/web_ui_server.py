@@ -4,22 +4,28 @@ Flask web server providing the REST API + serving the UI.
 import asyncio
 import inspect
 import logging
-from typing import Optional
+import concurrent.futures
+from typing import Optional, Dict, Any
 
+import aiohttp
 from flask import Flask, jsonify, request, render_template
 
 from app.state import CHARGE_POINTS, EV_SIMULATOR_STATE
 from app.ocpp_server_logic import OcppServerLogic
 from app.config import EV_SIMULATOR_BASE_URL, OCPP_PORT
-
-import requests
+from app.status_streamer import EVStatusStreamer
 
 app = Flask(__name__)
 app.loop: Optional[asyncio.AbstractEventLoop] = None
+app.ev_status_streamer: Optional[EVStatusStreamer] = None
 
 def attach_loop(loop: asyncio.AbstractEventLoop):
     """Called from main.py to allow scheduling async test functions."""
     app.loop = loop
+
+def attach_ev_status_streamer(streamer: EVStatusStreamer):
+    """Called from main.py to allow the API to broadcast EV status updates."""
+    app.ev_status_streamer = streamer
 
 @app.route("/")
 def index():
@@ -50,6 +56,34 @@ def list_test_steps():
 def get_ev_status():
     return jsonify(EV_SIMULATOR_STATE)
 
+async def _set_and_refresh_ev_state(state: str) -> Dict[str, Any]:
+    """Async helper to set the EV state and then immediately poll and broadcast it."""
+    # 1. Set the state on the simulator
+    set_url = f"{EV_SIMULATOR_BASE_URL}/api/set_state"
+    async with aiohttp.ClientSession() as session:
+        async with session.post(set_url, json={"state": state}, timeout=5) as resp:
+            resp.raise_for_status()
+            # Give the simulator a moment to process the state change before we poll it
+            await asyncio.sleep(0.2)
+
+    # 2. Poll for the new state
+    poll_url = f"{EV_SIMULATOR_BASE_URL}/api/status"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(poll_url, timeout=5) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+            EV_SIMULATOR_STATE.update(data)
+
+    # 3. Broadcast the new state to all UI clients
+    if app.ev_status_streamer:
+        await app.ev_status_streamer.broadcast_status(EV_SIMULATOR_STATE)
+
+    return {
+        "status": "success",
+        "message": f"EV state set to {state}",
+        "newState": EV_SIMULATOR_STATE,
+    }
+
 @app.route("/api/set_ev_state", methods=["POST"])
 def set_ev_state():
     data = request.get_json(force=True, silent=True) or {}
@@ -57,12 +91,16 @@ def set_ev_state():
     if not state:
         return jsonify({"error": "State not provided"}), 400
 
-    url = f"{EV_SIMULATOR_BASE_URL}/api/set_state"
+    if not app.loop or not app.loop.is_running():
+        return jsonify({"error": "Server loop not available"}), 500
+
     try:
-        resp = requests.post(url, json={"state": state}, timeout=5)
-        resp.raise_for_status()
-        return jsonify({"status": "success", "message": f"EV state set to {state}"})
-    except requests.exceptions.RequestException as e:
+        coro = _set_and_refresh_ev_state(state)
+        future = asyncio.run_coroutine_threadsafe(coro, app.loop)
+        result = future.result(timeout=10)
+        return jsonify(result)
+    except (aiohttp.ClientError, asyncio.TimeoutError, concurrent.futures.TimeoutError) as e:
+        logging.error(f"Failed to set EV state via API: {e}")
         return jsonify({"error": f"Failed to set EV state: {e}"}), 500
 
 @app.route("/api/test/<path:charge_point_id>/<step_name>", methods=["POST"])
@@ -87,7 +125,7 @@ def run_test_step(charge_point_id, step_name):
         future = asyncio.run_coroutine_threadsafe(method(), app.loop)
         future.result(timeout=120)
         return jsonify({"status": f"Test step '{step_name}' completed for {charge_point_id}."})
-    except asyncio.TimeoutError:
+    except concurrent.futures.TimeoutError:
         logging.error(f"API call for '{step_name}' on {charge_point_id} timed out.")
         return jsonify({"error": f"Test step '{step_name}' timed out."}), 504
     except Exception as e:

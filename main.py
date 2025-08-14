@@ -1,24 +1,38 @@
 """
-This module serves as the entry point for the OCPP server.
-It sets up the centralized logging system and starts the WebSocket server,
-delegating each new connection to a dedicated handler.
+Entry point for the OCPP server.
+
+- Centralized logging with colored console + websocket log sink
+- Single WebSocket server with path routing:
+    /logs        -> UI log stream
+    /ev-status   -> UI EV status stream
+    /{cpid}      -> OCPP connection for charge point `cpid`
+- Flask (via uvicorn) HTTP server for the web UI + REST API
+- EV simulator connection wait + periodic status polling with backoff
 """
+
 import asyncio
 import logging
 from logging import StreamHandler
-from functools import partial
+
 import aiohttp
-from websockets import serve, ServerProtocol
 import uvicorn
+from websockets import serve
+from websockets.server import ServerConnection
+
 from app import web_ui_server
 from app.ocpp_handler import OCPPHandler
-from app.web_ui_server import app as flask_app
 from app.log_streamer import LogStreamer, WebSocketLogHandler
-from app.ev_simulator_state import EV_SIMULATOR_STATE
+from app.state import EV_SIMULATOR_STATE
+from app.status_streamer import EVStatusStreamer
+from app.config import (
+    OCPP_HOST, OCPP_PORT,
+    HTTP_HOST, HTTP_PORT,
+    LOG_WS_PATH, EV_STATUS_WS_PATH,
+    EV_SIMULATOR_BASE_URL, EV_STATUS_POLL_INTERVAL, EV_WAIT_MAX_BACKOFF,
+)
 
-# Configure logging for this module
+# ---------- Colored logging formatter ----------
 class ColoredFormatter(logging.Formatter):
-    """A custom formatter to add colors to log messages."""
     GREEN = "\033[92m"
     BLUE = "\033[94m"
     YELLOW = "\033[93m"
@@ -45,139 +59,188 @@ class ColoredFormatter(logging.Formatter):
 
 logger = logging.getLogger(__name__)
 
-async def serve_ocpp_connection(websocket: ServerProtocol):
-    """
-    The main handler for a new connection. It creates and starts a
-    dedicated handler for the charge point.
-    """
-    # The connection is logged here instead of in a custom protocol class.
-    # In websockets v12+, the path is on the `request` attribute.
-    path = websocket.request.path
-    logger.info(f"Connection received from: {websocket.remote_address} on path '{path}'")
-    ocpp_handler = OCPPHandler(websocket, path)
-    await ocpp_handler.start()
+# ---------- Per-path WebSocket handlers ----------
+async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: asyncio.Event):
+    """Handle OCPP charge point connection on /{charge_point_id}."""
+    charge_point_id = path.strip("/")
+    logger.info(f"Connection received from {websocket.remote_address} on path '{path}'")
 
-async def serve_log_stream(websocket: ServerProtocol, streamer: LogStreamer):
-    """Handles a single WebSocket connection for log streaming to the UI."""
+    if not charge_point_id or charge_point_id in (LOG_WS_PATH.strip("/"), EV_STATUS_WS_PATH.strip("/")):
+        logger.warning("Invalid OCPP path. Closing connection.")
+        await websocket.close()
+        return
+
+    handler = OCPPHandler(websocket, path, refresh_trigger)
+    await handler.start()
+
+async def handle_log_stream(websocket: ServerConnection, streamer: LogStreamer):
     await streamer.add_client(websocket)
     try:
-        # Keep the connection open and listen for any messages (e.g., a close message)
-        # This loop will exit when the client disconnects.
-        async for message in websocket:
-            # We don't expect messages from the client, but this keeps the connection alive.
+        async for _ in websocket:
             pass
     finally:
         streamer.remove_client(websocket)
 
-async def start_log_server(handler, host, port):
-    """A wrapper to run the log server as a background task."""
-    async with serve(handler, host, port):
-        await asyncio.Future()  # run forever
+async def handle_ev_status_stream(websocket: ServerConnection, streamer: EVStatusStreamer):
+    await streamer.add_client(websocket)
+    try:
+        async for _ in websocket:
+            pass
+    finally:
+        streamer.remove_client(websocket)
 
+async def ws_router(websocket: ServerConnection,
+                    log_streamer: LogStreamer, ev_status_streamer: EVStatusStreamer,
+                    ev_refresh_trigger: asyncio.Event):
+    """Route incoming WS connections based on the request path."""
+    path = "unknown"
+    try:
+        path = websocket.request.path
+        if path == LOG_WS_PATH:
+            await handle_log_stream(websocket, log_streamer)
+        elif path == EV_STATUS_WS_PATH:
+            await handle_ev_status_stream(websocket, ev_status_streamer)
+        else:
+            await handle_ocpp(websocket, path, ev_refresh_trigger)
+    except Exception as e:
+        logger.error(f"WebSocket router error on path '{path}': {e}", exc_info=True)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+# ---------- HTTP (Flask) via uvicorn ----------
 async def start_http_server():
-    """Starts the Flask web server using uvicorn."""
-    # The 'interface="wsgi"' parameter tells Uvicorn to use its WSGI-to-ASGI
-    # compatibility middleware for the Flask app.
-    config = uvicorn.Config(flask_app, host="0.0.0.0", port=5000, log_level="info", interface="wsgi")
+    config = uvicorn.Config(
+        web_ui_server.app,
+        host=HTTP_HOST,
+        port=HTTP_PORT,
+        log_level="info",
+        interface="wsgi",
+    )
     server = uvicorn.Server(config)
-    logger.info("Web server is running and listening on 0.0.0.0:5000")
+    logger.info(f"Web server listening on {HTTP_HOST}:{HTTP_PORT}")
     await server.serve()
 
+# ---------- EV simulator wait + polling ----------
 async def wait_for_ev_simulator():
-    """Waits until a successful connection to the EV simulator is made."""
-    url = "http://192.168.0.81/api/status"
-    logger.info("Waiting for EV simulator to become available...")
+    url = f"{EV_SIMULATOR_BASE_URL}/api/status"
+    backoff = 1
+    logger.info(f"Waiting for EV simulator at {url} ...")
     while True:
         try:
-            # Use a short timeout to avoid long waits on each attempt
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as resp:
+                    if resp.status == 200:
                         logger.info("EV simulator is available. Starting servers.")
-                        return # Success
-                    else:
-                        logger.debug(f"EV simulator is reachable but returned status {response.status}. Retrying...")
+                        return
+                    logger.debug(f"EV simulator reachable but status {resp.status}. Retrying...")
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            # Log the specific error type for better diagnostics.
-            logger.debug(f"EV simulator not yet available ({type(e).__name__}). Retrying in 5 seconds...")
-        await asyncio.sleep(5)
+            logger.debug(f"EV simulator not available ({type(e).__name__}). Backing off {backoff}s...")
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, EV_WAIT_MAX_BACKOFF)
 
-async def poll_ev_simulator_status():
-    """Periodically polls the EV simulator's status endpoint."""
-    # The IP address of the EV simulator.
-    url = "http://192.168.0.81/api/status"
+async def poll_ev_simulator_status(ev_status_streamer: EVStatusStreamer,
+                                   refresh_trigger: asyncio.Event):
+    url = f"{EV_SIMULATOR_BASE_URL}/api/status"
+    backoff = EV_STATUS_POLL_INTERVAL
     while True:
         try:
+            logger.debug("Polling EV simulator for status...")
             async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        status = await response.json()
-                        EV_SIMULATOR_STATE.update(status)
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        logger.debug(f"Polled EV status: {data}")
+                        EV_SIMULATOR_STATE.update(data)
+                        await ev_status_streamer.broadcast_status(EV_SIMULATOR_STATE)
+                        backoff = EV_STATUS_POLL_INTERVAL
                     else:
-                        EV_SIMULATOR_STATE.clear() # Clear state if simulator is not reachable
-                        logger.debug(f"EV simulator status endpoint returned: {response.status}")
-        except aiohttp.ClientConnectorError:
-            EV_SIMULATOR_STATE.clear() # Clear state on connection error
-            logger.debug("Could not connect to the EV simulator.")
-        await asyncio.sleep(5) # Poll every 5 seconds
+                        EV_SIMULATOR_STATE.clear()
+                        logger.debug("EV simulator status endpoint was not OK, clearing state.")
+                        await ev_status_streamer.broadcast_status({})
+                        logger.debug(f"EV status endpoint returned {resp.status}")
+        except aiohttp.ClientError:
+            EV_SIMULATOR_STATE.clear()
+            await ev_status_streamer.broadcast_status({})
+            logger.debug("Could not connect to EV simulator.")
+            backoff = min(max(backoff * 2, EV_STATUS_POLL_INTERVAL), 60)
+        except Exception as e:
+            logger.error(f"Polling EV simulator failed: {e}", exc_info=True)
 
+        try:
+            # Wait for either the poll interval to pass or an explicit trigger
+            sleep_task = asyncio.create_task(asyncio.sleep(backoff))
+            trigger_task = asyncio.create_task(refresh_trigger.wait())
+
+            done, pending = await asyncio.wait(
+                {sleep_task, trigger_task},
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            if trigger_task in done:
+                logger.debug("EV status poll triggered by an event.")
+                refresh_trigger.clear()
+
+            for task in pending:
+                task.cancel()
+        except asyncio.CancelledError:
+            break
+
+# ---------- Main ----------
 async def main():
-    # Centralized Logging Configuration
+    loop = asyncio.get_running_loop()
+
+    # Central logging setup
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
-    console_handler = StreamHandler()
-    console_handler.setFormatter(ColoredFormatter())
-    root_logger.addHandler(console_handler)
+    console = StreamHandler()
+    console.setFormatter(ColoredFormatter())
+    root_logger.addHandler(console)
 
-    # Before starting any servers, ensure the EV simulator is reachable.
-    await wait_for_ev_simulator()
-
-    # --- Log Streaming Setup ---
+    # Streamers
     log_streamer = LogStreamer()
-    # Create a simple formatter for the logs that will be sent over WebSocket.
-    # We don't want the ANSI color codes in the JSON payload.
-    ws_log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    ws_log_handler = WebSocketLogHandler(log_streamer)
-    ws_log_handler.setFormatter(ws_log_formatter)
+    ev_status_streamer = EVStatusStreamer()
+    ev_refresh_trigger = asyncio.Event()
+
+    ws_log_handler = WebSocketLogHandler(log_streamer, loop=loop)
+    ws_log_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
     root_logger.addHandler(ws_log_handler)
 
     logging.getLogger("websockets").setLevel(logging.INFO)
 
-    # Create background tasks for the HTTP and Log Streaming servers
-    http_server_task = asyncio.create_task(start_http_server())
-    ev_poller_task = asyncio.create_task(poll_ev_simulator_status())
+    # Let Flask know our loop (used by /api/test/*)
+    web_ui_server.attach_loop(loop)
+    web_ui_server.attach_ev_status_streamer(ev_status_streamer)
 
-    log_ws_host = "0.0.0.0"
-    log_ws_port = 5001 # A different port for the UI logs
-    log_stream_handler_with_context = partial(serve_log_stream, streamer=log_streamer)
-    log_server_task = asyncio.create_task(start_log_server(log_stream_handler_with_context, log_ws_host, log_ws_port))
+    await wait_for_ev_simulator()
 
-    # Start the main OCPP WebSocket server
-    ws_server_host = "0.0.0.0"
-    ws_server_port = 8887
-    flask_app.loop = asyncio.get_running_loop()  # Make the main event loop accessible to the Flask app
+    logger.info(f"Starting WebSocket server on {OCPP_HOST}:{OCPP_PORT} "
+                f"(paths: '{LOG_WS_PATH}', '{EV_STATUS_WS_PATH}', '/<ChargePointId>')")
+    ws_server = await serve(
+        lambda ws: ws_router(ws, log_streamer, ev_status_streamer, ev_refresh_trigger),
+        OCPP_HOST,
+        OCPP_PORT,
+        ping_interval=None,
+        max_size=2**22,
+    )
 
-    # The `serve` context manager runs the OCPP server and handles its shutdown.
-    async with serve(serve_ocpp_connection, ws_server_host, ws_server_port):
-        logger.info(f"OCPP WebSocket server created and listening on ({ws_server_host}, {ws_server_port})")
-        logger.info(f"Log streaming WebSocket server listening on ({log_ws_host}, {log_ws_port})")
-        logger.info("All servers are now running. Press CTRL+C to shut down.")
-        try:
-            # Keep the main coroutine alive to let the background servers run.
-            await asyncio.Future()
-        except asyncio.CancelledError:
-            # This is the expected result of a CTRL+C, so we can proceed to shutdown.
-            logger.info("Shutdown signal received.")
-        finally:
-            logger.info("Shutting down background services...")
-            http_server_task.cancel()
-            ev_poller_task.cancel()
-            log_server_task.cancel()
-        
+    tasks = [
+        asyncio.create_task(start_http_server()),
+        asyncio.create_task(poll_ev_simulator_status(ev_status_streamer, ev_refresh_trigger)),
+    ]
+
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        ws_server.close()
+        await ws_server.wait_closed()
+
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Application terminated cleanly.")
+        pass

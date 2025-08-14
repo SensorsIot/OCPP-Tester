@@ -8,9 +8,12 @@ import logging
 import uuid
 import random
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict
+
+import aiohttp
 
 from app.state import CHARGE_POINTS, TRANSACTIONS
+from app.config import EV_SIMULATOR_BASE_URL
 from app.messages import (
     BootNotificationRequest, BootNotificationResponse,
     AuthorizeRequest, AuthorizeResponse, IdTagInfo,
@@ -43,6 +46,19 @@ CP_STATE_MAP = {
     "Finishing": "CP State X",
 }
 
+# Map from OCPP 1.6 StatusNotification status to the state of our EV simulator
+OCPP_STATUS_TO_EV_STATE = {
+    "Available": "A",       # Disconnected
+    "Preparing": "B",       # Connected, not charging
+    "Charging": "C",        # Charging
+    "SuspendedEV": "B",     # Connected, not charging
+    "SuspendedEVSE": "B",   # Connected, not charging
+    "Finishing": "B",       # Connected, not charging (transaction ended)
+    "Reserved": "A",        # Disconnected
+    "Unavailable": "E",     # Error/Fault
+    "Faulted": "E",         # Error/Fault
+}
+
 
 class OcppServerLogic:
     """
@@ -50,9 +66,10 @@ class OcppServerLogic:
     This includes running test sequences and periodic tasks.
     """
 
-    def __init__(self, ocpp_handler: "OCPPHandler"):
+    def __init__(self, ocpp_handler: "OCPPHandler", refresh_trigger: asyncio.Event = None):
         self.handler = ocpp_handler
         self.charge_point_id = ocpp_handler.charge_point_id
+        self.refresh_trigger = refresh_trigger
 
     async def periodic_health_checks(self):
         """Periodically sends a Heartbeat trigger to check connection health."""
@@ -209,10 +226,32 @@ class OcppServerLogic:
         return DataTransferResponse(status="Accepted")
 
     async def handle_status_notification(self, charge_point_id: str, payload: StatusNotificationRequest) -> StatusNotificationResponse:
-        cp_state_log_message = f" (equivalent to {CP_STATE_MAP[payload.status]})" if payload.status in CP_STATE_MAP else ""
+        logger.debug(f"Handling StatusNotification from {charge_point_id}: {payload.status}")
+        cp_state_log_message = f" (equivalent to {CP_STATE_MAP.get(payload.status, 'Unknown')})"
         logger.info(f"Received StatusNotification from {charge_point_id}: Connector {payload.connectorId} is {payload.status}{cp_state_log_message}")
         if charge_point_id in CHARGE_POINTS:
             CHARGE_POINTS[charge_point_id]["status"] = payload.status
+
+        # Sync the EV simulator's state to reflect the charge point's state.
+        target_ev_state = OCPP_STATUS_TO_EV_STATE.get(payload.status)
+        if target_ev_state:
+            logger.debug(f"Mapped CP status '{payload.status}' to EV state '{target_ev_state}'. Attempting to sync.")
+            try:
+                set_url = f"{EV_SIMULATOR_BASE_URL}/api/set_state"
+                async with aiohttp.ClientSession() as session:
+                    logger.info(f"Syncing EV simulator state to '{target_ev_state}' based on CP status '{payload.status}'.")
+                    async with session.post(set_url, json={"state": target_ev_state}, timeout=5) as resp:
+                        if resp.status != 200:
+                            logger.error(f"Failed to sync EV simulator state. Simulator returned {resp.status}.")
+                        else:
+                            logger.debug("Successfully sent state change to simulator. Waiting briefly.")
+                            await asyncio.sleep(0.2) # Give simulator a moment to update its internal state
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                logger.error(f"Error while trying to sync EV simulator state: {e}")
+
+        if self.refresh_trigger:
+            logger.debug("Setting EV refresh trigger.")
+            self.refresh_trigger.set()
         return StatusNotificationResponse()
 
     async def handle_firmware_status_notification(self, charge_point_id: str, payload: FirmwareStatusNotificationRequest) -> FirmwareStatusNotificationResponse:

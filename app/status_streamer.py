@@ -1,37 +1,49 @@
 """
-Minimal EV status streamer for UI via WebSocket.
+EVStatusStreamer: Manages WebSocket clients for streaming EV simulator status.
 """
+import asyncio
 import json
 import logging
 from typing import Set, Dict, Any
-from websockets.server import WebSocketServerProtocol
-from websockets.exceptions import ConnectionClosed, ConnectionClosedOK, ConnectionClosedError
+
+from websockets.server import ServerConnection
+from websockets.exceptions import ConnectionClosed
 
 logger = logging.getLogger(__name__)
 
+
 class EVStatusStreamer:
+    """Manages a set of WebSocket clients for EV status streaming."""
+
     def __init__(self):
-        self.clients: Set[WebSocketServerProtocol] = set()
+        self.clients: Set[ServerConnection] = set()
 
-    async def add_client(self, websocket: WebSocketServerProtocol):
-        logger.info(f"EV status client connected: {websocket.remote_address}")
+    async def add_client(self, websocket: ServerConnection):
+        """Adds a new client to the set of EV status subscribers."""
         self.clients.add(websocket)
+        logger.info(f"EV status stream client connected: {websocket.remote_address}")
 
-    def remove_client(self, websocket: WebSocketServerProtocol):
-        logger.info(f"EV status client disconnected: {websocket.remote_address}")
+    def remove_client(self, websocket: ServerConnection):
+        """Removes a client from the set."""
         self.clients.discard(websocket)
+        logger.info(f"EV status stream client disconnected: {websocket.remote_address}")
 
     async def broadcast_status(self, status: Dict[str, Any]):
+        """Broadcasts the EV status as a JSON string to all connected clients."""
         if not self.clients:
             return
-        payload = json.dumps({"type": "ev_status", "data": status})
-        dead = []
-        for client in list(self.clients):
-            try:
-                await client.send(payload)
-            except (ConnectionClosed, ConnectionClosedOK, ConnectionClosedError):
-                dead.append(client)
-            except Exception:
-                dead.append(client)
-        for d in dead:
-            self.clients.discard(d)
+
+        wrapped_message = {
+            "type": "ev_status",
+            "data": status
+        }
+        message = json.dumps(wrapped_message)
+        logger.debug(f"Broadcasting EV status message: {message}")
+        clients_to_send = list(self.clients)
+        tasks = [client.send(message) for client in clients_to_send]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for client, result in zip(clients_to_send, results):
+            if isinstance(result, ConnectionClosed):
+                self.clients.discard(client)
+                logger.info(f"Removed disconnected EV status stream client: {client.remote_address}")

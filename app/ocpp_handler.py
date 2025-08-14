@@ -10,12 +10,12 @@ import uuid
 from dataclasses import asdict, is_dataclass, fields, is_dataclass as is_dc
 from typing import Any, Dict, Type, Callable
 
-from app import ev_status_streamer as cp_handlers
 from app.messages import (
     BootNotificationRequest, AuthorizeRequest, DataTransferRequest,
     StatusNotificationRequest, FirmwareStatusNotificationRequest,
     DiagnosticsStatusNotificationRequest, HeartbeatRequest,
     StartTransactionRequest, StopTransactionRequest, MeterValuesRequest,
+    TriggerMessageRequest,
 )
 from app.ocpp_server_logic import OcppServerLogic
 from app.state import CHARGE_POINTS
@@ -27,43 +27,43 @@ logger = logging.getLogger(__name__)
 # Each entry: action -> {"handler": async function, "payload_class": dataclass}
 MESSAGE_HANDLERS: Dict[str, Dict[str, Any]] = {
     "BootNotification": {
-        "handler": cp_handlers.handle_boot_notification,
+        "handler_name": "handle_boot_notification",
         "payload_class": BootNotificationRequest,
     },
     "Authorize": {
-        "handler": cp_handlers.handle_authorize,
+        "handler_name": "handle_authorize",
         "payload_class": AuthorizeRequest,
     },
     "DataTransfer": {
-        "handler": cp_handlers.handle_data_transfer,
+        "handler_name": "handle_data_transfer",
         "payload_class": DataTransferRequest,
     },
     "StatusNotification": {
-        "handler": cp_handlers.handle_status_notification,
+        "handler_name": "handle_status_notification",
         "payload_class": StatusNotificationRequest,
     },
     "FirmwareStatusNotification": {
-        "handler": cp_handlers.handle_firmware_status_notification,
+        "handler_name": "handle_firmware_status_notification",
         "payload_class": FirmwareStatusNotificationRequest,
     },
     "DiagnosticsStatusNotification": {
-        "handler": cp_handlers.handle_diagnostics_status_notification,
+        "handler_name": "handle_diagnostics_status_notification",
         "payload_class": DiagnosticsStatusNotificationRequest,
     },
     "Heartbeat": {
-        "handler": cp_handlers.handle_heartbeat,
+        "handler_name": "handle_heartbeat",
         "payload_class": HeartbeatRequest,
     },
     "StartTransaction": {
-        "handler": cp_handlers.handle_start_transaction,
+        "handler_name": "handle_start_transaction",
         "payload_class": StartTransactionRequest,
     },
     "StopTransaction": {
-        "handler": cp_handlers.handle_stop_transaction,
+        "handler_name": "handle_stop_transaction",
         "payload_class": StopTransactionRequest,
     },
     "MeterValues": {
-        "handler": cp_handlers.handle_meter_values,
+        "handler_name": "handle_meter_values",
         "payload_class": MeterValuesRequest,
     },
 }
@@ -90,12 +90,13 @@ def _filter_payload(payload_cls: Type, data: Dict) -> Dict:
     return {k: v for k, v in data.items() if k in allowed}
 
 class OCPPHandler:
-    def __init__(self, websocket: ServerConnection, path: str):
+    def __init__(self, websocket: ServerConnection, path: str, refresh_trigger: asyncio.Event = None):
         self.websocket = websocket
         self.path = path
         self.charge_point_id = path.strip("/")
         self.pending_requests: Dict[str, Dict[str, Any]] = {}
-        self.ocpp_logic = OcppServerLogic(self)
+        self.refresh_trigger = refresh_trigger
+        self.ocpp_logic = OcppServerLogic(self, self.refresh_trigger)
         self._logic_task = None
 
     async def start(self):
@@ -180,9 +181,10 @@ class OCPPHandler:
         if not handler_info:
             logger.warning(f"No handler registered for action '{action}'")
             return
-        handler, payload_class = handler_info["handler"], handler_info["payload_class"]
+        handler_name, payload_class = handler_info["handler_name"], handler_info["payload_class"]
         try:
             filtered = _filter_payload(payload_class, payload_dict)
+            handler = getattr(self.ocpp_logic, handler_name)
             payload = payload_class(**filtered)
             response_payload = await handler(self.charge_point_id, payload)
             if response_payload is not None:
