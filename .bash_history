@@ -1,4 +1,8 @@
 python3 main.py
+python3 main.py
+python3 main.py
+python3 main.py
+python3 main.py
 touch app/__init__.py
 python3 main.py
 python3 main.py
@@ -494,10 +498,3 @@ python main.py
 python main.py 
 python main.py 
 sudo reboot now
-<<<<<<< HEAD
-source /home/opcc/venv/bin/activate
-/home/opcc/venv/bin/python /home/opcc/app/test_sequence.py
-/home/opcc/venv/bin/python /home/opcc/app/test_sequence.py
-clear
-=======
->>>>>>> e74677ea2379614c2e43d0d35dec14f053e7ed2f
