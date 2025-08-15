@@ -39,6 +39,7 @@ def list_charge_points():
             "vendor": data.get("vendor"),
             "status": data.get("status"),
             "last_heartbeat": data.get("last_heartbeat"),
+            "test_results": data.get("test_results", {}),
         }
         for cp_id, data in CHARGE_POINTS.items()
     }

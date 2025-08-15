@@ -38,7 +38,6 @@ class EVStatusStreamer:
             "data": status
         }
         message = json.dumps(wrapped_message)
-        logger.debug(f"Broadcasting EV status message: {message}")
         clients_to_send = list(self.clients)
         tasks = [client.send(message) for client in clients_to_send]
         results = await asyncio.gather(*tasks, return_exceptions=True)

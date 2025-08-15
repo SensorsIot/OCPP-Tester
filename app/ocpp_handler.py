@@ -127,11 +127,10 @@ class OCPPHandler:
 
     async def run_logic_and_periodic_tasks(self):
         try:
-            await asyncio.sleep(5)
-            if not CHARGE_POINTS.get(self.charge_point_id, {}).get("model"):
-                logger.info(f"'{self.charge_point_id}' has not sent BootNotification. Triggering one.")
-                await self.send_and_wait("TriggerMessage", TriggerMessageRequest(requestedMessage="BootNotification"))
-            logger.info(f"Onboarding for {self.charge_point_id} complete. Starting periodic health checks.")
+            # The server is now fully driven by the UI for running test steps.
+            # This task's only responsibility is to start the passive,
+            # long-running health check loop that waits for heartbeats.
+            logger.info(f"Connection for {self.charge_point_id} established. Starting periodic health checks.")
             await self.ocpp_logic.periodic_health_checks()
         except asyncio.CancelledError:
             logger.info(f"Logic task for {self.charge_point_id} cancelled.")
@@ -140,7 +139,7 @@ class OCPPHandler:
         except Exception as e:
             logger.error(f"Logic error for {self.charge_point_id}: {e}", exc_info=True)
 
-    async def send_and_wait(self, action: str, request_payload: Any, timeout: int = 30):
+    async def send_and_wait(self, action: str, request_payload: Any, timeout: int = 30) -> bool:
         unique_id = str(uuid.uuid4())
         event = asyncio.Event()
         self.pending_requests[unique_id] = {"action": action, "event": event}
@@ -150,8 +149,10 @@ class OCPPHandler:
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
             logger.info(f"Response received for {action} (id={unique_id}). Proceeding.")
+            return True
         except asyncio.TimeoutError:
             logger.error(f"Timeout: No response for {action} (id={unique_id}) within {timeout}s.")
+            return False
         finally:
             self.pending_requests.pop(unique_id, None)
 
@@ -206,6 +207,8 @@ class OCPPHandler:
             request_info = self.pending_requests[unique_id]
             action = request_info.get("action", "unknown action")
             logger.info(f"Received CALLRESULT for '{action}' (id={unique_id}) from {self.charge_point_id}")
+            if action == "GetConfiguration":
+                logger.info(f"  -> GetConfiguration response payload: {payload}")
             event = request_info.get("event")
             if event:
                 event.set()

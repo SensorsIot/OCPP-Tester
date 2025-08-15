@@ -115,7 +115,7 @@ async def start_http_server():
         web_ui_server.app,
         host=HTTP_HOST,
         port=HTTP_PORT,
-        log_level="info",
+        log_level="warning",
         interface="wsgi",
     )
     server = uvicorn.Server(config)
@@ -141,18 +141,31 @@ async def wait_for_ev_simulator():
         await asyncio.sleep(backoff)
         backoff = min(backoff * 2, EV_WAIT_MAX_BACKOFF)
 
+async def set_initial_ev_state():
+    """Sets the EV simulator to a known initial state ('A') on startup."""
+    state_to_set = "A"
+    set_url = f"{EV_SIMULATOR_BASE_URL}/api/set_state"
+    logger.info(f"Setting initial EV simulator state to '{state_to_set}'...")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(set_url, json={"state": state_to_set}, timeout=5) as resp:
+                if resp.status == 200:
+                    logger.info("Successfully sent request to set initial EV simulator state to 'A' (Disconnected).")
+                else:
+                    logger.error(f"Failed to set initial EV state. Simulator returned {resp.status}.")
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        logger.error(f"Error while setting initial EV simulator state: {e}")
+
 async def poll_ev_simulator_status(ev_status_streamer: EVStatusStreamer,
                                    refresh_trigger: asyncio.Event):
     url = f"{EV_SIMULATOR_BASE_URL}/api/status"
     backoff = EV_STATUS_POLL_INTERVAL
     while True:
         try:
-            logger.debug("Polling EV simulator for status...")
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        logger.debug(f"Polled EV status: {data}")
                         EV_SIMULATOR_STATE.update(data)
                         await ev_status_streamer.broadcast_status(EV_SIMULATOR_STATE)
                         backoff = EV_STATUS_POLL_INTERVAL
@@ -217,6 +230,9 @@ async def main():
     web_ui_server.attach_ev_status_streamer(ev_status_streamer)
 
     await wait_for_ev_simulator()
+
+    # Set the EV simulator to a known disconnected state on startup.
+    await set_initial_ev_state()
 
     logger.info(f"Starting WebSocket server on {OCPP_HOST}:{OCPP_PORT} "
                 f"(paths: '{LOG_WS_PATH}', '{EV_STATUS_WS_PATH}', '/<ChargePointId>')")

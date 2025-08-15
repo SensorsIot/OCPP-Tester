@@ -18,6 +18,8 @@
         .test-category { background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; padding:15px; }
         .button-group { display:flex; flex-wrap:wrap; gap:10px; }
         .button-group button { padding:10px 15px; font-size:14px; border:none; border-radius:5px; color:#fff; background:#007bff; cursor:pointer; }
+        .button-group button.btn-success { background-color: #28a745; }
+        .button-group button.btn-failure { background-color: #dc3545; }
         .button-group button.active-state { background-color: #28a745; }
         .button-group button.disabled { background:#6c757d; cursor:not-allowed; }
         .log-container { height:400px; overflow-y:scroll; border:1px solid #ccc; padding:10px; background:#f8f9fa; border-radius:8px; margin-top:20px; font-family:'Courier New', Courier, monospace; font-size:14px; }
@@ -96,6 +98,10 @@
 </div>
 
 <script>
+    // --- CRITICAL DEBUG STEP ---
+    alert("DEBUG: New JavaScript is loading. If you see this, the browser cache is not the issue.");
+    console.log("DEBUG: New JavaScript is loading. If you see this, the browser cache is not the issue.");
+
     const connectionStatusEl = document.getElementById("connection-status");
     const chargingStatusEl = document.getElementById("charging-status");
     const chargePointSelector = document.getElementById("charge-point-selector");
@@ -143,18 +149,45 @@
 
     function updateChargePointDetails(cpId) {
         const cp = chargePointsData[cpId];
+        console.log(`[Debug] updateChargePointDetails called for cpId: '${cpId}'. Full data object:`, cp);
+
         if (cp) {
+            // Update text fields
             vendorEl.textContent = cp.vendor || 'N/A';
             modelEl.textContent = cp.model || 'N/A';
             chargingStatusEl.textContent = cp.status || 'N/A';
             lastHeartbeatEl.textContent = cp.last_heartbeat ? new Date(cp.last_heartbeat).toLocaleString() : 'N/A';
-            document.querySelectorAll('.test-category .button-group button').forEach(btn => btn.classList.remove('disabled'));
+
+            // Enable all buttons for the active charge point
+            document.querySelectorAll('.test-category .button-group button').forEach(btn => {
+                btn.classList.remove('disabled');
+            });
+
+            // Update button colors based on test results
+            const testResults = cp.test_results || {};
+            console.log("[Debug] Processing test results:", testResults);
+
+            document.querySelectorAll('[data-step-key]').forEach(btn => {
+                const stepKey = btn.dataset.stepKey;
+                const result = testResults[stepKey];
+                console.log(`  - Checking button for step '${stepKey}'. Found result: '${result}'`);
+
+                btn.classList.remove('btn-success', 'btn-failure'); // Reset classes first
+                if (result === 'SUCCESS') {
+                    console.log(`    -> Applying 'btn-success' to '${stepKey}'`);
+                    btn.classList.add('btn-success');
+                } else if (result === 'FAILURE') {
+                    console.log(`    -> Applying 'btn-failure' to '${stepKey}'`);
+                    btn.classList.add('btn-failure');
+                }
+            });
         } else {
-            vendorEl.textContent = 'N/A';
-            modelEl.textContent = 'N/A';
-            chargingStatusEl.textContent = 'N/A';
-            lastHeartbeatEl.textContent = 'N/A';
-            document.querySelectorAll('.test-category .button-group button').forEach(btn => btn.classList.add('disabled'));
+            // Clear details and disable/reset buttons if no CP is selected/connected
+            ['vendor', 'model', 'charging-status', 'last-heartbeat'].forEach(id => document.getElementById(id).textContent = 'N/A');
+            document.querySelectorAll('.test-category .button-group button').forEach(btn => {
+                btn.classList.add('disabled');
+                btn.classList.remove('btn-success', 'btn-failure');
+            });
         }
     }
 
@@ -163,6 +196,7 @@
             const r = await fetch('/api/charge_points');
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             chargePointsData = await r.json();
+            console.log("[Debug] fetchChargePoints received new data from API:", JSON.parse(JSON.stringify(chargePointsData)));
 
             const ids = Object.keys(chargePointsData);
             const prev = chargePointSelector.value;
@@ -220,12 +254,14 @@
                 const container = document.getElementById(def.category);
                 const btn = document.createElement('button');
                 btn.textContent = def.name;
+                btn.dataset.stepKey = key; // Tag the button with its step name
                 btn.onclick = async () => {
                     const cpId = chargePointSelector.value;
                     if (!cpId) {
                         showStatusMessage("No charge point selected", true);
                         return;
                     }
+                    console.log(`[Debug] Button clicked for test '${key}' on CP '${cpId}'.`);
                     lastCommandTime = Date.now();
                     try {
                         const r = await fetch(`/api/test/${encodeURIComponent(cpId)}/${key}`, { method: 'POST' });
@@ -234,6 +270,10 @@
                         showStatusMessage(j.status || 'Done');
                     } catch (e) {
                         showStatusMessage(`Failed: ${e.message}`, true);
+                    } finally {
+                        console.log(`[Debug] Test '${key}' finished. Forcing UI refresh by calling fetchChargePoints().`);
+                        // Force a refresh to get the latest test results immediately
+                        await fetchChargePoints();
                     }
                 };
                 container.appendChild(btn);
