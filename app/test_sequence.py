@@ -12,6 +12,7 @@ from typing import Callable, Any
 from websockets.server import WebSocketServerProtocol
 from websockets.exceptions import ConnectionClosedOK
 
+from app.config import EV_SIMULATOR_BASE_URL
 from app.state import TRANSACTIONS
 # Import the individual test
 from app.messages import (
@@ -47,7 +48,7 @@ class TestSequence:
 
     async def _set_ev_state(self, state: str):
         """A helper method to set the state of the EV simulator."""
-        url = "http://192.168.0.81/api/set_state"
+        url = f"{EV_SIMULATOR_BASE_URL}/api/set_state"
         logger.info(f"Setting EV simulator state to '{state}'...")
         try:
             async with aiohttp.ClientSession() as session:

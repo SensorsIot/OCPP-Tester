@@ -139,9 +139,36 @@ class OcppServerLogic:
         """A.2: Fetches configuration from the charge point."""
         logger.info(f"--- Step A.2: Running configuration exchange for {self.charge_point_id} ---")
         step_name = "run_a2_configuration_exchange"
+
+        # Attempt to disable "Plug and Charge" or "Free Charging" mode by trying common keys.
+        # This command instructs the charge point to require authorization for every transaction.
+        keys_to_disable_autostart = ["AuthorizationFree", "FreeCharging", "PlugAndChargeEnabled"]
+        successful_key = None
+        for key in keys_to_disable_autostart:
+            logger.info(f"Attempting to disable auto-start by setting '{key}' to 'false'.")
+            response = await self.handler.send_and_wait(
+                "ChangeConfiguration",
+                ChangeConfigurationRequest(key=key, value="false")
+            )
+            if response and response.get("status") == "Accepted":
+                logger.info(f"SUCCESS: Charge point accepted configuration change for '{key}'.")
+                successful_key = key
+                break
+            elif response:
+                logger.info(f"Charge point did not accept configuration for '{key}'. Status: {response.get('status')}. Trying next key...")
+            else:
+                logger.warning(f"No response from charge point for '{key}'. Trying next key...")
+
+        if not successful_key:
+            logger.warning("Could not disable auto-start feature using common keys. The C.1 test may fail if the device auto-starts transactions.")
+
+        # The keys to fetch in GetConfiguration. We'll include the one we successfully set, if any.
+        keys_to_get = ["SupportedFeatureProfiles", "HeartbeatInterval"]
+        if successful_key:
+            keys_to_get.append(successful_key)
         success = await self.handler.send_and_wait(
             "GetConfiguration",
-            GetConfigurationRequest(key=["SupportedFeatureProfiles", "HeartbeatInterval"])
+            GetConfigurationRequest(key=keys_to_get)
         )
         if success:
             logger.info("SUCCESS: The charge point responded to GetConfiguration.")
@@ -213,15 +240,30 @@ class OcppServerLogic:
         connector_id = 1
 
         # 1. Simulate connecting an EV to the charge point.
-        await self._set_ev_state("C")
+        await self._set_ev_state("B")
         # Give the charge point a moment to process the state change (e.g., send StatusNotification)
         await asyncio.sleep(2)
 
         # 2. Send the RemoteStartTransaction command.
-        logger.info("Sending RemoteStartTransaction...")
+        logger.info("Sending RemoteStartTransaction with a 16A charging limit...")
+        limit_amps = 16.0
+        charging_profile = ChargingProfile(
+            chargingProfileId=random.randint(1, 1000),
+            stackLevel=1,
+            chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,
+            chargingProfileKind=ChargingProfileKindType.Absolute,
+            chargingSchedule=ChargingSchedule(
+                chargingRateUnit=ChargingRateUnitType.A,
+                chargingSchedulePeriod=[
+                    ChargingSchedulePeriod(startPeriod=0, limit=limit_amps)
+                ]
+            )
+        )
         start_ok = await self.handler.send_and_wait(
             "RemoteStartTransaction",
-            RemoteStartTransactionRequest(idTag=id_tag, connectorId=connector_id)
+            RemoteStartTransactionRequest(idTag=id_tag,
+                                          connectorId=connector_id,
+                                          chargingProfile=charging_profile)
         )
 
         if not start_ok:
@@ -237,9 +279,14 @@ class OcppServerLogic:
 
         # 4. Check if the transaction has started.
         transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
-                               tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
+                               tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"
+                               and tdata.get("id_tag") == id_tag), None)
 
         if transaction_id:
+            # Now that the transaction is authorized and started, simulate the EV drawing power.
+            logger.info(f"Transaction {transaction_id} is ongoing. Setting EV state to 'C' to simulate charging.")
+            await self._set_ev_state("C")
+
             # Add a small delay to allow the charge point to send a StatusNotification
             logger.info("Transaction is ongoing. Waiting a moment for the wallbox to report 'Charging' status...")
             await asyncio.sleep(2)
@@ -251,17 +298,35 @@ class OcppServerLogic:
             else:
                 logger.warning(f"NOTICE: Wallbox status is '{current_status}', not 'Charging' as expected. The test will continue.")
 
-            # Per request, check the advertised current from the EV simulator before stopping.
-            logger.info("Checking EV simulator for advertised max current from wallbox...")
-            advertised_amps = EV_SIMULATOR_STATE.get("wallbox_advertised_max_current_amps")
-            logger.info(f"EV simulator reports wallbox_advertised_max_current_amps = {advertised_amps}")
+            # Verify that the wallbox is advertising the correct current (16A)
+            # and that the EV simulator sees the corresponding duty cycle.
+            logger.info("Verifying advertised current and CP duty cycle from EV simulator...")
+            # Force a refresh of the EV simulator status to get the latest values
+            if self.refresh_trigger:
+                self.refresh_trigger.set()
+                await asyncio.sleep(1)  # wait for poll to complete
 
-            # If the value is 0 (or not present), wait for 10 minutes as a placeholder for a more complex check.
-            if not advertised_amps:
-                wait_duration = 600  # 10 minutes
-                logger.warning(f"Advertised current is {advertised_amps}. Waiting for {wait_duration} seconds as per test instruction...")
-                await asyncio.sleep(wait_duration)
-                logger.info("Wait complete. Proceeding with RemoteStopTransaction.")
+            advertised_amps = EV_SIMULATOR_STATE.get("wallbox_advertised_max_current_amps")
+            duty_cycle = EV_SIMULATOR_STATE.get("cp_duty_cycle")
+
+            expected_amps = 16.0
+            expected_duty_cycle = (expected_amps / 0.6) / 100  # e.g., 0.2667 for 16A
+            tolerance = 0.02  # 2% tolerance for duty cycle
+
+            logger.info(f"EV simulator reports: Advertised Amps = {advertised_amps}, Duty Cycle = {duty_cycle}")
+            logger.info(f"Expected values: Amps = {expected_amps}, Duty Cycle = ~{expected_duty_cycle:.4f}")
+
+            if advertised_amps == expected_amps:
+                logger.info(f"SUCCESS: Wallbox advertised current ({advertised_amps}A) matches expected value ({expected_amps}A).")
+            else:
+                logger.warning(f"NOTICE: Wallbox advertised current ({advertised_amps}A) from simulator does not match expected value ({expected_amps}A).")
+
+            if duty_cycle is not None and abs(duty_cycle - expected_duty_cycle) <= tolerance:
+                logger.info(f"SUCCESS: CP Duty Cycle ({duty_cycle:.4f}) is within tolerance of expected value ({expected_duty_cycle:.4f}).")
+            else:
+                logger.warning(f"NOTICE: CP Duty Cycle ({duty_cycle}) from simulator is outside tolerance of expected value ({expected_duty_cycle:.4f}).")
+
+            await asyncio.sleep(10) # Let transaction run for a bit
 
             logger.info(f"SUCCESS: Detected ongoing transaction {transaction_id}. Now attempting to stop it.")
             logger.info(f"Sending RemoteStopTransaction for transaction {transaction_id}...")
@@ -459,7 +524,12 @@ class OcppServerLogic:
                 if sv.phase: details_parts.append(f"phase: {sv.phase}")
                 details = f" ({', '.join(details_parts)})" if details_parts else ""
 
-                logger.debug(f"    - {measurand}: {sv.value}{unit}{details}")
+                log_message = f"    - {measurand}: {sv.value}{unit}{details}"
+                # Highlight the offered current from the wallbox itself
+                if measurand == "Current.Offered":
+                    logger.info(log_message)
+                else:
+                    logger.debug(log_message)
         if payload.transactionId and payload.transactionId in TRANSACTIONS:
             if "meter_values" not in TRANSACTIONS[payload.transactionId]:
                 TRANSACTIONS[payload.transactionId]["meter_values"] = []

@@ -8,7 +8,7 @@ import json
 import logging
 import uuid
 from dataclasses import asdict, is_dataclass, fields, is_dataclass as is_dc
-from typing import Any, Dict, Type, Callable
+from typing import Any, Dict, Type, Callable, Optional
 
 from app.messages import (
     BootNotificationRequest, AuthorizeRequest, DataTransferRequest,
@@ -139,20 +139,21 @@ class OCPPHandler:
         except Exception as e:
             logger.error(f"Logic error for {self.charge_point_id}: {e}", exc_info=True)
 
-    async def send_and_wait(self, action: str, request_payload: Any, timeout: int = 30) -> bool:
+    async def send_and_wait(self, action: str, request_payload: Any, timeout: int = 30) -> Optional[Dict[str, Any]]:
         unique_id = str(uuid.uuid4())
         event = asyncio.Event()
-        self.pending_requests[unique_id] = {"action": action, "event": event}
+        pending_request = {"action": action, "event": event}
+        self.pending_requests[unique_id] = pending_request
         message = create_ocpp_message(2, unique_id, request_payload, action)
         await self.websocket.send(message)
         logger.info(f"Sent {action} (id={unique_id}). Waiting for response...")
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
             logger.info(f"Response received for {action} (id={unique_id}). Proceeding.")
-            return True
+            return pending_request.get("response_payload")
         except asyncio.TimeoutError:
             logger.error(f"Timeout: No response for {action} (id={unique_id}) within {timeout}s.")
-            return False
+            return None
         finally:
             self.pending_requests.pop(unique_id, None)
 
@@ -209,6 +210,7 @@ class OCPPHandler:
             logger.info(f"Received CALLRESULT for '{action}' (id={unique_id}) from {self.charge_point_id}")
             if action == "GetConfiguration":
                 logger.info(f"  -> GetConfiguration response payload: {payload}")
+            request_info["response_payload"] = payload
             event = request_info.get("event")
             if event:
                 event.set()

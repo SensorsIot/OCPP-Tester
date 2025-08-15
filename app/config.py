@@ -23,6 +23,6 @@ HTTP_PORT = int(_env("HTTP_PORT", "5000"))
 UI_INDEX_PATH = _env("UI_INDEX_PATH", "app/templates/index.html")
 
 # --- EV Simulator ---
-EV_SIMULATOR_BASE_URL = _env("EV_SIMULATOR_BASE_URL", "http://192.168.0.81")
+EV_SIMULATOR_BASE_URL = _env("EV_SIMULATOR_BASE_URL", "http://192.168.0.151")
 EV_STATUS_POLL_INTERVAL = int(_env("EV_STATUS_POLL_INTERVAL", "5"))  # seconds
 EV_WAIT_MAX_BACKOFF = int(_env("EV_WAIT_MAX_BACKOFF", "30"))         # seconds
