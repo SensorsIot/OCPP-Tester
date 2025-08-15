@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict
 
 import aiohttp
 
-from app.state import CHARGE_POINTS, TRANSACTIONS
+from app.state import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE
 from app.config import EV_SIMULATOR_BASE_URL
 from app.messages import (
     BootNotificationRequest, BootNotificationResponse,
@@ -70,6 +70,8 @@ class OcppServerLogic:
         self.handler = ocpp_handler
         self.charge_point_id = ocpp_handler.charge_point_id
         self.refresh_trigger = refresh_trigger
+        # Used to wait for specific messages triggered by a test step
+        self.pending_triggered_message_events: Dict[str, asyncio.Event] = {}
 
     def _set_test_result(self, step_name: str, result: str):
         """Stores the result of a test step in the global state."""
@@ -80,6 +82,26 @@ class OcppServerLogic:
 
         CHARGE_POINTS[self.charge_point_id]["test_results"][step_name] = result
         logger.debug(f"Stored test result for {self.charge_point_id} - {step_name}: {result}")
+
+    async def _set_ev_state(self, state: str):
+        """Helper to set EV state and trigger a UI refresh."""
+        set_url = f"{EV_SIMULATOR_BASE_URL}/api/set_state"
+        logger.info(f"Setting EV simulator state to '{state}'...")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(set_url, json={"state": state}, timeout=5) as resp:
+                    if resp.status != 200:
+                        logger.error(f"Failed to set EV state. Simulator returned {resp.status}")
+                        return
+                    logger.info(f"Successfully requested EV state change to '{state}'.")
+                    # Give the simulator a moment to process the state change
+                    await asyncio.sleep(0.2)
+                    # Trigger a poll to update the UI
+                    if self.refresh_trigger:
+                        self.refresh_trigger.set()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            logger.error(f"Error while setting EV simulator state: {e}")
+
     async def periodic_health_checks(self):
         """Periodically checks connection health. This is now a passive task."""
         while True:
@@ -148,23 +170,39 @@ class OcppServerLogic:
         logger.info(f"--- Step A.3 for {self.charge_point_id} complete. ---")
 
     async def run_b1_status_and_meter_value_acquisition(self):
-        """B.1: Requests status and meter values from the charge point."""
-        logger.info(f"--- Step B.1: Acquiring status and meter values for {self.charge_point_id} ---")
+        """B.1: Requests meter values from the charge point and waits for them."""
+        logger.info(f"--- Step B.1: Acquiring meter values for {self.charge_point_id} ---")
         step_name = "run_b1_status_and_meter_value_acquisition"
-        status_ok = await self.handler.send_and_wait(
+
+        # 1. Create an event to wait for the MeterValues message
+        meter_values_event = asyncio.Event()
+        self.pending_triggered_message_events["MeterValues"] = meter_values_event
+
+        # 2. Send the trigger
+        trigger_ok = await self.handler.send_and_wait(
             "TriggerMessage",
-            TriggerMessageRequest(requestedMessage="StatusNotification")
+            TriggerMessageRequest(requestedMessage="MeterValues", connectorId=1)
         )
-        meter_ok = await self.handler.send_and_wait(
-            "TriggerMessage",
-            TriggerMessageRequest(requestedMessage="MeterValues")
-        )
-        if status_ok and meter_ok:
-            logger.info("SUCCESS: The charge point acknowledged both TriggerMessage requests.")
-            self._set_test_result(step_name, "SUCCESS")
-        else:
-            logger.error("FAILURE: The charge point did not respond to one or more TriggerMessage requests.")
+
+        if not trigger_ok:
+            logger.error("FAILURE: The charge point did not acknowledge the TriggerMessage request.")
             self._set_test_result(step_name, "FAILURE")
+            self.pending_triggered_message_events.pop("MeterValues", None)  # Cleanup
+            logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
+            return
+
+        # 3. Wait for the MeterValues message to arrive
+        try:
+            logger.info("Trigger acknowledged. Waiting for the MeterValues message from the charge point...")
+            await asyncio.wait_for(meter_values_event.wait(), timeout=15)
+            logger.info("SUCCESS: Received triggered MeterValues message from the charge point.")
+            self._set_test_result(step_name, "SUCCESS")
+        except asyncio.TimeoutError:
+            logger.error("FAILURE: Timed out waiting for the triggered MeterValues message.")
+            self._set_test_result(step_name, "FAILURE")
+        finally:
+            self.pending_triggered_message_events.pop("MeterValues", None)
+
         logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
 
     async def run_c1_remote_transaction_test(self):
@@ -173,38 +211,76 @@ class OcppServerLogic:
         step_name = "run_c1_remote_transaction_test"
         id_tag = "test_id_1"
         connector_id = 1
+
+        # 1. Simulate connecting an EV to the charge point.
+        await self._set_ev_state("C")
+        # Give the charge point a moment to process the state change (e.g., send StatusNotification)
+        await asyncio.sleep(2)
+
+        # 2. Send the RemoteStartTransaction command.
         logger.info("Sending RemoteStartTransaction...")
         start_ok = await self.handler.send_and_wait(
             "RemoteStartTransaction",
             RemoteStartTransactionRequest(idTag=id_tag, connectorId=connector_id)
         )
+
         if not start_ok:
             logger.error("FAILURE: RemoteStartTransaction was not acknowledged by the charge point.")
             self._set_test_result(step_name, "FAILURE")
+            await self._set_ev_state("A")  # Cleanup
             logger.info(f"--- Step C.1 for {self.charge_point_id} complete. ---")
             return
 
-        await asyncio.sleep(10)  # Let transaction run for a bit
+        # 3. Wait for the charge point to send a StartTransaction.req, which registers the transaction.
+        logger.info("Waiting up to 10 seconds for the charge point to send a StartTransaction message...")
+        await asyncio.sleep(10)
 
+        # 4. Check if the transaction has started.
         transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
                                tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
 
         if transaction_id:
+            # Add a small delay to allow the charge point to send a StatusNotification
+            logger.info("Transaction is ongoing. Waiting a moment for the wallbox to report 'Charging' status...")
+            await asyncio.sleep(2)
+
+            # Check if the wallbox status is 'Charging'
+            current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
+            if current_status == "Charging":
+                logger.info(f"SUCCESS: Wallbox status is '{current_status}' as expected.")
+            else:
+                logger.warning(f"NOTICE: Wallbox status is '{current_status}', not 'Charging' as expected. The test will continue.")
+
+            # Per request, check the advertised current from the EV simulator before stopping.
+            logger.info("Checking EV simulator for advertised max current from wallbox...")
+            advertised_amps = EV_SIMULATOR_STATE.get("wallbox_advertised_max_current_amps")
+            logger.info(f"EV simulator reports wallbox_advertised_max_current_amps = {advertised_amps}")
+
+            # If the value is 0 (or not present), wait for 10 minutes as a placeholder for a more complex check.
+            if not advertised_amps:
+                wait_duration = 600  # 10 minutes
+                logger.warning(f"Advertised current is {advertised_amps}. Waiting for {wait_duration} seconds as per test instruction...")
+                await asyncio.sleep(wait_duration)
+                logger.info("Wait complete. Proceeding with RemoteStopTransaction.")
+
+            logger.info(f"SUCCESS: Detected ongoing transaction {transaction_id}. Now attempting to stop it.")
             logger.info(f"Sending RemoteStopTransaction for transaction {transaction_id}...")
             stop_ok = await self.handler.send_and_wait(
                 "RemoteStopTransaction",
                 RemoteStopTransactionRequest(transactionId=transaction_id)
             )
             if stop_ok:
-                logger.info("SUCCESS: RemoteStart and RemoteStop sequence completed successfully.")
+                logger.info("SUCCESS: RemoteStart and RemoteStop sequence was acknowledged.")
                 self._set_test_result(step_name, "SUCCESS")
             else:
                 logger.error("FAILURE: RemoteStopTransaction was not acknowledged by the charge point.")
                 self._set_test_result(step_name, "FAILURE")
         else:
-            logger.error("FAILURE: Could not find an ongoing transaction to stop after remote start.")
+            logger.error("FAILURE: No ongoing transaction was registered by the server after RemoteStart.")
             self._set_test_result(step_name, "FAILURE")
 
+        # 5. Cleanup: Simulate disconnecting the EV.
+        await self._set_ev_state("A")
         logger.info(f"--- Step C.1 for {self.charge_point_id} complete. ---")
 
     async def run_c2_user_initiated_transaction_test(self):
@@ -360,7 +436,30 @@ class OcppServerLogic:
         return StopTransactionResponse(idTagInfo=IdTagInfo(status="Accepted"))
 
     async def handle_meter_values(self, charge_point_id: str, payload: MeterValuesRequest) -> MeterValuesResponse:
-        logger.info(f"Received MeterValues from {charge_point_id}: {payload}")
+        # Check if this was a triggered message we were waiting for
+        if "MeterValues" in self.pending_triggered_message_events:
+            # The context should be 'Trigger' if it was triggered.
+            is_triggered = any(
+                sv.context == "Trigger" for mv in payload.meterValue for sv in mv.sampledValue
+            )
+            if is_triggered:
+                logger.info("Detected a triggered MeterValues message, setting event.")
+                self.pending_triggered_message_events["MeterValues"].set()
+
+        logger.debug(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId} (transactionId: {payload.transactionId})")
+        for mv in payload.meterValue:
+            logger.debug(f"  -> Timestamp: {mv.timestamp}")
+            for sv in mv.sampledValue:
+                unit = f" {sv.unit}" if sv.unit else ""
+                measurand = sv.measurand or "N/A"
+
+                details_parts = []
+                if sv.context: details_parts.append(f"context: {sv.context}")
+                if sv.location: details_parts.append(f"location: {sv.location}")
+                if sv.phase: details_parts.append(f"phase: {sv.phase}")
+                details = f" ({', '.join(details_parts)})" if details_parts else ""
+
+                logger.debug(f"    - {measurand}: {sv.value}{unit}{details}")
         if payload.transactionId and payload.transactionId in TRANSACTIONS:
             if "meter_values" not in TRANSACTIONS[payload.transactionId]:
                 TRANSACTIONS[payload.transactionId]["meter_values"] = []

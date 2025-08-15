@@ -60,8 +60,10 @@
     <div id="ev-info" style="display:flex; gap:20px;">
         <div id="ev-status-details" style="flex:1;">
             <p><strong>EV State:</strong> <span id="ev-state">N/A</span></p>
-            <p><strong>Requested Current:</strong> <span id="ev-current">N/A</span></p>
+            <p><strong>Wallbox Advertised Current:</strong> <span id="ev-wallbox-current">N/A</span></p>
             <p><strong>CP Voltage:</strong> <span id="ev-voltage">N/A</span></p>
+            <p><strong>CP Duty Cycle:</strong> <span id="ev-duty-cycle">N/A</span></p>
+            <p><strong>PP Voltage:</strong> <span id="ev-pp-voltage">N/A</span></p>
             <p><strong>Error Status:</strong> <span id="ev-error">N/A</span></p>
         </div>
         <div class="button-group" style="flex:2; align-self:center;">
@@ -114,9 +116,11 @@
     const timerLabelEl = document.getElementById("timer-label");
 
     const evStateEl = document.getElementById("ev-state");
-    const evCurrentEl = document.getElementById("ev-current");
     const evVoltageEl = document.getElementById("ev-voltage");
     const evErrorEl = document.getElementById("ev-error");
+    const evWallboxCurrentEl = document.getElementById("ev-wallbox-current");
+    const evDutyCycleEl = document.getElementById("ev-duty-cycle");
+    const evPpVoltageEl = document.getElementById("ev-pp-voltage");
 
     const WS_PORT = {{ ocpp_port }};
 
@@ -285,8 +289,10 @@
 
     function updateEvStatusUI(status) {
         evStateEl.textContent = status.ev_state ?? 'N/A';
-        evCurrentEl.textContent = status.requested_current_amps !== undefined ? `${status.requested_current_amps} A` : 'N/A';
+        evWallboxCurrentEl.textContent = status.wallbox_advertised_max_current_amps !== undefined ? `${status.wallbox_advertised_max_current_amps} A` : 'N/A';
         evVoltageEl.textContent = status.cp_voltage_v !== undefined ? `${status.cp_voltage_v.toFixed(2)} V` : 'N/A';
+        evDutyCycleEl.textContent = status.cp_duty_cycle !== undefined ? `${(status.cp_duty_cycle * 100).toFixed(1)} %` : 'N/A';
+        evPpVoltageEl.textContent = status.pp_voltage_v !== undefined ? `${status.pp_voltage_v.toFixed(2)} V` : 'N/A';
 
         let errorText = 'N/A';
         if (status.error_active) {
