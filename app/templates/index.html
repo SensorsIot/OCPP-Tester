@@ -56,7 +56,15 @@
         <p><strong>Last Heartbeat:</strong> <span id="last-heartbeat">N/A</span></p>
     </div>
 
-    <h2>EV Simulator Status</h2>
+    <h2>Mode Selection</h2>
+    <div class="status-item" style="text-align: left; flex: none; margin: 0 0 20px 0;">
+        <label for="ev-mode-toggle" style="font-weight: bold; font-size: 1.1em; margin-right: 10px;">Use EV Simulator</label>
+        <input type="checkbox" id="ev-mode-toggle" onchange="setEvMode(this.checked)" style="width: 20px; height: 20px; vertical-align: middle;" disabled>
+        <span id="simulator-availability-status" style="margin-left: 10px; font-weight: bold;"></span>
+        <span style="margin-left: 15px; color: #666;">(When unchecked, the server will not attempt to contact the EV simulator. This is for testing with a real EV.)</span>
+    </div>
+
+    <h2 id="ev-simulator-heading">EV Simulator Status</h2>
     <div id="ev-info" style="display:flex; gap:20px;">
         <div id="ev-status-details" style="flex:1;">
             <p><strong>EV State:</strong> <span id="ev-state">N/A</span></p>
@@ -122,12 +130,16 @@
     const evDutyCycleEl = document.getElementById("ev-duty-cycle");
     const evPpVoltageEl = document.getElementById("ev-pp-voltage");
 
+    const evModeToggleEl = document.getElementById('ev-mode-toggle');
+    const simulatorAvailabilityStatusEl = document.getElementById('simulator-availability-status');
+
     const WS_PORT = {{ ocpp_port }};
 
     let chargePointsData = {};
     let pageLoadTime = Date.now();
     let lastCommandTime = null;
     let isConnected = false;
+    let useSimulator = false; // Default, will be updated from server
 
     function updateTimer() {
         let startTime;
@@ -287,6 +299,58 @@
         }
     }
 
+    async function fetchServerSettings() {
+        try {
+            const r = await fetch('/api/settings');
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const settings = await r.json();
+
+            useSimulator = settings.use_simulator;
+            const isAvailable = settings.ev_simulator_available;
+
+            evModeToggleEl.checked = useSimulator;
+            document.getElementById('ev-simulator-heading').style.display = useSimulator ? 'block' : 'none';
+            document.getElementById('ev-info').style.display = useSimulator ? 'flex' : 'none';
+
+            // Update availability status text and color
+            if (isAvailable) {
+                simulatorAvailabilityStatusEl.textContent = 'Available';
+                simulatorAvailabilityStatusEl.style.color = '#28a745'; // green
+            } else {
+                simulatorAvailabilityStatusEl.textContent = 'Not Detected';
+                simulatorAvailabilityStatusEl.style.color = '#dc3545'; // red
+            }
+
+            // Logic to enable/disable the toggle.
+            // You can always turn it OFF.
+            // You can only turn it ON if it's available.
+            evModeToggleEl.disabled = !useSimulator && !isAvailable;
+
+        } catch (e) {
+            console.error('Failed to fetch server settings:', e);
+            simulatorAvailabilityStatusEl.textContent = 'Status Unknown';
+            simulatorAvailabilityStatusEl.style.color = '#6c757d'; // grey
+            evModeToggleEl.disabled = true;
+        }
+    }
+
+    async function setEvMode(isSimulatorEnabled) {
+        try {
+            const r = await fetch('/api/set_ev_mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ use_simulator: isSimulatorEnabled })
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || 'Request failed');
+            showStatusMessage(j.message || 'EV mode updated.');
+            await fetchServerSettings(); // Re-fetch to confirm and update UI
+        } catch (e) {
+            showStatusMessage(`Failed to set EV mode: ${e.message}`, true);
+            evModeToggleEl.checked = !isSimulatorEnabled; // Revert on failure
+        }
+    }
+
     function updateEvStatusUI(status) {
         evStateEl.textContent = status.ev_state ?? 'N/A';
         evWallboxCurrentEl.textContent = status.wallbox_advertised_max_current_amps !== undefined ? `${status.wallbox_advertised_max_current_amps} A` : 'N/A';
@@ -350,6 +414,11 @@
     }
 
     async function setEvState(state) {
+        if (!useSimulator) {
+            showStatusMessage("Cannot set EV state: Simulator is disabled.", true);
+            return;
+        }
+
         try {
             const r = await fetch('/api/set_ev_state', {
                 method: 'POST',
@@ -370,9 +439,11 @@
 
     // Periodic tasks
     setInterval(updateTimer, 1000);
-    setInterval(fetchChargePoints, 3000);
+    setInterval(fetchChargePoints, 3000); // For charge point status
+    setInterval(fetchServerSettings, 3000); // For simulator availability
 
     // Initial
+    fetchServerSettings();
     fetchChargePoints();
     fetchAndRenderTestSteps();
     refreshEvStatus();

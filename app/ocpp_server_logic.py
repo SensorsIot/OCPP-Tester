@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict
 
 import aiohttp
 
-from app.state import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE
+from app.state import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS
 from app.config import EV_SIMULATOR_BASE_URL
 from app.messages import (
     BootNotificationRequest, BootNotificationResponse,
@@ -46,20 +46,6 @@ CP_STATE_MAP = {
     "Finishing": "CP State X",
 }
 
-# Map from OCPP 1.6 StatusNotification status to the state of our EV simulator
-OCPP_STATUS_TO_EV_STATE = {
-    "Available": "A",       # Disconnected
-    "Preparing": "B",       # Connected, not charging
-    "Charging": "C",        # Charging
-    "SuspendedEV": "B",     # Connected, not charging
-    "SuspendedEVSE": "B",   # Connected, not charging
-    "Finishing": "B",       # Connected, not charging (transaction ended)
-    "Reserved": "A",        # Disconnected
-    "Unavailable": "E",     # Error/Fault
-    "Faulted": "E",         # Error/Fault
-}
-
-
 class OcppServerLogic:
     """
     Contains the business logic for interacting with a charge point.
@@ -85,6 +71,11 @@ class OcppServerLogic:
 
     async def _set_ev_state(self, state: str):
         """Helper to set EV state and trigger a UI refresh."""
+        if not SERVER_SETTINGS.get("use_simulator"):
+            logger.info(f"Skipping EV state change to '{state}'; simulator is disabled.")
+            # In a real EV scenario, we might log this as an intended action
+            # that requires manual intervention.
+            return
         set_url = f"{EV_SIMULATOR_BASE_URL}/api/set_state"
         logger.info(f"Setting EV simulator state to '{state}'...")
         try:
@@ -450,7 +441,8 @@ class OcppServerLogic:
         if charge_point_id in CHARGE_POINTS:
             CHARGE_POINTS[charge_point_id]["status"] = payload.status
 
-        if self.refresh_trigger:
+        # Only trigger a refresh of the EV simulator panel if it's in use.
+        if self.refresh_trigger and SERVER_SETTINGS.get("use_simulator"):
             # The UI polls the EV simulator status. If the CP status changes,
             # it might be useful to trigger a faster refresh of the simulator state for the UI.
             logger.debug("CP status changed, setting EV refresh trigger for UI.")

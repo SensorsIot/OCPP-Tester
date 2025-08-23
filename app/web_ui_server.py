@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 import aiohttp
 from flask import Flask, jsonify, request, render_template
 
-from app.state import CHARGE_POINTS, EV_SIMULATOR_STATE
+from app.state import CHARGE_POINTS, EV_SIMULATOR_STATE, SERVER_SETTINGS
 from app.ocpp_server_logic import OcppServerLogic
 from app.config import EV_SIMULATOR_BASE_URL, OCPP_PORT
 from app.status_streamer import EVStatusStreamer
@@ -53,6 +53,24 @@ def list_test_steps():
     ]
     return jsonify(step_methods)
 
+@app.route("/api/settings", methods=["GET"])
+def get_server_settings():
+    """Returns server-wide runtime settings, like the EV simulator mode."""
+    return jsonify(SERVER_SETTINGS)
+
+@app.route("/api/set_ev_mode", methods=["POST"])
+def set_ev_mode_endpoint():
+    """Sets whether the EV simulator should be used."""
+    data = request.get_json(force=True, silent=True) or {}
+    use_simulator = data.get("use_simulator")
+
+    if not isinstance(use_simulator, bool):
+        return jsonify({"error": "'use_simulator' (boolean) not provided"}), 400
+
+    SERVER_SETTINGS["use_simulator"] = use_simulator
+    logging.info(f"Runtime setting changed. Use EV simulator: {use_simulator}")
+    return jsonify({"status": "success", "message": f"EV simulator usage set to {use_simulator}."})
+
 @app.route("/api/ev_status", methods=["GET"])
 def get_ev_status():
     return jsonify(EV_SIMULATOR_STATE)
@@ -87,6 +105,9 @@ async def _set_and_refresh_ev_state(state: str) -> Dict[str, Any]:
 
 @app.route("/api/set_ev_state", methods=["POST"])
 def set_ev_state():
+    if not SERVER_SETTINGS.get("use_simulator"):
+        return jsonify({"error": "EV simulator is disabled in server settings."}), 403
+
     data = request.get_json(force=True, silent=True) or {}
     state = data.get("state")
     if not state:

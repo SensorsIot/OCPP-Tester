@@ -14,7 +14,6 @@ import asyncio
 import logging
 from logging import StreamHandler
 
-import aiohttp
 import uvicorn
 from websockets import serve
 from websockets.server import ServerConnection
@@ -22,13 +21,13 @@ from websockets.server import ServerConnection
 from app import web_ui_server
 from app.ocpp_handler import OCPPHandler
 from app.log_streamer import LogStreamer, WebSocketLogHandler
-from app.state import EV_SIMULATOR_STATE
 from app.status_streamer import EVStatusStreamer
+from app.state import SERVER_SETTINGS
+from app.ev_simulator_manager import EVSimulatorManager
 from app.config import (
     OCPP_HOST, OCPP_PORT,
     HTTP_HOST, HTTP_PORT,
     LOG_WS_PATH, EV_STATUS_WS_PATH,
-    EV_SIMULATOR_BASE_URL, EV_STATUS_POLL_INTERVAL, EV_WAIT_MAX_BACKOFF,
 )
 
 # ---------- Colored logging formatter ----------
@@ -122,85 +121,6 @@ async def start_http_server():
     logger.info(f"Web server listening on {HTTP_HOST}:{HTTP_PORT}")
     await server.serve()
 
-# ---------- EV simulator wait + polling ----------
-async def wait_for_ev_simulator():
-    url = f"{EV_SIMULATOR_BASE_URL}/api/status"
-    backoff = 1
-    logger.info(f"Waiting for EV simulator at {url} ...")
-    while True:
-        try:
-            timeout = aiohttp.ClientTimeout(total=5)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        logger.info("EV simulator is available. Starting servers.")
-                        return
-                    logger.debug(f"EV simulator reachable but status {resp.status}. Retrying...")
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            logger.debug(f"EV simulator not available ({type(e).__name__}). Backing off {backoff}s...")
-        await asyncio.sleep(backoff)
-        backoff = min(backoff * 2, EV_WAIT_MAX_BACKOFF)
-
-async def set_initial_ev_state():
-    """Sets the EV simulator to a known initial state ('A') on startup."""
-    state_to_set = "A"
-    set_url = f"{EV_SIMULATOR_BASE_URL}/api/set_state"
-    logger.info(f"Setting initial EV simulator state to '{state_to_set}'...")
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(set_url, json={"state": state_to_set}, timeout=5) as resp:
-                if resp.status == 200:
-                    logger.info("Successfully sent request to set initial EV simulator state to 'A' (Disconnected).")
-                else:
-                    logger.error(f"Failed to set initial EV state. Simulator returned {resp.status}.")
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        logger.error(f"Error while setting initial EV simulator state: {e}")
-
-async def poll_ev_simulator_status(ev_status_streamer: EVStatusStreamer,
-                                   refresh_trigger: asyncio.Event):
-    url = f"{EV_SIMULATOR_BASE_URL}/api/status"
-    backoff = EV_STATUS_POLL_INTERVAL
-    while True:
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        EV_SIMULATOR_STATE.update(data)
-                        await ev_status_streamer.broadcast_status(EV_SIMULATOR_STATE)
-                        backoff = EV_STATUS_POLL_INTERVAL
-                    else:
-                        EV_SIMULATOR_STATE.clear()
-                        logger.debug("EV simulator status endpoint was not OK, clearing state.")
-                        await ev_status_streamer.broadcast_status({})
-                        logger.debug(f"EV status endpoint returned {resp.status}")
-        except aiohttp.ClientError:
-            EV_SIMULATOR_STATE.clear()
-            await ev_status_streamer.broadcast_status({})
-            logger.debug("Could not connect to EV simulator.")
-            backoff = min(max(backoff * 2, EV_STATUS_POLL_INTERVAL), 60)
-        except Exception as e:
-            logger.error(f"Polling EV simulator failed: {e}", exc_info=True)
-
-        try:
-            # Wait for either the poll interval to pass or an explicit trigger
-            sleep_task = asyncio.create_task(asyncio.sleep(backoff))
-            trigger_task = asyncio.create_task(refresh_trigger.wait())
-
-            done, pending = await asyncio.wait(
-                {sleep_task, trigger_task},
-                return_when=asyncio.FIRST_COMPLETED
-            )
-
-            if trigger_task in done:
-                logger.debug("EV status poll triggered by an event.")
-                refresh_trigger.clear()
-
-            for task in pending:
-                task.cancel()
-        except asyncio.CancelledError:
-            break
-
 # ---------- Main ----------
 async def main():
     loop = asyncio.get_running_loop()
@@ -229,10 +149,22 @@ async def main():
     web_ui_server.attach_loop(loop)
     web_ui_server.attach_ev_status_streamer(ev_status_streamer)
 
-    await wait_for_ev_simulator()
+    # Instantiate the manager for the EV simulator
+    ev_sim_manager = EVSimulatorManager(
+        status_streamer=ev_status_streamer,
+        refresh_trigger=ev_refresh_trigger
+    )
 
-    # Set the EV simulator to a known disconnected state on startup.
-    await set_initial_ev_state()
+    # Start the HTTP server first so the UI is always available
+    http_task = asyncio.create_task(start_http_server())
+
+    # Explicitly handle the EV simulator setup at startup based on the default setting
+    if SERVER_SETTINGS.get("use_simulator"):
+        logger.info("EV simulator is enabled by default. Performing startup checks...")
+        await ev_sim_manager.wait_for_simulator()
+        await ev_sim_manager.set_initial_state()
+    else:
+        logger.info("EV simulator is disabled by default. Skipping startup checks.")
 
     logger.info(f"Starting WebSocket server on {OCPP_HOST}:{OCPP_PORT} "
                 f"(paths: '{LOG_WS_PATH}', '{EV_STATUS_WS_PATH}', '/<ChargePointId>')")
@@ -244,9 +176,10 @@ async def main():
         max_size=2**22,
     )
 
+    # Start all background tasks and gather them.
     tasks = [
-        asyncio.create_task(start_http_server()),
-        asyncio.create_task(poll_ev_simulator_status(ev_status_streamer, ev_refresh_trigger)),
+        http_task,
+        asyncio.create_task(ev_sim_manager.start()),
     ]
 
     try:

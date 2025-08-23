@@ -1,62 +1,3 @@
-source venv/bin/activate
-python3 main.py 
-python3 -m venv venv
-source venv/bin/activate
-python3 -m venv venv
-source venv/bin/activate
-python3 main.py 
-clear
-python3 main.py 
-python3 -m venv venv
-source venv/bin/activate
-python3 main.py 
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
-clear
-python3 main.py 
 clear
 python3 main.py 
 clear
@@ -496,5 +437,64 @@ clear
 python main.py 
 df -h
 df -h
+clear
+python main.py 
+python3 -m venv venv
+source venv/bin/activate
+clear
+python main.py 
+clear$
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+source /home/opcc/venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 clear
 python main.py 
