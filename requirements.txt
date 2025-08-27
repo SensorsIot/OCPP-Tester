@@ -1,2 +1,5 @@
 websockets
 python-dateutil
+uvicorn
+aiohttp
+flask

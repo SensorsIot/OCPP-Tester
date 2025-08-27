@@ -3,6 +3,7 @@ LogStreamer: Manages WebSocket clients for streaming logs.
 WebSocketLogHandler: A logging.Handler to sink logs to the streamer.
 """
 import asyncio
+import json
 import logging
 from typing import Set
 
@@ -54,7 +55,10 @@ class WebSocketLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord):
         """Formats and sends a log record to the streamer."""
         try:
-            msg = self.format(record)
-            asyncio.run_coroutine_threadsafe(self.streamer.broadcast(msg), self.loop)
+            msg = {
+                "levelname": record.levelname,
+                "message": self.format(record)
+            }
+            asyncio.run_coroutine_threadsafe(self.streamer.broadcast(json.dumps(msg)), self.loop)
         except Exception:
             self.handleError(record)

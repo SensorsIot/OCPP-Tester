@@ -10,7 +10,7 @@ from dataclasses import asdict, is_dataclass
 from typing import Any, Callable, Dict, List
 from websockets.server import serve, WebSocketServerProtocol
 from websockets.exceptions import ConnectionClosedOK
-from app.handlers import MESSAGE_HANDLERS
+from app.ocpp_handler import MESSAGE_HANDLERS
 from app.state import CHARGE_POINTS, TRANSACTIONS
 from app.messages import (
     BootNotificationRequest,

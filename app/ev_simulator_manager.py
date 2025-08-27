@@ -67,13 +67,12 @@ class EVSimulatorManager:
                 await self._status_streamer.broadcast_status({})
             
             # Immediately update status for responsive UI
-            if SERVER_SETTINGS.get("ev_simulator_available"):
-                SERVER_SETTINGS["ev_simulator_available"] = False
+            SERVER_SETTINGS["ev_simulator_available"] = False
 
             logger.info("EV simulator has been disabled. Cleared state and pausing poller.")
         
         self._was_enabled = False
-        await self._probe_simulator_availability()
+        await self.probe_simulator_availability()
         await asyncio.sleep(5)  # Probe every 5 seconds
 
     async def wait_for_simulator(self):
@@ -112,7 +111,7 @@ class EVSimulatorManager:
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logger.error(f"Error setting initial EV state: {e}")
 
-    async def _probe_simulator_availability(self):
+    async def probe_simulator_availability(self):
         """Quietly checks if the simulator is available and updates state."""
         is_available_now = False
         try:
@@ -128,6 +127,10 @@ class EVSimulatorManager:
             if SERVER_SETTINGS.get("ev_simulator_available") != is_available_now:
                 logger.info(f"EV simulator availability probe status: {is_available_now}")
                 SERVER_SETTINGS["ev_simulator_available"] = is_available_now
+                if is_available_now:
+                    # Automatically enable simulator mode if it becomes available and no user interaction is needed
+                    SERVER_SETTINGS["use_simulator"] = True
+                    logger.info("Automatically enabled EV simulator mode as it is now available.")
 
     async def _poll_and_wait(self):
         """Performs a single poll of the simulator status and then waits."""

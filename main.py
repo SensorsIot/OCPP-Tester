@@ -8,6 +8,9 @@ Entry point for the OCPP server.
     /{cpid}      -> OCPP connection for charge point `cpid`
 - Flask (via uvicorn) HTTP server for the web UI + REST API
 - EV simulator connection wait + periodic status polling with backoff
+
+Erata:
+    - 2025-08-24: Modified `run_a5_trigger_message_test` to request a `StatusNotification` instead of a `Heartbeat`.
 """
 
 import asyncio
@@ -24,11 +27,16 @@ from app.log_streamer import LogStreamer, WebSocketLogHandler
 from app.status_streamer import EVStatusStreamer
 from app.state import SERVER_SETTINGS
 from app.ev_simulator_manager import EVSimulatorManager
-from app.config import (
-    OCPP_HOST, OCPP_PORT,
-    HTTP_HOST, HTTP_PORT,
-    LOG_WS_PATH, EV_STATUS_WS_PATH,
-)
+import uvicorn
+import aiohttp # NEW
+from websockets.server import serve
+from app.config import OCPP_HOST, OCPP_PORT, HTTP_HOST, HTTP_PORT, LOG_WS_PATH, EV_STATUS_WS_PATH, EV_SIMULATOR_BASE_URL, EV_STATUS_POLL_INTERVAL # NEW
+from app.ocpp_server_logic import OcppServerLogic
+from app.server import serve_ocpp
+from app.web_ui_server import app as flask_app, attach_loop, attach_ev_status_streamer
+from app.log_streamer import LogStreamer
+from app.status_streamer import EVStatusStreamer
+from app.state import EV_SIMULATOR_STATE # NEW
 
 # ---------- Colored logging formatter ----------
 class ColoredFormatter(logging.Formatter):
@@ -59,7 +67,7 @@ class ColoredFormatter(logging.Formatter):
 logger = logging.getLogger(__name__)
 
 # ---------- Per-path WebSocket handlers ----------
-async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: asyncio.Event):
+async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: asyncio.Event, ev_sim_manager: EVSimulatorManager):
     """Handle OCPP charge point connection on /{charge_point_id}."""
     charge_point_id = path.strip("/")
     logger.info(f"Connection received from {websocket.remote_address} on path '{path}'")
@@ -69,7 +77,7 @@ async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: a
         await websocket.close()
         return
 
-    handler = OCPPHandler(websocket, path, refresh_trigger)
+    handler = OCPPHandler(websocket, path, refresh_trigger, ev_sim_manager)
     await handler.start()
 
 async def handle_log_stream(websocket: ServerConnection, streamer: LogStreamer):
@@ -90,17 +98,17 @@ async def handle_ev_status_stream(websocket: ServerConnection, streamer: EVStatu
 
 async def ws_router(websocket: ServerConnection,
                     log_streamer: LogStreamer, ev_status_streamer: EVStatusStreamer,
-                    ev_refresh_trigger: asyncio.Event):
+                    ev_refresh_trigger: asyncio.Event, ev_sim_manager: EVSimulatorManager):
     """Route incoming WS connections based on the request path."""
     path = "unknown"
     try:
-        path = websocket.request.path
+        path = websocket.path
         if path == LOG_WS_PATH:
             await handle_log_stream(websocket, log_streamer)
         elif path == EV_STATUS_WS_PATH:
             await handle_ev_status_stream(websocket, ev_status_streamer)
         else:
-            await handle_ocpp(websocket, path, ev_refresh_trigger)
+            await handle_ocpp(websocket, path, ev_refresh_trigger, ev_sim_manager)
     except Exception as e:
         logger.error(f"WebSocket router error on path '{path}': {e}", exc_info=True)
         try:
@@ -127,7 +135,7 @@ async def main():
 
     # Central logging setup
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(logging.INFO) # Reverted to INFO
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
     console = StreamHandler()
@@ -158,18 +166,12 @@ async def main():
     # Start the HTTP server first so the UI is always available
     http_task = asyncio.create_task(start_http_server())
 
-    # Explicitly handle the EV simulator setup at startup based on the default setting
-    if SERVER_SETTINGS.get("use_simulator"):
-        logger.info("EV simulator is enabled by default. Performing startup checks...")
-        await ev_sim_manager.wait_for_simulator()
-        await ev_sim_manager.set_initial_state()
-    else:
-        logger.info("EV simulator is disabled by default. Skipping startup checks.")
+    
 
     logger.info(f"Starting WebSocket server on {OCPP_HOST}:{OCPP_PORT} "
                 f"(paths: '{LOG_WS_PATH}', '{EV_STATUS_WS_PATH}', '/<ChargePointId>')")
     ws_server = await serve(
-        lambda ws: ws_router(ws, log_streamer, ev_status_streamer, ev_refresh_trigger),
+        lambda ws: ws_router(ws, log_streamer, ev_status_streamer, ev_refresh_trigger, ev_sim_manager),
         OCPP_HOST,
         OCPP_PORT,
         ping_interval=None,

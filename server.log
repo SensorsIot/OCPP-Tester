@@ -1,0 +1,194 @@
+[94m2025-08-27 19:00:45,316 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')[0m
+[94m2025-08-27 19:00:45,316 - __main__ - INFO - Web server listening on 0.0.0.0:5000[0m
+[94m2025-08-27 19:00:45,332 - websockets.server - INFO - server listening on 0.0.0.0:8887[0m
+[94m2025-08-27 19:00:45,333 - app.ev_simulator_manager - INFO - EV Simulator Manager polling task started.[0m
+[94m2025-08-27 19:00:45,429 - app.ev_simulator_manager - INFO - EV simulator availability probe status: True[0m
+[94m2025-08-27 19:00:45,745 - websockets.server - INFO - connection open[0m
+[94m2025-08-27 19:00:45,745 - app.status_streamer - INFO - EV status stream client connected: ('192.168.0.10', 45931)[0m
+[94m2025-08-27 19:00:45,761 - websockets.server - INFO - connection open[0m
+[94m2025-08-27 19:00:45,761 - app.log_streamer - INFO - Log stream client connected: ('192.168.0.10', 56310)[0m
+[94m2025-08-27 19:01:00,774 - websockets.server - INFO - connection open[0m
+[94m2025-08-27 19:01:00,775 - __main__ - INFO - Connection received from ('192.168.0.84', 41902) on path '/Elecq/AE104ABG00029B'[0m
+[94m2025-08-27 19:01:00,775 - app.ocpp_handler - INFO - New connection from Charge Point: Elecq/AE104ABG00029B[0m
+[94m2025-08-27 19:01:00,804 - app.ocpp_handler - INFO - Connection from 192.168.0.84 detected as the EV simulator.[0m
+[94m2025-08-27 19:01:00,804 - app.ocpp_handler - INFO - Main logic task for Elecq/AE104ABG00029B started.[0m
+[94m2025-08-27 19:01:00,804 - app.ocpp_handler - INFO - Connection for Elecq/AE104ABG00029B established. Starting periodic health checks.[0m
+[92m2025-08-27 19:01:00,966 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:01:00,966 - app.ocpp_server_logic - DEBUG - Handling StatusNotification from Elecq/AE104ABG00029B: Available[0m
+[94m2025-08-27 19:01:00,966 - app.ocpp_server_logic - INFO - Received StatusNotification from Elecq/AE104ABG00029B: Connector 0 is Available (equivalent to CP State A)[0m
+[92m2025-08-27 19:01:00,966 - app.ocpp_server_logic - DEBUG - CP status changed, setting EV refresh trigger for UI.[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:01:00,967 - app.ocpp_handler - DEBUG - RAW >> [3, "2a3c120a-22f9-402a-b6e9-fa670836c81e", {}][0m
+[94m2025-08-27 19:01:00,967 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:01:00,979 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:01:00,979 - app.ocpp_server_logic - DEBUG - Handling StatusNotification from Elecq/AE104ABG00029B: Available[0m
+[94m2025-08-27 19:01:00,979 - app.ocpp_server_logic - INFO - Received StatusNotification from Elecq/AE104ABG00029B: Connector 1 is Available (equivalent to CP State A)[0m
+[92m2025-08-27 19:01:00,980 - app.ocpp_server_logic - DEBUG - CP status changed, setting EV refresh trigger for UI.[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:01:00,980 - app.ocpp_handler - DEBUG - RAW >> [3, "4bde72e8-199f-4334-abcd-4adb559b299f", {}][0m
+[94m2025-08-27 19:01:00,980 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Elecq/AE104ABG00029B[0m
+[94m2025-08-27 19:01:02,186 - websockets.server - INFO - connection open[0m
+[94m2025-08-27 19:01:02,186 - __main__ - INFO - Connection received from ('192.168.0.16', 52446) on path '/Wallbox001'[0m
+[94m2025-08-27 19:01:02,186 - app.ocpp_handler - INFO - New connection from Charge Point: Wallbox001[0m
+[94m2025-08-27 19:01:02,221 - app.ocpp_handler - INFO - Connection from 192.168.0.16 detected as the EV simulator.[0m
+[94m2025-08-27 19:01:02,221 - app.ocpp_handler - INFO - Main logic task for Wallbox001 started.[0m
+[94m2025-08-27 19:01:02,221 - app.ocpp_handler - INFO - Connection for Wallbox001 established. Starting periodic health checks.[0m
+[94m2025-08-27 19:01:05,789 - app.ev_simulator_manager - INFO - EV simulator has been enabled. Performing setup...[0m
+[94m2025-08-27 19:01:05,789 - app.ev_simulator_manager - INFO - Waiting for EV simulator at http://192.168.0.151/api/status ...[0m
+[94m2025-08-27 19:01:05,910 - app.ev_simulator_manager - INFO - EV simulator is available.[0m
+[94m2025-08-27 19:01:05,911 - app.ev_simulator_manager - INFO - Setting initial EV simulator state to 'A'...[0m
+[94m2025-08-27 19:01:05,943 - app.ev_simulator_manager - INFO - Initial setup for EV simulator complete. Resuming regular polling.[0m
+[92m2025-08-27 19:02:00,805 - app.ocpp_server_logic - DEBUG - Passive health check for Elecq/AE104ABG00029B. Waiting for next heartbeat.[0m
+[92m2025-08-27 19:02:00,994 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' from Elecq/AE104ABG00029B[0m
+[94m2025-08-27 19:02:00,994 - app.ocpp_server_logic - INFO - Received Heartbeat from Elecq/AE104ABG00029B[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:02:00,995 - app.ocpp_handler - DEBUG - RAW >> [3, "a71dbe39-02cd-4ca3-b7f6-cb355e601465", {"currentTime": "2025-08-27T17:02:00.994981+00:00"}][0m
+[94m2025-08-27 19:02:00,995 - app.ocpp_handler - INFO - Sent response for 'Heartbeat' to Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:02:02,221 - app.ocpp_server_logic - DEBUG - Passive health check for Wallbox001. Waiting for next heartbeat.[0m
+[92m2025-08-27 19:02:02,873 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' from Wallbox001[0m
+[94m2025-08-27 19:02:02,873 - app.ocpp_server_logic - INFO - Received Heartbeat from Wallbox001[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:02:02,874 - app.ocpp_handler - DEBUG - RAW >> [3, "1871086299", {"currentTime": "2025-08-27T17:02:02.873994+00:00"}][0m
+[94m2025-08-27 19:02:02,874 - app.ocpp_handler - INFO - Sent response for 'Heartbeat' to Wallbox001[0m
+[92m2025-08-27 19:03:00,806 - app.ocpp_server_logic - DEBUG - Passive health check for Elecq/AE104ABG00029B. Waiting for next heartbeat.[0m
+[92m2025-08-27 19:03:01,001 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' from Elecq/AE104ABG00029B[0m
+[94m2025-08-27 19:03:01,001 - app.ocpp_server_logic - INFO - Received Heartbeat from Elecq/AE104ABG00029B[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:03:01,002 - app.ocpp_handler - DEBUG - RAW >> [3, "61245f47-d4e9-4ec9-99d2-bc6c2ac61f0b", {"currentTime": "2025-08-27T17:03:01.001994+00:00"}][0m
+[94m2025-08-27 19:03:01,002 - app.ocpp_handler - INFO - Sent response for 'Heartbeat' to Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:03:02,222 - app.ocpp_server_logic - DEBUG - Passive health check for Wallbox001. Waiting for next heartbeat.[0m
+[92m2025-08-27 19:03:02,453 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' from Wallbox001[0m
+[94m2025-08-27 19:03:02,453 - app.ocpp_server_logic - INFO - Received Heartbeat from Wallbox001[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:03:02,453 - app.ocpp_handler - DEBUG - RAW >> [3, "1983685989", {"currentTime": "2025-08-27T17:03:02.453859+00:00"}][0m
+[94m2025-08-27 19:03:02,454 - app.ocpp_handler - INFO - Sent response for 'Heartbeat' to Wallbox001[0m
+[92m2025-08-27 19:04:00,807 - app.ocpp_server_logic - DEBUG - Passive health check for Elecq/AE104ABG00029B. Waiting for next heartbeat.[0m
+[92m2025-08-27 19:04:01,009 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' from Elecq/AE104ABG00029B[0m
+[94m2025-08-27 19:04:01,009 - app.ocpp_server_logic - INFO - Received Heartbeat from Elecq/AE104ABG00029B[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:04:01,009 - app.ocpp_handler - DEBUG - RAW >> [3, "236e61cb-6207-42f6-8137-5535edf17917", {"currentTime": "2025-08-27T17:04:01.009479+00:00"}][0m
+[94m2025-08-27 19:04:01,009 - app.ocpp_handler - INFO - Sent response for 'Heartbeat' to Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:04:02,083 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' from Wallbox001[0m
+[94m2025-08-27 19:04:02,083 - app.ocpp_server_logic - INFO - Received Heartbeat from Wallbox001[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:04:02,083 - app.ocpp_handler - DEBUG - RAW >> [3, "949198292", {"currentTime": "2025-08-27T17:04:02.083449+00:00"}][0m
+[94m2025-08-27 19:04:02,083 - app.ocpp_handler - INFO - Sent response for 'Heartbeat' to Wallbox001[0m
+[92m2025-08-27 19:04:02,223 - app.ocpp_server_logic - DEBUG - Passive health check for Wallbox001. Waiting for next heartbeat.[0m
+[94m2025-08-27 19:04:14,779 - app.status_streamer - INFO - EV status stream client disconnected: ('192.168.0.10', 45931)[0m
+[94m2025-08-27 19:04:14,779 - app.log_streamer - INFO - Log stream client disconnected: ('192.168.0.10', 56310)[0m
+[94m2025-08-27 19:04:15,033 - websockets.server - INFO - connection open[0m
+[94m2025-08-27 19:04:15,034 - app.status_streamer - INFO - EV status stream client connected: ('192.168.0.10', 53522)[0m
+[94m2025-08-27 19:04:15,046 - websockets.server - INFO - connection open[0m
+[94m2025-08-27 19:04:15,046 - app.log_streamer - INFO - Log stream client connected: ('192.168.0.10', 47479)[0m
+[92m2025-08-27 19:04:18,235 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:04:18,235 - app.ocpp_server_logic - DEBUG - Handling StatusNotification from Elecq/AE104ABG00029B: Preparing[0m
+[94m2025-08-27 19:04:18,235 - app.ocpp_server_logic - INFO - Received StatusNotification from Elecq/AE104ABG00029B: Connector 1 is Preparing (equivalent to CP State B)[0m
+[92m2025-08-27 19:04:18,235 - app.ocpp_server_logic - DEBUG - CP status changed, setting EV refresh trigger for UI.[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:04:18,235 - app.ocpp_handler - DEBUG - RAW >> [3, "138dec21-6fc9-419e-84f9-37b636c09385", {}][0m
+[94m2025-08-27 19:04:18,236 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:04:28,347 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:04:28,347 - app.ocpp_server_logic - DEBUG - Handling StatusNotification from Elecq/AE104ABG00029B: Faulted[0m
+[94m2025-08-27 19:04:28,348 - app.ocpp_server_logic - INFO - Received StatusNotification from Elecq/AE104ABG00029B: Connector 1 is Faulted (equivalent to Unknown)[0m
+[92m2025-08-27 19:04:28,348 - app.ocpp_server_logic - DEBUG - CP status changed, setting EV refresh trigger for UI.[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:04:28,348 - app.ocpp_handler - DEBUG - RAW >> [3, "21dc2d51-6596-4dbb-b15d-0bbda0f6b348", {}][0m
+[94m2025-08-27 19:04:28,348 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:04:32,211 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:04:32,211 - app.ocpp_server_logic - DEBUG - Handling StatusNotification from Elecq/AE104ABG00029B: Available[0m
+[94m2025-08-27 19:04:32,211 - app.ocpp_server_logic - INFO - Received StatusNotification from Elecq/AE104ABG00029B: Connector 1 is Available (equivalent to CP State A)[0m
+[92m2025-08-27 19:04:32,211 - app.ocpp_server_logic - DEBUG - CP status changed, setting EV refresh trigger for UI.[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:04:32,211 - app.ocpp_handler - DEBUG - RAW >> [3, "6bd25aa8-2bc5-4de6-86a8-6d061091b8b3", {}][0m
+[94m2025-08-27 19:04:32,211 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:04:34,112 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:04:34,113 - app.ocpp_server_logic - DEBUG - Handling StatusNotification from Elecq/AE104ABG00029B: Preparing[0m
+[94m2025-08-27 19:04:34,113 - app.ocpp_server_logic - INFO - Received StatusNotification from Elecq/AE104ABG00029B: Connector 1 is Preparing (equivalent to CP State B)[0m
+[92m2025-08-27 19:04:34,113 - app.ocpp_server_logic - DEBUG - CP status changed, setting EV refresh trigger for UI.[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:04:34,113 - app.ocpp_handler - DEBUG - RAW >> [3, "389d71bc-632c-4501-8262-da8e71d79fcc", {}][0m
+[94m2025-08-27 19:04:34,113 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:04:59,565 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:04:59,566 - app.ocpp_server_logic - DEBUG - Handling StatusNotification from Elecq/AE104ABG00029B: Available[0m
+[94m2025-08-27 19:04:59,567 - app.ocpp_server_logic - INFO - Received StatusNotification from Elecq/AE104ABG00029B: Connector 1 is Available (equivalent to CP State A)[0m
+[92m2025-08-27 19:04:59,567 - app.ocpp_server_logic - DEBUG - CP status changed, setting EV refresh trigger for UI.[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:04:59,567 - app.ocpp_handler - DEBUG - RAW >> [3, "a61bafaa-8042-4b0e-a61e-cffee826dc5c", {}][0m
+[94m2025-08-27 19:04:59,567 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Elecq/AE104ABG00029B[0m
+[92m2025-08-27 19:05:00,808 - app.ocpp_server_logic - DEBUG - Passive health check for Elecq/AE104ABG00029B. Waiting for next heartbeat.[0m
+[92m2025-08-27 19:05:02,224 - app.ocpp_server_logic - DEBUG - Passive health check for Wallbox001. Waiting for next heartbeat.[0m
+[92m2025-08-27 19:05:02,796 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' from Wallbox001[0m
+[94m2025-08-27 19:05:02,796 - app.ocpp_server_logic - INFO - Received Heartbeat from Wallbox001[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:05:02,796 - app.ocpp_handler - DEBUG - RAW >> [3, "3754167575", {"currentTime": "2025-08-27T17:05:02.796649+00:00"}][0m
+[94m2025-08-27 19:05:02,796 - app.ocpp_handler - INFO - Sent response for 'Heartbeat' to Wallbox001[0m
+[91m--- Step B.1: Acquiring meter values for Elecq/AE104ABG00029B ---[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:05:33,898 - app.ocpp_handler - DEBUG - RAW >> [2, "bac4547d-747d-4c76-887c-f2cd88c2e644", "TriggerMessage", {"requestedMessage": "MeterValues", "connectorId": 1}][0m
+[94m2025-08-27 19:05:33,898 - app.ocpp_handler - INFO - Sent TriggerMessage (id=bac4547d-747d-4c76-887c-f2cd88c2e644). Waiting for response...[0m
+[94m2025-08-27 19:05:33,913 - app.ocpp_handler - INFO - Received CALLRESULT for 'TriggerMessage' (id=bac4547d-747d-4c76-887c-f2cd88c2e644) from Elecq/AE104ABG00029B[0m
+[94m2025-08-27 19:05:33,913 - app.ocpp_handler - INFO - Response received for TriggerMessage (id=bac4547d-747d-4c76-887c-f2cd88c2e644). Proceeding.[0m
+[94m2025-08-27 19:05:33,913 - app.ocpp_server_logic - INFO - Trigger acknowledged. Waiting for the MeterValues message from the charge point...[0m
+[92m2025-08-27 19:05:34,069 - app.ocpp_handler - DEBUG - Received CALL 'MeterValues' from Elecq/AE104ABG00029B[0m
+[94m2025-08-27 19:05:34,069 - app.ocpp_server_logic - INFO - Detected a triggered MeterValues message, setting event.[0m
+[92m2025-08-27 19:05:34,069 - app.ocpp_server_logic - DEBUG - Received MeterValues from Elecq/AE104ABG00029B for connector 1 (transactionId: None)[0m
+[92m2025-08-27 19:05:34,069 - app.ocpp_server_logic - DEBUG -   -> Timestamp: 2025-08-27T17:05:33Z[0m
+[92m2025-08-27 19:05:34,069 - app.ocpp_server_logic - DEBUG -     - Current.Import: 0.000000 A (context: Trigger, phase: L1)[0m
+[92m2025-08-27 19:05:34,069 - app.ocpp_server_logic - DEBUG -     - Current.Import: 0.000000 A (context: Trigger, phase: L2)[0m
+[92m2025-08-27 19:05:34,069 - app.ocpp_server_logic - DEBUG -     - Current.Import: 0.000000 A (context: Trigger, phase: L3)[0m
+[92m2025-08-27 19:05:34,069 - app.ocpp_server_logic - DEBUG -     - Voltage: 234.979500 V (context: Trigger, phase: L1)[0m
+[92m2025-08-27 19:05:34,069 - app.ocpp_server_logic - DEBUG -     - Voltage: 0.000000 V (context: Trigger, phase: L2)[0m
+[92m2025-08-27 19:05:34,069 - app.ocpp_server_logic - DEBUG -     - Voltage: 0.000000 V (context: Trigger, phase: L3)[0m
+[92m2025-08-27 19:05:34,069 - app.ocpp_server_logic - DEBUG -     - Energy.Active.Import.Register: 41.081000 kWh (context: Trigger)[0m
+[92m2025-08-27 19:05:34,070 - app.ocpp_server_logic - DEBUG -     - Power.Active.Import: 0 W (context: Trigger, phase: L1)[0m
+[92m2025-08-27 19:05:34,070 - app.ocpp_server_logic - DEBUG -     - Power.Active.Import: 0 W (context: Trigger, phase: L2)[0m
+[92m2025-08-27 19:05:34,070 - app.ocpp_server_logic - DEBUG -     - Power.Active.Import: 0 W (context: Trigger, phase: L3)[0m
+[92m2025-08-27 19:05:34,070 - app.ocpp_server_logic - DEBUG -     - Power.Active.Import: 0 W (context: Trigger)[0m
+[92m2025-08-27 19:05:34,070 - app.ocpp_server_logic - DEBUG -     - SoC: 0.000000 Percent (context: Trigger)[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:05:34,070 - app.ocpp_handler - DEBUG - RAW >> [3, "c3a60751-cf5a-4d36-9ded-b0f3842e364d", {}][0m
+[94m2025-08-27 19:05:34,070 - app.ocpp_handler - INFO - Sent response for 'MeterValues' to Elecq/AE104ABG00029B[0m
+[94m2025-08-27 19:05:34,071 - app.ocpp_server_logic - INFO - SUCCESS: Received triggered MeterValues message from the charge point.[0m
+[92m2025-08-27 19:05:34,071 - app.ocpp_server_logic - DEBUG - Stored test result for Elecq/AE104ABG00029B - run_b1_status_and_meter_value_acquisition: SUCCESS[0m
+[91m--- Step B.1 for Elecq/AE104ABG00029B complete. ---[0m
+[92m2025-08-27 19:06:00,809 - app.ocpp_server_logic - DEBUG - Passive health check for Elecq/AE104ABG00029B. Waiting for next heartbeat.[0m
+[92m2025-08-27 19:06:02,225 - app.ocpp_server_logic - DEBUG - Passive health check for Wallbox001. Waiting for next heartbeat.[0m
+[92m2025-08-27 19:06:02,396 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' from Wallbox001[0m
+[94m2025-08-27 19:06:02,396 - app.ocpp_server_logic - INFO - Received Heartbeat from Wallbox001[0m
+[92m
+
+------------OCPP Call----------[0m
+[92m2025-08-27 19:06:02,397 - app.ocpp_handler - DEBUG - RAW >> [3, "4097220831", {"currentTime": "2025-08-27T17:06:02.397068+00:00"}][0m
+[94m2025-08-27 19:06:02,397 - app.ocpp_handler - INFO - Sent response for 'Heartbeat' to Wallbox001[0m
