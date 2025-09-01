@@ -72,9 +72,7 @@ MESSAGE_HANDLERS: Dict[str, Dict[str, Any]] = {
 }
 
 # Optional: safe fallback if some vendor sends an action we don't support.
-async def handle_unknown_action(charge_point_id: str, payload: dict):
-    logger.warning(f"Unknown/unsupported action for {charge_point_id}: {payload}")
-    return None
+
 
 def create_ocpp_message(message_type_id: int, unique_id: str, payload: Any, action: str = None) -> str:
     dict_factory = lambda data: {k: v for (k, v) in data if v is not None}
@@ -220,12 +218,13 @@ class OCPPHandler:
 
         handler_info = MESSAGE_HANDLERS.get(action)
         if not handler_info:
-            logger.warning(f"No handler registered for action '{action}'")
+            logger.warning(f"No handler registered for action '{action}'. Delegating to unknown action handler.")
+            await self.ocpp_logic.handle_unknown_action(self.charge_point_id, payload_dict)
             return
         handler_name, payload_class = handler_info["handler_name"], handler_info["payload_class"]
         try:
             filtered = _filter_payload(payload_class, payload_dict)
-            handler = getattr(self.ocpp_logic, handler_name)
+            handler = getattr(self.ocpp_logic.message_handlers, handler_name)
             payload = payload_class(**filtered)
             response_payload = await handler(self.charge_point_id, payload)
             if response_payload is not None:

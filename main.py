@@ -23,20 +23,20 @@ from websockets.server import ServerConnection
 
 from app import web_ui_server
 from app.ocpp_handler import OCPPHandler
-from app.log_streamer import LogStreamer, WebSocketLogHandler
-from app.status_streamer import EVStatusStreamer
-from app.state import SERVER_SETTINGS
+from app.streamers import LogStreamer, WebSocketLogHandler, EVStatusStreamer
+
+from app.core import SERVER_SETTINGS
 from app.ev_simulator_manager import EVSimulatorManager
 import uvicorn
 import aiohttp # NEW
 from websockets.server import serve
-from app.config import OCPP_HOST, OCPP_PORT, HTTP_HOST, HTTP_PORT, LOG_WS_PATH, EV_STATUS_WS_PATH, EV_SIMULATOR_BASE_URL, EV_STATUS_POLL_INTERVAL # NEW
+from app.core import OCPP_HOST, OCPP_PORT, HTTP_HOST, HTTP_PORT, LOG_WS_PATH, EV_STATUS_WS_PATH, EV_SIMULATOR_BASE_URL, EV_STATUS_POLL_INTERVAL
 from app.ocpp_server_logic import OcppServerLogic
-from app.server import serve_ocpp
+
 from app.web_ui_server import app as flask_app, attach_loop, attach_ev_status_streamer
-from app.log_streamer import LogStreamer
-from app.status_streamer import EVStatusStreamer
-from app.state import EV_SIMULATOR_STATE # NEW
+
+
+
 
 # ---------- Colored logging formatter ----------
 class ColoredFormatter(logging.Formatter):
@@ -193,5 +193,7 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
     except KeyboardInterrupt:
         pass

@@ -11,6 +11,7 @@ import aiohttp
 from flask import Flask, jsonify, request, render_template
 
 from app.ocpp_server_logic import OcppServerLogic
+from app.ocpp_test_steps import OcppTestSteps
 from app.core import CHARGE_POINTS, EV_SIMULATOR_STATE, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id, EV_SIMULATOR_BASE_URL, OCPP_PORT
 from app.streamers import EVStatusStreamer
 
@@ -76,7 +77,7 @@ def set_active_charge_point():
 @app.route("/api/test_steps", methods=["GET"])
 def list_test_steps():
     step_methods = [
-        name for name, func in inspect.getmembers(OcppServerLogic, inspect.iscoroutinefunction)
+        name for name, func in inspect.getmembers(OcppTestSteps, inspect.iscoroutinefunction)
         if name.startswith("run_")
     ]
     return jsonify(step_methods)

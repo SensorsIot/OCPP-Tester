@@ -121,17 +121,37 @@ class OcppMessageHandlers:
 
     async def handle_start_transaction(self, charge_point_id: str, payload: StartTransactionRequest) -> StartTransactionResponse:
         logger.info(f"Received StartTransaction from {charge_point_id}: {payload}")
-        # Using a simple incrementing integer for transactionId. A more robust
-        # implementation would use a UUID to avoid potential conflicts.
-        transaction_id = len(TRANSACTIONS) + 1
-        TRANSACTIONS[transaction_id] = {
-            "charge_point_id": charge_point_id,
-            "id_tag": payload.idTag,
-            "start_time": payload.timestamp,
-            "meter_start": payload.meterStart,
-            "connector_id": payload.connectorId,
-            "status": "Ongoing"
-        }
+
+        # Check if there is an existing remotely started transaction.
+        existing_transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
+                                       tdata.get("charge_point_id") == charge_point_id and
+                                       tdata.get("connector_id") == payload.connectorId and
+                                       tdata.get("id_tag") == payload.idTag and
+                                       tdata.get("remote_started") is True and
+                                       tdata.get("status") == "Ongoing"), None)
+
+        if existing_transaction_id:
+            # Update the existing transaction record.
+            transaction_id = existing_transaction_id
+            TRANSACTIONS[transaction_id].update({
+                "start_time": payload.timestamp,
+                "meter_start": payload.meterStart,
+                "remote_started": False # Mark it as confirmed by StartTransaction
+            })
+            logger.info(f"Updated existing transaction {transaction_id} with StartTransaction data.")
+        else:
+            # Create a new transaction record.
+            transaction_id = len(TRANSACTIONS) + 1
+            TRANSACTIONS[transaction_id] = {
+                "charge_point_id": charge_point_id,
+                "id_tag": payload.idTag,
+                "start_time": payload.timestamp,
+                "meter_start": payload.meterStart,
+                "connector_id": payload.connectorId,
+                "status": "Ongoing"
+            }
+            logger.info(f"Created new transaction {transaction_id}.")
+
         return StartTransactionResponse(
             transactionId=transaction_id,
             idTagInfo=IdTagInfo(status="Accepted")

@@ -1,53 +1,3 @@
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-git pull --no-rebase origin master
-git status
-git status
-clear
-git status
-git status
-git status
-git add .bash_history
-git add app/handlers.py
-git add app/log_streamer.py
-git add app/ocpp_handler.py
-git add app/server.py
-git add app/web_ui_server.py
-git add main.py
-git commit
-clear
-python main.py 
-python main.py 
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-python3 -m venv venv
 source venv/bin/activate
 python main.py 
 clear
@@ -498,3 +448,53 @@ clear
 python main.py 
 clear
 python main.py 
+gemini
+gemini --model gemini-2.5-flash
+gemini --model gemini-2.5-pro
+gemini --model gemini-2.5-flash
+pip install websockets
+pip install python-dateutil
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+python3 main.py 
+clear
+python3 main.py 
+clear
+npm update -g @google/gemini-cli
+sudo npm update -g @google/gemini-cli
+npm install -g npm@11.5.2
+sudo npm install -g npm@11.5.2
+npm config get prefix
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+clear
+python3 main.py 
+sudo reboot now
+export GEMINI_MODEL="gemini-2.5-pro"
+gemini --model gemini-2.5-pro
+gemini --model gemini-2.5-flash
+gemini --model gemini-2.5-flash
