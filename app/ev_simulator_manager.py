@@ -7,9 +7,10 @@ import logging
 
 import aiohttp
 
-from app.state import EV_SIMULATOR_STATE, SERVER_SETTINGS
-from app.status_streamer import EVStatusStreamer
-from app.config import (
+from app.streamers import EVStatusStreamer
+from app.core import (
+    EV_SIMULATOR_STATE,
+    SERVER_SETTINGS,
     EV_SIMULATOR_BASE_URL,
     EV_STATUS_POLL_INTERVAL,
     EV_WAIT_MAX_BACKOFF,

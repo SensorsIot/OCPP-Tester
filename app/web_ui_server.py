@@ -10,10 +10,9 @@ from typing import Optional, Dict, Any
 import aiohttp
 from flask import Flask, jsonify, request, render_template
 
-from app.state import CHARGE_POINTS, EV_SIMULATOR_STATE, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id
 from app.ocpp_server_logic import OcppServerLogic
-from app.config import EV_SIMULATOR_BASE_URL, OCPP_PORT
-from app.status_streamer import EVStatusStreamer
+from app.core import CHARGE_POINTS, EV_SIMULATOR_STATE, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id, EV_SIMULATOR_BASE_URL, OCPP_PORT
+from app.streamers import EVStatusStreamer
 
 app = Flask(__name__)
 app.loop: Optional[asyncio.AbstractEventLoop] = None

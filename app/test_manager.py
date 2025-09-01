@@ -17,7 +17,7 @@ class TestManager:
     """
     def __init__(self, ocpp_handler: 'OCPPHandler'):
         self.handler = ocpp_handler
-        self.test_sequence = ocpp_handler.test_sequence
+        self.test_sequence = ocpp_handler.ocpp_logic
 
     async def run_a1_initial_registration(self):
         """Runs Step A.1: Initial Connection and Registration."""
@@ -44,25 +44,30 @@ class TestManager:
         logger.info(f"API triggered: Running Step B.1 for {self.handler.charge_point_id}")
         await self.test_sequence.step_b1_status_and_meter_value_acquisition()
 
-    async def run_d3_smart_charging_capability_test(self):
-        """Runs Step D.3: Smart Charging Capability Test."""
-        logger.info(f"API triggered: Running Step D.3 for {self.handler.charge_point_id}")
-        await self.test_sequence.step_d3_smart_charging_capability_test()
-
-    async def run_d1_set_live_charging_power(self):
-        """Runs Step D.1: Set Charging Power (for Active Transaction)."""
+    async def run_d1_start_charging_test(self):
+        """Runs Step D.1: Start Charging Test."""
         logger.info(f"API triggered: Running Step D.1 for {self.handler.charge_point_id}")
-        await self.test_sequence.step_d1_set_live_charging_power()
+        await self.test_sequence.step_d1_start_charging_test()
 
-    async def run_d2_set_default_charging_profile(self):
-        """Runs Step D.2: Set Default Charging Profile."""
-        logger.info(f"API triggered: Running Step D.2 for {self.handler.charge_point_id}")
-        await self.test_sequence.step_d2_set_default_charging_profile()
+    async def run_e3_smart_charging_capability_test(self):
+        """Runs Step E.3: Smart Charging Capability Test."""
+        logger.info(f"API triggered: Running Step E.3 for {self.handler.charge_point_id}")
+        await self.test_sequence.step_e3_smart_charging_capability_test()
 
-    async def run_d4_clear_default_charging_profile(self):
-        """Runs Step D.4: Clear Default Charging Profile."""
-        logger.info(f"API triggered: Running Step D.4 for {self.handler.charge_point_id}")
-        await self.test_sequence.step_d4_clear_default_charging_profile()
+    async def run_e1_set_live_charging_power(self):
+        """Runs Step E.1: Set Charging Power (for Active Transaction)."""
+        logger.info(f"API triggered: Running Step E.1 for {self.handler.charge_point_id}")
+        await self.test_sequence.step_e1_set_live_charging_power()
+
+    async def run_e2_set_default_charging_profile(self):
+        """Runs Step E.2: Set Default Charging Profile."""
+        logger.info(f"API triggered: Running Step E.2 for {self.handler.charge_point_id}")
+        await self.test_sequence.step_e2_set_default_charging_profile()
+
+    async def run_e4_clear_default_charging_profile(self):
+        """Runs Step E.4: Clear Default Charging Profile."""
+        logger.info(f"API triggered: Running Step E.4 for {self.handler.charge_point_id}")
+        await self.test_sequence.step_e4_clear_default_charging_profile()
 
     async def run_a3_change_configuration_test(self):
         """Runs Step A.3: A dedicated test to change a configuration value."""

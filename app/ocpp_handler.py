@@ -20,7 +20,8 @@ from app.messages import (
     TriggerMessageRequest,
 )
 from app.ocpp_server_logic import OcppServerLogic
-from app.state import CHARGE_POINTS, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id
+from app.test_sequence import TestSequence
+from app.core import CHARGE_POINTS, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id
 from websockets.server import ServerConnection
 from websockets.exceptions import ConnectionClosedOK
 
@@ -105,6 +106,7 @@ class OCPPHandler:
         self.test_lock = asyncio.Lock()
         self._cancellation_event = asyncio.Event() # New cancellation event
         self.ocpp_logic = OcppServerLogic(self, self.refresh_trigger, self.initial_status_received)
+        self.test_sequence = TestSequence(self.ocpp_logic)
         self._logic_task = None
 
     def signal_cancellation(self):
@@ -213,7 +215,7 @@ class OCPPHandler:
         
         # Only process messages from the active charge point
         if self.charge_point_id != active_cp_id:
-            logger.info(f"Ignoring {action} from {self.charge_point_id} (not active charge point). Handler CP: {self.charge_point_id}, Active CP: {active_cp_id}")
+            logger.info(f"Ignoring {action} from {self.charge_point_id} (not active charge point). Handler CP: {self.charge_point_id}, Active CP: {active_cp_id})")
             return
 
         handler_info = MESSAGE_HANDLERS.get(action)

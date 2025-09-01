@@ -135,7 +135,7 @@ async def main():
 
     # Central logging setup
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO) # Reverted to INFO
+    root_logger.setLevel(logging.INFO)
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
     console = StreamHandler()

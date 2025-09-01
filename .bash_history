@@ -1,165 +1,3 @@
-python main.py 
-clear
-python main.py 
-python main.py 
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-cd app
-ls
-cd ..
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-python main.py 
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-python main.py 
-ls
-python main.py 
-ls
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-python main.py 
-python main.py 
-clear
-python main.py 
-python main.py 
-clear
-python main.py 
-python main.py 
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-sudo chown -R opcc:opcc app
-sudo chmod -R 750 app
-sudo chmod -R 777 app
-sudo chmod -R 750 app
-clear
-python main.py 
-clear
-python main.py 
-python main.py 
-python main.py 
-clear
-python main.py 
-sudo chown -R opcc:opcc app
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-clear
-python main.py 
-git add app/
-git status
-cd app
-ls
-git add .
-git status
-clear
-python main.py 
-cd ..
-python main.py 
-cd ..
-cd ocpp
-ls
-cd opcc
-cd ..
-cd opcc
-clear
-python main.py 
-clear
-python main.py 
 clear
 python main.py 
 clear
@@ -498,3 +336,165 @@ python main.py
 clear
 gemini
 gemini
+python main.py python3 -m venv venv
+source venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+lsof -i :8887
+kill [200~34883~
+kill 34883
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+continue
+ls
+ls
+cd app
+ls
+ls -l
+ls -la
+sudo npm install -g @google/gemini-cli@latest
+clear
+python main.py 
+cd ..
+python main.py 
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+python main.py 
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
+clear
+python main.py 
