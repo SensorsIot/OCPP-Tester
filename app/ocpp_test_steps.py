@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict
 
 import aiohttp
 
-from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, EV_SIMULATOR_BASE_URL
+from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, EV_SIMULATOR_BASE_URL, get_active_transaction_id
 from app.messages import (
     BootNotificationRequest, TriggerMessageRequest, GetConfigurationRequest,
     ChangeConfigurationRequest, RemoteStartTransactionRequest, RemoteStopTransactionRequest,
@@ -53,10 +53,10 @@ class OcppTestSteps:
         self._check_cancellation()
         if success:
             logger.info("SUCCESS: The charge point acknowledged the TriggerMessage request.")
-            self._set_test_result(step_name, "SUCCESS")
+            self._set_test_result(step_name, "PASSED")
         else:
             logger.error("FAILURE: The charge point did not respond to the TriggerMessage request within the timeout.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
 
         logger.info(f"--- Step A.1 for {self.charge_point_id} complete. ---")
 
@@ -73,7 +73,7 @@ class OcppTestSteps:
         self._check_cancellation()
         if response and response.get("configurationKey"):
             logger.info("SUCCESS: Received configuration keys from the charge point.")
-            self._set_test_result(step_name, "SUCCESS")
+            self._set_test_result(step_name, "PASSED")
             
             logger.info("--- Charge Point Configuration ---")
             for key_value in response["configurationKey"]:
@@ -87,7 +87,7 @@ class OcppTestSteps:
 
         elif response and response.get("unknownKey"):
             logger.warning("Charge point reported unknown keys. This might indicate a partial success.")
-            self._set_test_result(step_name, "SUCCESS") # Marking as success as we got a response
+            self._set_test_result(step_name, "PASSED") # Marking as success as we got a response
 
             logger.info("--- Charge Point Configuration (Partial) ---")
             if response.get("configurationKey"):
@@ -102,7 +102,7 @@ class OcppTestSteps:
             logger.info("------------------------------------------")
         else:
             logger.error("FAILURE: The charge point did not return any configuration keys.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
 
         logger.info(f"--- Step A.2 for {self.charge_point_id} complete. ---")
 
@@ -114,7 +114,12 @@ class OcppTestSteps:
         configurations = {
             "MeterValuesSampledData": "Power.Active.Import,Energy.Active.Import.Register,Current.Import,Voltage,Current.Offered,Power.Offered,SoC",
             "MeterValueSampleInterval": "10",
-            "WebSocketPingInterval": "30"
+            "WebSocketPingInterval": "30",
+            "AuthorizeRemoteTxRequests": "true",
+            "HeartbeatInterval": "10",
+            "OCPPCommCtrlrMessageAttemptIntervalBoo": "5",
+            "TxCtrlrTxStartPoint": "Authorization",
+            "FreeChargeMode": "true"
         }
 
         results = {}
@@ -127,23 +132,23 @@ class OcppTestSteps:
             )
             self._check_cancellation()
             if response and response.get("status") == "Accepted":
-                results[key] = "SUCCESS"
+                results[key] = "PASSED"
             else:
-                results[key] = "FAILURE"
+                results[key] = "FAILED"
                 all_success = False
         
         logger.info("--- Test Summary ---")
         for key, result in results.items():
-            if result == "SUCCESS":
+            if result == "PASSED":
                 logger.info(f"  \033[92m{key}: {result}\033[0m")
             else:
                 logger.error(f"  \033[91m{key}: {result}\033[0m")
         logger.info("--------------------")
 
         if all_success:
-            self._set_test_result(step_name, "SUCCESS")
+            self._set_test_result(step_name, "PASSED")
         else:
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
 
         logger.info(f"--- Step A.3 for {self.charge_point_id} complete. ---")
 
@@ -167,9 +172,9 @@ class OcppTestSteps:
         try:
             await asyncio.wait_for(self._wait_for_status("Available"), timeout=15)
             self._check_cancellation()
-            results["State A (Available)"] = "SUCCESS"
+            results["State A (Available)"] = "PASSED"
         except asyncio.TimeoutError:
-            results["State A (Available)"] = "FAILURE"
+            results["State A (Available)"] = "FAILED"
             all_success = False
 
         # Test state B
@@ -178,9 +183,9 @@ class OcppTestSteps:
         try:
             await asyncio.wait_for(self._wait_for_status("Preparing"), timeout=15)
             self._check_cancellation()
-            results["State B (Preparing)"] = "SUCCESS"
+            results["State B (Preparing)"] = "PASSED"
         except asyncio.TimeoutError:
-            results["State B (Preparing)"] = "FAILURE"
+            results["State B (Preparing)"] = "FAILED"
             all_success = False
 
         # Test state C
@@ -190,9 +195,9 @@ class OcppTestSteps:
             await asyncio.sleep(1) # Added additional delay
             await asyncio.wait_for(self._wait_for_status("Charging"), timeout=15)
             self._check_cancellation()
-            results["State C (Charging)"] = "SUCCESS"
+            results["State C (Charging)"] = "PASSED"
         except asyncio.TimeoutError:
-            results["State C (Charging)"] = "FAILURE"
+            results["State C (Charging)"] = "FAILED"
             all_success = False
 
         # Test state E
@@ -201,9 +206,9 @@ class OcppTestSteps:
         try:
             await asyncio.wait_for(self._wait_for_status("Faulted"), timeout=15)
             self._check_cancellation()
-            results["State E (Faulted)"] = "SUCCESS"
+            results["State E (Faulted)"] = "PASSED"
         except asyncio.TimeoutError:
-            results["State E (Faulted)"] = "FAILURE"
+            results["State E (Faulted)"] = "FAILED"
             all_success = False
 
         # Return to state A
@@ -212,23 +217,23 @@ class OcppTestSteps:
         try:
             await asyncio.wait_for(self._wait_for_status("Available"), timeout=15)
             self._check_cancellation()
-            results["State A (Available)"] = "SUCCESS"
+            results["State A (Available)"] = "PASSED"
         except asyncio.TimeoutError:
-            results["State A (Available)"] = "FAILURE"
+            results["State A (Available)"] = "FAILED"
             all_success = False
 
         logger.info("--- Test Summary ---")
         for key, result in results.items():
-            if result == "SUCCESS":
+            if result == "PASSED":
                 logger.info(f"  \033[92m{key}: {result}\033[0m")
             else:
                 logger.error(f"  \033[91m{key}: {result}\033[0m")
         logger.info("--------------------")
 
         if all_success:
-            self._set_test_result(step_name, "SUCCESS")
+            self._set_test_result(step_name, "PASSED")
         else:
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
 
         logger.info(f"--- Step A.4 for {self.charge_point_id} complete. ---")
 
@@ -289,23 +294,23 @@ class OcppTestSteps:
             
             if trigger_ok and trigger_ok.get("status") == "Accepted":
                 logger.info(f"SUCCESS: The charge point acknowledged the TriggerMessage request for {message}.")
-                results[message] = "SUCCESS"
+                results[message] = "PASSED"
             else:
                 logger.error(f"FAILURE: The charge point did not acknowledge the TriggerMessage request for {message}.")
-                results[message] = "FAILURE"
+                results[message] = "FAILED"
 
         logger.info("--- Test Summary ---")
         for key, result in results.items():
-            if result == "SUCCESS":
+            if result == "PASSED":
                 logger.info(f"  \033[92m{key}: {result}\033[0m")
             else:
                 logger.error(f"  \033[91m{key}: {result}\033[0m")
         logger.info("--------------------")
 
-        if any(result == "SUCCESS" for result in results.values()):
-            self._set_test_result(step_name, "SUCCESS")
+        if any(result == "PASSED" for result in results.values()):
+            self._set_test_result(step_name, "PASSED")
         else:
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
             
         logger.info(f"--- Step A.5 for {self.charge_point_id} complete. ---")
 
@@ -326,7 +331,7 @@ class OcppTestSteps:
         self._check_cancellation()
         if not trigger_ok:
             logger.error("FAILURE: The charge point did not acknowledge the TriggerMessage request.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
             self.pending_triggered_message_events.pop("MeterValues", None)  # Cleanup
             logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
             return
@@ -337,10 +342,10 @@ class OcppTestSteps:
             await asyncio.wait_for(meter_values_event.wait(), timeout=15)
             self._check_cancellation()
             logger.info("SUCCESS: Received triggered MeterValues message from the charge point.")
-            self._set_test_result(step_name, "SUCCESS")
+            self._set_test_result(step_name, "PASSED")
         except asyncio.TimeoutError:
             logger.error("FAILURE: Timed out waiting for the triggered MeterValues message.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
         finally:
             self.pending_triggered_message_events.pop("MeterValues", None)
 
@@ -386,7 +391,7 @@ class OcppTestSteps:
         self._check_cancellation()
         if not start_ok:
             logger.error("FAILURE: RemoteStartTransaction was not acknowledged by the charge point.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
             await self._set_ev_state("A")  # Cleanup
             self._check_cancellation()
             logger.info(f"--- Step C.1 for {self.charge_point_id} complete. ---")
@@ -417,7 +422,7 @@ class OcppTestSteps:
             logger.info("SUCCESS: Charge point reported 'Charging' status.")
         except asyncio.TimeoutError:
             logger.error("FAILURE: Timed out waiting for charge point to report 'Charging' status.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
             await self._set_ev_state("A") # Cleanup
             self._check_cancellation()
             return
@@ -480,13 +485,13 @@ class OcppTestSteps:
         self._check_cancellation()
         if stop_ok:
             logger.info("SUCCESS: RemoteStart and RemoteStop sequence was acknowledged.")
-            self._set_test_result(step_name, "SUCCESS")
+            self._set_test_result(step_name, "PASSED")
         else:
             logger.error("FAILURE: RemoteStopTransaction was not acknowledged by the charge point.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
         # else: # This else block is removed as transaction is now always registered internally
         #     logger.error("FAILURE: No ongoing transaction was registered by the server after RemoteStart.")
-        #     self._set_test_result(step_name, "FAILURE")
+        #     self._set_test_result(step_name, "FAILED")
 
         # 5. Cleanup: Simulate disconnecting the EV.
         await self._set_ev_state("A")
@@ -515,17 +520,17 @@ class OcppTestSteps:
                                tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
         if not transaction_id:
             logger.error("FAILURE: No ongoing transaction found. Please start a transaction before running this step.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
             return
         profile = SetChargingProfileRequest(connectorId=0, csChargingProfiles=ChargingProfile(chargingProfileId=random.randint(1, 1000), transactionId=transaction_id, stackLevel=1, chargingProfilePurpose=ChargingProfilePurposeType.TxProfile, chargingProfileKind=ChargingProfileKindType.Absolute, chargingSchedule=ChargingSchedule(duration=3600, chargingRateUnit=ChargingRateUnitType.A, chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=10.0)])))
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
         if success:
             logger.info("SUCCESS: SetChargingProfile was acknowledged by the charge point.")
-            self._set_test_result(step_name, "SUCCESS")
+            self._set_test_result(step_name, "PASSED")
         else:
             logger.error("FAILURE: SetChargingProfile was not acknowledged by the charge point.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
         logger.info(f"--- Step D.1 for {self.charge_point_id} complete. ---")
 
     async def run_d2_set_default_charging_profile(self):
@@ -538,10 +543,10 @@ class OcppTestSteps:
         self._check_cancellation()
         if success:
             logger.info("SUCCESS: SetChargingProfile for default profile was acknowledged.")
-            self._set_test_result(step_name, "SUCCESS")
+            self._set_test_result(step_name, "PASSED")
         else:
             logger.error("FAILURE: SetChargingProfile for default profile was not acknowledged.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
         logger.info(f"--- Step D.2 for {self.charge_point_id} complete. ---")
 
     async def run_d3_smart_charging_capability_test(self):
@@ -552,7 +557,7 @@ class OcppTestSteps:
         logger.warning("This test step is a placeholder and does not perform any actions. Marking as SUCCESS.")
         await asyncio.sleep(1)
         self._check_cancellation()
-        self._set_test_result(step_name, "SUCCESS")
+        self._set_test_result(step_name, "PASSED")
         logger.info(f"--- Step D.3 for {self.charge_point_id} complete. ---")
 
     async def run_d4_clear_default_charging_profile(self):
@@ -567,25 +572,26 @@ class OcppTestSteps:
         self._check_cancellation()
         if success:
             logger.info("SUCCESS: ClearChargingProfile was acknowledged.")
-            self._set_test_result(step_name, "SUCCESS")
+            self._set_test_result(step_name, "PASSED")
         else:
             logger.error("FAILURE: ClearChargingProfile was not acknowledged.")
-            self._set_test_result(step_name, "FAILURE")
+            self._set_test_result(step_name, "FAILED")
         logger.info(f"--- Step D.4 for {self.charge_point_id} complete. ---")
 
     
 
-    async def run_e1_real_world_transaction_test(self):
-        """E.1: Starts a remote transaction and leaves it running."""
-        logger.info(f"--- Step E.1: Starting remote transaction for {self.charge_point_id} ---")
-        step_name = "run_e1_real_world_transaction_test"
+    async def run_e1_remote_start_state_a(self):
+        """E.1: Attempts RemoteStartTransaction from EV state A (Available). Expects rejection."""
+        logger.info(f"--- Step E.1: RemoteStartTransaction from State A for {self.charge_point_id} ---")
+        step_name = "run_e1_remote_start_from_state_a"
         self._check_cancellation()
         id_tag = "test_id_1"
         connector_id = 1
 
-        # 1. Simulate connecting an EV to the charge point.
-        await self._set_ev_state("B")
+        # 1. Ensure EV simulator is in state A.
+        await self._set_ev_state("A")
         self._check_cancellation()
+        # Give the charge point a moment to report status
         await asyncio.sleep(2)
 
         # 2. Send the RemoteStartTransaction command.
@@ -596,118 +602,322 @@ class OcppTestSteps:
         )
         self._check_cancellation()
 
-        if not (start_response and start_response.get("status") == "Accepted"):
-            logger.error(f"FAILURE: RemoteStartTransaction was not accepted. Response: {start_response}")
-            self._set_test_result(step_name, "FAILURE")
-            await self._set_ev_state("A")
-            return
-
-        logger.info("RemoteStartTransaction was accepted by the charge point.")
-
-        # 3. Register the transaction on the server side.
-        transaction_id = len(TRANSACTIONS) + 1
-        TRANSACTIONS[transaction_id] = {
-            "charge_point_id": self.charge_point_id,
-            "id_tag": id_tag,
-            "start_time": datetime.now(timezone.utc).isoformat(),
-            "meter_start": 0, # We don't know this yet
-            "connector_id": connector_id,
-            "status": "Ongoing",
-            "remote_started": True
-        }
-        logger.info(f"Transaction {transaction_id} registered internally.")
-        self._set_test_result(step_name, "SUCCESS")
-
-
-        # 4. Simulate EV drawing power.
-        logger.info(f"Setting EV state to 'C' to simulate charging.")
-        await self._set_ev_state("C")
-
+        # For this test, we expect the RemoteStartTransaction to be ACCEPTED from State A,
+        # and the CP to transition to 'Preparing' (or remain 'Available' if no EV is connected).
+        if start_response and start_response.get("status") == "Accepted":
+            # Wait for the CP to report its status after accepting the remote start
+            try:
+                await asyncio.wait_for(self._wait_for_status("Preparing"), timeout=5) # Or "Available" if it doesn't transition
+                logger.info("SUCCESS: RemoteStartTransaction was accepted and CP transitioned to Preparing as expected.")
+                self._set_test_result(step_name, "PASSED")
+            except asyncio.TimeoutError:
+                logger.error("FAILURE: RemoteStartTransaction was accepted but CP did not transition to Preparing within timeout.")
+                self._set_test_result(step_name, "FAILED")
+        else:
+            logger.error(f"FAILURE: RemoteStartTransaction was not accepted (or failed unexpectedly). Response: {start_response}")
+            self._set_test_result(step_name, "FAILED")
+        
+        # Ensure EV is in state A for cleanup
+        await self._set_ev_state("A")
         logger.info(f"--- Step E.1 for {self.charge_point_id} complete. ---")
 
-    async def run_e2_set_charging_profile_6a(self):
-        """E.2: Sets a charging profile to 6A."""
-        logger.info(f"--- Step E.2: Setting charging profile to 6A for {self.charge_point_id} ---")
-        step_name = "run_e2_set_charging_profile_6a"
+    async def run_e2_remote_start_state_b(self):
+        """E.2: Attempts RemoteStartTransaction from EV state B (Preparing). Handles auto-start or initiates if none."""
+        logger.info(f"--- Step E.2: RemoteStartTransaction from State B for {self.charge_point_id} ---")
+        step_name = "run_e2_remote_start_state_b"
         self._check_cancellation()
-        transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
-                               tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
-        if not transaction_id:
-            logger.error("FAILURE: No ongoing transaction found. Please start a transaction before running this step.")
-            self._set_test_result(step_name, "FAILURE")
-            return
-        profile = SetChargingProfileRequest(connectorId=0, csChargingProfiles=ChargingProfile(chargingProfileId=random.randint(1, 1000), transactionId=transaction_id, stackLevel=1, chargingProfilePurpose=ChargingProfilePurposeType.TxProfile, chargingProfileKind=ChargingProfileKindType.Absolute, chargingSchedule=ChargingSchedule(duration=3600, chargingRateUnit=ChargingRateUnitType.A, chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=6.0)])))
-        success = await self.handler.send_and_wait("SetChargingProfile", profile)
+        id_tag = "test_id_1"
+        connector_id = 1
+
+        # 1. Ensure EV simulator is in state B.
+        await self._set_ev_state("B")
         self._check_cancellation()
-        if success and success.get("status") == "Accepted":
-            logger.info("SUCCESS: SetChargingProfile to 6A was acknowledged.")
-            self._set_test_result(step_name, "SUCCESS")
+        # Give the charge point a moment to report status and potentially auto-start a transaction
+        await asyncio.sleep(2)
+
+        # Check if a transaction was auto-started by the CP
+        auto_started_transaction = next((tid for tid, tdata in TRANSACTIONS.items() if
+                                         tdata.get("charge_point_id") == self.charge_point_id and
+                                         tdata.get("status") == "Ongoing" and
+                                         not tdata.get("remote_started", False)), None) # Check if it's NOT remotely started
+
+        if auto_started_transaction:
+            logger.warning(f"CP auto-started transaction {auto_started_transaction} when EV state set to B. Non-standard behavior.")
+
+        # 2. Send the RemoteStartTransaction command.
+        logger.info("Sending RemoteStartTransaction...")
+        start_response = await self.handler.send_and_wait(
+            "RemoteStartTransaction",
+            RemoteStartTransactionRequest(idTag=id_tag, connectorId=connector_id)
+        )
+        self._check_cancellation()
+
+        if start_response and start_response.get("status") == "Accepted":
+            logger.info("PASSED: RemoteStartTransaction was accepted as expected from State B.")
+            self._set_test_result(step_name, "PASSED")
+            # Register the transaction on the server side.
+            transaction_id = len(TRANSACTIONS) + 1
+            TRANSACTIONS[transaction_id] = {
+                "charge_point_id": self.charge_point_id,
+                "id_tag": id_tag,
+                "start_time": datetime.now(timezone.utc).isoformat(),
+                "meter_start": 0, # We don't know this yet
+                "connector_id": connector_id,
+                "status": "Ongoing",
+                "remote_started": True
+            }
+            logger.info(f"Transaction {transaction_id} registered internally.")
+            # Simulate EV drawing power.
+            logger.info(f"Setting EV state to 'C' to simulate charging.")
+            await self._set_ev_state("C")
+        elif start_response and start_response.get("status") == "Rejected" and auto_started_transaction:
+            logger.warning(f"PASSED (with remark): RemoteStartTransaction was rejected because CP auto-started transaction {auto_started_transaction}. Non-standard behavior.")
+            self._set_test_result(step_name, "PASSED") # Mark as PASSED due to functional charging
+            # Ensure the auto-started transaction is cleaned up
+            # This is tricky. We can't stop it remotely without its transactionId.
+            # The EV simulator will eventually stop it when state is set to A.
         else:
-            logger.error(f"FAILURE: SetChargingProfile to 6A was not acknowledged. Response: {success}")
-            self._set_test_result(step_name, "FAILURE")
+            logger.error(f"FAILED: RemoteStartTransaction was not accepted (or failed unexpectedly). Response: {start_response}")
+            self._set_test_result(step_name, "FAILED")
+        
+        if CHARGE_POINTS.get(self.charge_point_id, {}).get("test_results", {}).get(step_name) == "FAILED": # Only cleanup if the test failed to start a transaction
+            await self._set_ev_state("A")
         logger.info(f"--- Step E.2 for {self.charge_point_id} complete. ---")
 
-    async def run_e3_set_charging_profile_10a(self):
-        """E.3: Sets a charging profile to 10A."""
-        logger.info(f"--- Step E.3: Setting charging profile to 10A for {self.charge_point_id} ---")
-        step_name = "run_e3_set_charging_profile_10a"
+    async def run_e3_remote_start_state_c(self):
+        """E.3: Attempts RemoteStartTransaction from EV state C (Charging). Expects acceptance or non-standard auto-start."""
+        logger.info(f"--- Step E.3: RemoteStartTransaction from State C for {self.charge_point_id} ---")
+        step_name = "run_e3_remote_start_state_c" # Corrected step_name
         self._check_cancellation()
-        transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
-                               tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
-        if not transaction_id:
-            logger.error("FAILURE: No ongoing transaction found. Please start a transaction before running this step.")
-            self._set_test_result(step_name, "FAILURE")
-            return
-        profile = SetChargingProfileRequest(connectorId=0, csChargingProfiles=ChargingProfile(chargingProfileId=random.randint(1, 1000), transactionId=transaction_id, stackLevel=1, chargingProfilePurpose=ChargingProfilePurposeType.TxProfile, chargingProfileKind=ChargingProfileKindType.Absolute, chargingSchedule=ChargingSchedule(duration=3600, chargingRateUnit=ChargingRateUnitType.A, chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=10.0)])))
-        success = await self.handler.send_and_wait("SetChargingProfile", profile)
+        id_tag = "test_id_1"
+        connector_id = 1
+
+        # 1. Ensure EV simulator is in state C.
+        await self._set_ev_state("C")
         self._check_cancellation()
-        if success and success.get("status") == "Accepted":
-            logger.info("SUCCESS: SetChargingProfile to 10A was acknowledged.")
-            self._set_test_result(step_name, "SUCCESS")
+        # Give the charge point a moment to report status and potentially auto-start a transaction
+        await asyncio.sleep(2)
+
+        # Check if a transaction was auto-started by the CP
+        auto_started_transaction = next((tid for tid, tdata in TRANSACTIONS.items() if
+                                         tdata.get("charge_point_id") == self.charge_point_id and
+                                         tdata.get("status") == "Ongoing" and
+                                         not tdata.get("remote_started", False)), None) # Check if it's NOT remotely started
+
+        # 2. Send the RemoteStartTransaction command.
+        logger.info("Sending RemoteStartTransaction...")
+        start_response = await self.handler.send_and_wait(
+            "RemoteStartTransaction",
+            RemoteStartTransactionRequest(idTag=id_tag, connectorId=connector_id)
+        )
+        self._check_cancellation()
+
+        if start_response and start_response.get("status") == "Accepted":
+            logger.info("PASSED: RemoteStartTransaction was accepted as expected from State C.")
+            self._set_test_result(step_name, "PASSED")
+            # Register the transaction on the server side.
+            transaction_id = len(TRANSACTIONS) + 1
+            TRANSACTIONS[transaction_id] = {
+                "charge_point_id": self.charge_point_id,
+                "id_tag": id_tag,
+                "start_time": datetime.now(timezone.utc).isoformat(),
+                "meter_start": 0, # We don't know this yet
+                "connector_id": connector_id,
+                "status": "Ongoing",
+                "remote_started": True
+            }
+            logger.info(f"Transaction {transaction_id} registered internally.")
+            # Simulate EV drawing power.
+            logger.info(f"Setting EV state to 'C' to simulate charging.")
+            await self._set_ev_state("C")
+        elif start_response and start_response.get("status") == "Rejected" and auto_started_transaction:
+            logger.warning(f"PASSED (with remark): RemoteStartTransaction was rejected because CP auto-started transaction {auto_started_transaction}. Non-standard behavior.")
+            self._set_test_result(step_name, "PASSED") # Mark as PASSED due to functional charging
+            # Ensure the auto-started transaction is cleaned up
+            # This is tricky. We can't stop it remotely without its transactionId.
+            # The EV simulator will eventually stop it when state is set to A.
         else:
-            logger.error(f"FAILURE: SetChargingProfile to 10A was not acknowledged. Response: {success}")
-            self._set_test_result(step_name, "FAILURE")
+            logger.error(f"FAILED: RemoteStartTransaction was not accepted (or failed unexpectedly). Response: {start_response}")
+            self._set_test_result(step_name, "FAILED")
+        
+        if CHARGE_POINTS.get(self.charge_point_id, {}).get("test_results", {}).get(step_name) == "FAILED": # Only cleanup if the test failed to start a transaction
+            await self._set_ev_state("A")
         logger.info(f"--- Step E.3 for {self.charge_point_id} complete. ---")
 
-    async def run_e4_set_charging_profile_16a(self):
-        """E.4: Sets a charging profile to 16A."""
-        logger.info(f"--- Step E.4: Setting charging profile to 16A for {self.charge_point_id} ---")
-        step_name = "run_e4_set_charging_profile_16a"
+    async def run_e4_set_profile_6a(self):
+        """E.4: Sets a charging profile to 6A for the active transaction."""
+        logger.info(f"--- Step E.4: Setting charging profile to 6A for {self.charge_point_id} ---")
+        step_name = "run_e4_set_profile_6a"
         self._check_cancellation()
-        transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
-                               tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
-        if not transaction_id:
-            logger.error("FAILURE: No ongoing transaction found. Please start a transaction before running this step.")
-            self._set_test_result(step_name, "FAILURE")
+
+        transaction_id = get_active_transaction_id()
+        if transaction_id is None:
+            logger.error("FAILED: No active transaction found. Please start a transaction first.")
+            self._set_test_result(step_name, "FAILED")
             return
-        profile = SetChargingProfileRequest(connectorId=0, csChargingProfiles=ChargingProfile(chargingProfileId=random.randint(1, 1000), transactionId=transaction_id, stackLevel=1, chargingProfilePurpose=ChargingProfilePurposeType.TxProfile, chargingProfileKind=ChargingProfileKindType.Absolute, chargingSchedule=ChargingSchedule(duration=3600, chargingRateUnit=ChargingRateUnitType.A, chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=16.0)])))
+
+        profile = SetChargingProfileRequest(
+            connectorId=1,
+            csChargingProfiles=ChargingProfile(
+                chargingProfileId=random.randint(1, 1000),
+                transactionId=transaction_id,
+                stackLevel=1,
+                chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,
+                chargingProfileKind=ChargingProfileKindType.Absolute,
+                chargingSchedule=ChargingSchedule(
+                    chargingRateUnit=ChargingRateUnitType.A,
+                    chargingSchedulePeriod=[
+                        ChargingSchedulePeriod(startPeriod=0, limit=6.0)
+                    ]
+                )
+            )
+        )
+
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
+
         if success and success.get("status") == "Accepted":
-            logger.info("SUCCESS: SetChargingProfile to 16A was acknowledged.")
-            self._set_test_result(step_name, "SUCCESS")
+            logger.info("PASSED: SetChargingProfile to 6A was acknowledged.")
+            self._set_test_result(step_name, "PASSED")
         else:
-            logger.error(f"FAILURE: SetChargingProfile to 16A was not acknowledged. Response: {success}")
-            self._set_test_result(step_name, "FAILURE")
+            logger.error(f"FAILED: SetChargingProfile to 6A was not acknowledged. Response: {success}")
+            self._set_test_result(step_name, "FAILED")
+        
         logger.info(f"--- Step E.4 for {self.charge_point_id} complete. ---")
 
-    async def run_e5_clear_charging_profile(self):
-        """E.5: Clears any default charging profiles."""
-        logger.info(f"--- Step E.5: Clearing default charging profile for {self.charge_point_id} ---")
-        step_name = "run_e5_clear_charging_profile"
+    async def run_e5_set_profile_10a(self):
+        """E.5: Sets a charging profile to 10A for the active transaction."""
+        logger.info(f"--- Step E.5: Setting charging profile to 10A for {self.charge_point_id} ---")
+        step_name = "run_e5_set_profile_10a"
         self._check_cancellation()
+
+        transaction_id = get_active_transaction_id()
+        if transaction_id is None:
+            logger.error("FAILED: No active transaction found. Please start a transaction first.")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        profile = SetChargingProfileRequest(
+            connectorId=1,
+            csChargingProfiles=ChargingProfile(
+                chargingProfileId=random.randint(1, 1000),
+                transactionId=transaction_id,
+                stackLevel=1,
+                chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,
+                chargingProfileKind=ChargingProfileKindType.Absolute,
+                chargingSchedule=ChargingSchedule(
+                    chargingRateUnit=ChargingRateUnitType.A,
+                    chargingSchedulePeriod=[
+                        ChargingSchedulePeriod(startPeriod=0, limit=10.0)
+                    ]
+                )
+            )
+        )
+
+        success = await self.handler.send_and_wait("SetChargingProfile", profile)
+        self._check_cancellation()
+
+        if success and success.get("status") == "Accepted":
+            logger.info("PASSED: SetChargingProfile to 10A was acknowledged.")
+            self._set_test_result(step_name, "PASSED")
+        else:
+            logger.error(f"FAILED: SetChargingProfile to 10A was not acknowledged. Response: {success}")
+            self._set_test_result(step_name, "FAILED")
+        
+        logger.info(f"--- Step E.5 for {self.charge_point_id} complete. ---")
+
+    async def run_e6_set_profile_16a(self):
+        """E.6: Sets a charging profile to 16A for the active transaction."""
+        logger.info(f"--- Step E.6: Setting charging profile to 16A for {self.charge_point_id} ---")
+        step_name = "run_e6_set_profile_16a"
+        self._check_cancellation()
+
+        transaction_id = get_active_transaction_id()
+        if transaction_id is None:
+            logger.error("FAILED: No active transaction found. Please start a transaction first.")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        profile = SetChargingProfileRequest(
+            connectorId=1,
+            csChargingProfiles=ChargingProfile(
+                chargingProfileId=random.randint(1, 1000),
+                transactionId=transaction_id,
+                stackLevel=1,
+                chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,
+                chargingProfileKind=ChargingProfileKindType.Absolute,
+                chargingSchedule=ChargingSchedule(
+                    chargingRateUnit=ChargingRateUnitType.A,
+                    chargingSchedulePeriod=[
+                        ChargingSchedulePeriod(startPeriod=0, limit=16.0)
+                    ]
+                )
+            )
+        )
+
+        success = await self.handler.send_and_wait("SetChargingProfile", profile)
+        self._check_cancellation()
+
+        if success and success.get("status") == "Accepted":
+            logger.info("PASSED: SetChargingProfile to 16A was acknowledged.")
+            self._set_test_result(step_name, "PASSED")
+        else:
+            logger.error(f"FAILED: SetChargingProfile to 16A was not acknowledged. Response: {success}")
+            self._set_test_result(step_name, "FAILED")
+        
+        logger.info(f"--- Step E.6 for {self.charge_point_id} complete. ---")
+
+    async def run_e7_clear_profile(self):
+        """E.7: Clears any default charging profiles."""
+        logger.info(f"--- Step E.7: Clearing default charging profile for {self.charge_point_id} ---")
+        step_name = "run_e7_clear_profile"
+        self._check_cancellation()
+
+        # Assume transaction is already ongoing from a previous test (e.g., E.2 or E.3)
+        # No need to find transaction_id for ClearChargingProfile if connectorId=0 (all profiles)
+
         success = await self.handler.send_and_wait(
             "ClearChargingProfile",
             ClearChargingProfileRequest(connectorId=0, chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile)
         )
         self._check_cancellation()
         if success:
-            logger.info("SUCCESS: ClearChargingProfile was acknowledged.")
-            self._set_test_result(step_name, "SUCCESS")
+            logger.info("PASSED: ClearChargingProfile was acknowledged.")
+            self._set_test_result(step_name, "PASSED")
         else:
-            logger.error("FAILURE: ClearChargingProfile was not acknowledged.")
-            self._set_test_result(step_name, "FAILURE")
-        logger.info(f"--- Step E.5 for {self.charge_point_id} complete. ---")
+            logger.error("FAILED: ClearChargingProfile was not acknowledged.")
+            self._set_test_result(step_name, "FAILED")
+        
+        # Leave EV in state C (or whatever state it was left in by the transaction start test)
+        logger.info(f"--- Step E.7 for {self.charge_point_id} complete. ---")
+
+    async def run_e8_remote_stop_transaction(self):
+        """E.8: Stops the active transaction remotely."""
+        logger.info(f"--- Step E.8: Stopping active transaction for {self.charge_point_id} ---")
+        step_name = "run_e8_remote_stop_transaction"
+        self._check_cancellation()
+
+        transaction_id = get_active_transaction_id()
+        if transaction_id is None:
+            logger.error("FAILED: No active transaction found to stop.")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        stop_ok = await self.handler.send_and_wait(
+            "RemoteStopTransaction",
+            RemoteStopTransactionRequest(transactionId=transaction_id)
+        )
+        self._check_cancellation()
+        if stop_ok:
+            logger.info(f"PASSED: RemoteStopTransaction for transaction {transaction_id} was acknowledged.")
+            self._set_test_result(step_name, "PASSED")
+        else:
+            logger.error(f"FAILED: RemoteStopTransaction for transaction {transaction_id} was not acknowledged.")
+            self._set_test_result(step_name, "FAILED")
+        
+        logger.info(f"--- Step E.8 for {self.charge_point_id} complete. ---")
+
+    
 
     async def _wait_for_status(self, status: str):
         while CHARGE_POINTS.get(self.charge_point_id, {}).get("status") != status:

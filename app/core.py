@@ -4,6 +4,7 @@ Configuration values can be overridden via environment variables.
 """
 import os
 from typing import Dict, Any, Optional
+import asyncio
 
 # --- Helper for environment variables ---
 def _env(name: str, default: str) -> str:
@@ -42,6 +43,7 @@ TRANSACTIONS: Dict[int, Dict[str, Any]] = {}
 
 # A string to store the ID of the currently active charge point selected in the UI.
 _active_charge_point_id: Optional[str] = None
+_active_transaction_id: Optional[int] = None
 
 def get_active_charge_point_id() -> Optional[str]:
     return _active_charge_point_id
@@ -49,6 +51,22 @@ def get_active_charge_point_id() -> Optional[str]:
 def set_active_charge_point_id(cp_id: Optional[str]):
     global _active_charge_point_id
     _active_charge_point_id = cp_id
+
+def get_active_transaction_id() -> Optional[int]:
+    return _active_transaction_id
+
+def set_active_transaction_id(tx_id: Optional[int]):
+    global _active_transaction_id
+    _active_transaction_id = tx_id
+
+_shutdown_event: Optional[asyncio.Event] = None
+
+def get_shutdown_event() -> Optional[asyncio.Event]:
+    return _shutdown_event
+
+def set_shutdown_event(event: asyncio.Event):
+    global _shutdown_event
+    _shutdown_event = event
 
 # A dictionary to store the latest status from the EV simulator.
 EV_SIMULATOR_STATE: Dict[str, Any] = {}

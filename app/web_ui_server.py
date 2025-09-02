@@ -12,7 +12,7 @@ from flask import Flask, jsonify, request, render_template
 
 from app.ocpp_server_logic import OcppServerLogic
 from app.ocpp_test_steps import OcppTestSteps
-from app.core import CHARGE_POINTS, EV_SIMULATOR_STATE, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id, EV_SIMULATOR_BASE_URL, OCPP_PORT
+from app.core import CHARGE_POINTS, EV_SIMULATOR_STATE, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id, get_active_transaction_id, get_shutdown_event, set_shutdown_event, EV_SIMULATOR_BASE_URL, OCPP_PORT
 from app.streamers import EVStatusStreamer
 
 app = Flask(__name__)
@@ -47,7 +47,7 @@ def list_charge_points():
         }
         for cp_id, data in CHARGE_POINTS.items()
     }
-    return jsonify({"charge_points": cp_details, "active_charge_point_id": get_active_charge_point_id()})
+    return jsonify({"charge_points": cp_details, "active_charge_point_id": get_active_charge_point_id(), "active_transaction_id": get_active_transaction_id()})
 
 @app.route("/api/set_active_charge_point", methods=["POST"])
 def set_active_charge_point():
@@ -73,6 +73,14 @@ def set_active_charge_point():
                 prev_ocpp_handler.signal_cancellation()
 
     return jsonify({"status": f"Active charge point set to {charge_point_id}"})
+
+@app.route("/api/shutdown", methods=["POST"])
+def shutdown_server():
+    shutdown_event = get_shutdown_event()
+    if shutdown_event:
+        shutdown_event.set()
+        return jsonify({"status": "Server is shutting down..."})
+    return jsonify({"error": "Shutdown event not set."}), 500
 
 @app.route("/api/test_steps", methods=["GET"])
 def list_test_steps():
@@ -199,6 +207,8 @@ def run_test_step(step_name):
 
     if not app.loop or not app.loop.is_running():
         return jsonify({"error": "Server loop not available"}), 500
+
+    data = request.get_json(force=True, silent=True) or {}
 
     async def run_test_with_lock():
         async with ocpp_handler.test_lock:

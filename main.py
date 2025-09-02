@@ -25,7 +25,7 @@ from app import web_ui_server
 from app.ocpp_handler import OCPPHandler
 from app.streamers import LogStreamer, WebSocketLogHandler, EVStatusStreamer
 
-from app.core import SERVER_SETTINGS
+from app.core import SERVER_SETTINGS, get_shutdown_event, set_shutdown_event
 from app.ev_simulator_manager import EVSimulatorManager
 import uvicorn
 import aiohttp # NEW
@@ -135,12 +135,16 @@ async def main():
 
     # Central logging setup
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(logging.DEBUG)
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
     console = StreamHandler()
     console.setFormatter(ColoredFormatter())
     root_logger.addHandler(console)
+
+    # Initialize shutdown event
+    shutdown_event = asyncio.Event()
+    set_shutdown_event(shutdown_event)
 
     # Streamers
     log_streamer = LogStreamer()
@@ -166,8 +170,6 @@ async def main():
     # Start the HTTP server first so the UI is always available
     http_task = asyncio.create_task(start_http_server())
 
-    
-
     logger.info(f"Starting WebSocket server on {OCPP_HOST}:{OCPP_PORT} "
                 f"(paths: '{LOG_WS_PATH}', '{EV_STATUS_WS_PATH}', '/<ChargePointId>')")
     ws_server = await serve(
@@ -184,16 +186,27 @@ async def main():
         asyncio.create_task(ev_sim_manager.start()),
     ]
 
-    try:
-        await asyncio.gather(*tasks)
-    finally:
-        ws_server.close()
-        await ws_server.wait_closed()
+    # Wait for shutdown event
+    await shutdown_event.wait()
+
+    logger.info("Shutdown event received. Closing servers...")
+
+    # Close WebSocket server
+    ws_server.close()
+    await ws_server.wait_closed()
+
+    # Cancel all running tasks
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True) # Gather to ensure tasks are cancelled
+
+    logger.info("Server shut down gracefully.")
 
 if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
     try:
-        asyncio.run(main())
+        loop.run_until_complete(main())
     except KeyboardInterrupt:
-        pass
-    except KeyboardInterrupt:
-        pass
+        pass # Ignore Ctrl+C
+    finally:
+        loop.close()
