@@ -222,6 +222,9 @@ class OCPPHandler:
         try:
             filtered = _filter_payload(payload_class, payload_dict)
             handler = getattr(self.ocpp_logic.message_handlers, handler_name)
+            
+            
+
             payload = payload_class(**filtered)
             response_payload = await handler(self.charge_point_id, payload)
             if response_payload is not None:

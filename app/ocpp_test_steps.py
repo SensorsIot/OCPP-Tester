@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict
 
 import aiohttp
 
-from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, EV_SIMULATOR_BASE_URL, get_active_transaction_id
+from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, EV_SIMULATOR_BASE_URL, get_active_transaction_id, set_active_transaction_id
 from app.messages import (
     BootNotificationRequest, TriggerMessageRequest, GetConfigurationRequest,
     ChangeConfigurationRequest, RemoteStartTransactionRequest, RemoteStopTransactionRequest,
@@ -112,7 +112,7 @@ class OcppTestSteps:
         step_name = "run_a3_change_configuration_test"
         self._check_cancellation()
         configurations = {
-            "MeterValuesSampledData": "Power.Active.Import,Energy.Active.Import.Register,Current.Import,Voltage,Current.Offered,Power.Offered,SoC",
+            "MeterValuesSampledData": "Current.Import.L1,Current.Import.L2,Current.Import.L3,Power.Active.Import.L1,Power.Active.Import.L2,Power.Active.Import.L3,Energy.Active.Import.Register,Voltage.L1-N,Voltage.L2-N,Voltage.L3-N",
             "MeterValueSampleInterval": "10",
             "WebSocketPingInterval": "30",
             "AuthorizeRemoteTxRequests": "true",
@@ -368,7 +368,7 @@ class OcppTestSteps:
         self._check_cancellation()
 
         # 2. Send the RemoteStartTransaction command.
-        logger.info("Sending RemoteStartTransaction with a 16A charging limit...")
+        logger.info("CS sends RemoteStartTransaction.req to the CP, including an idTag for authorization and a connectorId.")
         limit_amps = 16.0
         charging_profile = ChargingProfile(
             chargingProfileId=random.randint(1, 1000),
@@ -382,35 +382,41 @@ class OcppTestSteps:
                 ]
             )
         )
-        start_ok = await self.handler.send_and_wait(
+        start_response = await self.handler.send_and_wait(
             "RemoteStartTransaction",
             RemoteStartTransactionRequest(idTag=id_tag,
                                           connectorId=connector_id,
                                           chargingProfile=charging_profile)
         )
         self._check_cancellation()
-        if not start_ok:
-            logger.error("FAILURE: RemoteStartTransaction was not acknowledged by the charge point.")
+        if not start_response or start_response.get("status") != "Accepted":
+            logger.error("FAILURE: RemoteStartTransaction was not acknowledged by the charge point or rejected.")
             self._set_test_result(step_name, "FAILED")
             await self._set_ev_state("A")  # Cleanup
             self._check_cancellation()
             logger.info(f"--- Step C.1 for {self.charge_point_id} complete. ---")
             return
+        logger.info("CP responds with RemoteStartTransaction.conf, confirming acceptance. At this point, the transaction has not yet begun.")
 
         # 3. RemoteStartTransaction was acknowledged. Register the transaction on the server side.
-        #    Since the charge point might not send StartTransaction.req after a remote start,
-        #    we generate our own transactionId and manage the state internally.
-        transaction_id = len(TRANSACTIONS) + 1 # Simple incrementing ID
-        TRANSACTIONS[transaction_id] = {
+        #    We now use a temporary key for TRANSACTIONS until the CP's transactionId is known.
+        temp_transaction_key = f"{self.charge_point_id}-{connector_id}"
+        cs_internal_transaction_id = start_response.get("transactionId") # Get the CS's internal ID from the response
+
+        TRANSACTIONS[temp_transaction_key] = {
             "charge_point_id": self.charge_point_id,
             "id_tag": id_tag,
             "start_time": datetime.now(timezone.utc).isoformat(),
             "meter_start": 0, # We don't have meter start from CP yet
             "connector_id": connector_id,
             "status": "Ongoing",
-            "remote_started": True # Mark as remotely started
+            "remote_started": True, # Mark as remotely started
+            "cp_transaction_id": None, # CP's transaction ID is not yet known
+            "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
         }
-        logger.info(f"Transaction {transaction_id} registered internally after RemoteStartTransaction.")
+        set_active_transaction_id(cs_internal_transaction_id) # Update the global active transaction ID with CS's ID
+        logger.info(f"Transaction (temp key: {temp_transaction_key}, CS ID: {cs_internal_transaction_id}) registered internally after RemoteStartTransaction.")
+        logger.info("CP initiates the transaction locally once the vehicle is plugged in and ready to charge.")
 
         # 4. Wait for the charge point to send a StatusNotification indicating "Charging".
         #    This confirms the transaction has truly started from the CP's perspective.
@@ -428,7 +434,7 @@ class OcppTestSteps:
             return
 
         # Now that the transaction is authorized and started, simulate the EV drawing power.
-        logger.info(f"Transaction {transaction_id} is ongoing. Setting EV state to 'C' to simulate charging.")
+        logger.info(f"Transaction (CS ID: {cs_internal_transaction_id}) is ongoing. Setting EV state to 'C' to simulate charging.")
         await self._set_ev_state("C")
         self._check_cancellation()
 
@@ -476,11 +482,37 @@ class OcppTestSteps:
         await asyncio.sleep(10) # Let transaction run for a bit
         self._check_cancellation()
 
-        logger.info(f"SUCCESS: Detected ongoing transaction {transaction_id}. Now attempting to stop it.")
-        logger.info(f"Sending RemoteStopTransaction for transaction {transaction_id}...")
+        # Retrieve the CP's transactionId from the TRANSACTIONS dictionary
+        # This assumes MeterValues or StopTransaction has already updated it.
+        # If not, we might need a more robust lookup here.
+        current_transaction_data = TRANSACTIONS.get(temp_transaction_key) # Try temp key first
+        if not current_transaction_data: # If not found by temp key, try to find by CS internal ID
+            for k, v in TRANSACTIONS.items():
+                if v.get("cs_internal_transaction_id") == cs_internal_transaction_id:
+                    current_transaction_data = v
+                    break
+
+        cp_transaction_id_for_stop = None
+        if current_transaction_data:
+            cp_transaction_id_for_stop = current_transaction_data.get("cp_transaction_id")
+            if cp_transaction_id_for_stop is None:
+                logger.warning(f"CP transaction ID not yet available for CS internal ID {cs_internal_transaction_id}. Using CS internal ID for RemoteStopTransaction.")
+                cp_transaction_id_for_stop = cs_internal_transaction_id # Fallback to CS internal ID
+
+        if cp_transaction_id_for_stop is None:
+            logger.error("FAILED: Could not determine transaction ID for RemoteStopTransaction.")
+            self._set_test_result(step_name, "FAILED")
+            await self._set_ev_state("A") # Cleanup
+            self._check_cancellation()
+            return
+
+        logger.info(f"CP sends StartTransaction.req to the CS. This is the first message from the CP that contains the transactionId that the CP has assigned to the new session. (CP ID: {cp_transaction_id_for_stop})")
+        logger.info(f"CS responds with StartTransaction.conf, which includes the same transactionId and confirms that the transaction is now formally recorded on the server side. (CS Internal ID: {cs_internal_transaction_id})")
+        logger.info(f"SUCCESS: Detected ongoing transaction (CS ID: {cs_internal_transaction_id}, CP ID: {cp_transaction_id_for_stop}). Now attempting to stop it.")
+        logger.info(f"Sending RemoteStopTransaction for transaction {cp_transaction_id_for_stop}...")
         stop_ok = await self.handler.send_and_wait(
             "RemoteStopTransaction",
-            RemoteStopTransactionRequest(transactionId=transaction_id)
+            RemoteStopTransactionRequest(transactionId=cp_transaction_id_for_stop)
         )
         self._check_cancellation()
         if stop_ok:
@@ -489,9 +521,6 @@ class OcppTestSteps:
         else:
             logger.error("FAILURE: RemoteStopTransaction was not acknowledged by the charge point.")
             self._set_test_result(step_name, "FAILED")
-        # else: # This else block is removed as transaction is now always registered internally
-        #     logger.error("FAILURE: No ongoing transaction was registered by the server after RemoteStart.")
-        #     self._set_test_result(step_name, "FAILED")
 
         # 5. Cleanup: Simulate disconnecting the EV.
         await self._set_ev_state("A")
@@ -523,6 +552,7 @@ class OcppTestSteps:
             self._set_test_result(step_name, "FAILED")
             return
         profile = SetChargingProfileRequest(connectorId=0, csChargingProfiles=ChargingProfile(chargingProfileId=random.randint(1, 1000), transactionId=transaction_id, stackLevel=1, chargingProfilePurpose=ChargingProfilePurposeType.TxProfile, chargingProfileKind=ChargingProfileKindType.Absolute, chargingSchedule=ChargingSchedule(duration=3600, chargingRateUnit=ChargingRateUnitType.A, chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=10.0)])))
+        logger.info(f"Sending SetChargingProfile message: {profile.dict()}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
         if success:
@@ -539,6 +569,7 @@ class OcppTestSteps:
         step_name = "run_d2_set_default_charging_profile"
         self._check_cancellation()
         profile = SetChargingProfileRequest(connectorId=0, csChargingProfiles=ChargingProfile(chargingProfileId=random.randint(1, 1000), stackLevel=0, chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile, chargingProfileKind=ChargingProfileKindType.Absolute, chargingSchedule=ChargingSchedule(duration=86400, chargingRateUnit=ChargingRateUnitType.A, chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=16.0)])))
+        logger.info(f"Sending SetChargingProfile message: {profile.dict()}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
         if success:
@@ -656,17 +687,23 @@ class OcppTestSteps:
             logger.info("PASSED: RemoteStartTransaction was accepted as expected from State B.")
             self._set_test_result(step_name, "PASSED")
             # Register the transaction on the server side.
-            transaction_id = len(TRANSACTIONS) + 1
-            TRANSACTIONS[transaction_id] = {
+            # We now use a temporary key for TRANSACTIONS until the CP's transactionId is known.
+            temp_transaction_key = f"{self.charge_point_id}-{connector_id}"
+            cs_internal_transaction_id = start_response.get("transactionId") # Get the CS's internal ID from the response
+
+            TRANSACTIONS[temp_transaction_key] = {
                 "charge_point_id": self.charge_point_id,
                 "id_tag": id_tag,
                 "start_time": datetime.now(timezone.utc).isoformat(),
                 "meter_start": 0, # We don't know this yet
                 "connector_id": connector_id,
                 "status": "Ongoing",
-                "remote_started": True
+                "remote_started": True, # Mark as remotely started
+                "cp_transaction_id": None, # CP's transaction ID is not yet known
+                "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
             }
-            logger.info(f"Transaction {transaction_id} registered internally.")
+            set_active_transaction_id(cs_internal_transaction_id) # Update the global active transaction ID with CS's ID
+            logger.info(f"Transaction (temp key: {temp_transaction_key}, CS ID: {cs_internal_transaction_id}) registered internally.")
             # Simulate EV drawing power.
             logger.info(f"Setting EV state to 'C' to simulate charging.")
             await self._set_ev_state("C")
@@ -716,17 +753,23 @@ class OcppTestSteps:
             logger.info("PASSED: RemoteStartTransaction was accepted as expected from State C.")
             self._set_test_result(step_name, "PASSED")
             # Register the transaction on the server side.
-            transaction_id = len(TRANSACTIONS) + 1
-            TRANSACTIONS[transaction_id] = {
+            # We now use a temporary key for TRANSACTIONS until the CP's transactionId is known.
+            temp_transaction_key = f"{self.charge_point_id}-{connector_id}"
+            cs_internal_transaction_id = start_response.get("transactionId") # Get the CS's internal ID from the response
+
+            TRANSACTIONS[temp_transaction_key] = {
                 "charge_point_id": self.charge_point_id,
                 "id_tag": id_tag,
                 "start_time": datetime.now(timezone.utc).isoformat(),
                 "meter_start": 0, # We don't know this yet
                 "connector_id": connector_id,
                 "status": "Ongoing",
-                "remote_started": True
+                "remote_started": True, # Mark as remotely started
+                "cp_transaction_id": None, # CP's transaction ID is not yet known
+                "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
             }
-            logger.info(f"Transaction {transaction_id} registered internally.")
+            set_active_transaction_id(cs_internal_transaction_id) # Update the global active transaction ID with CS's ID
+            logger.info(f"Transaction (temp key: {temp_transaction_key}, CS ID: {cs_internal_transaction_id}) registered internally.")
             # Simulate EV drawing power.
             logger.info(f"Setting EV state to 'C' to simulate charging.")
             await self._set_ev_state("C")
@@ -765,14 +808,14 @@ class OcppTestSteps:
                 chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,
                 chargingProfileKind=ChargingProfileKindType.Absolute,
                 chargingSchedule=ChargingSchedule(
-                    chargingRateUnit=ChargingRateUnitType.A,
+                    chargingRateUnit=ChargingRateUnitType.W,
                     chargingSchedulePeriod=[
-                        ChargingSchedulePeriod(startPeriod=0, limit=6.0)
+                        ChargingSchedulePeriod(startPeriod=0, limit=1380.0)
                     ]
                 )
             )
         )
-
+        logger.info(f"Sending SetChargingProfile message: {profile.dict()}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
 
@@ -813,7 +856,7 @@ class OcppTestSteps:
                 )
             )
         )
-
+        logger.info(f"Sending SetChargingProfile message: {profile.dict()}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
 
@@ -854,7 +897,7 @@ class OcppTestSteps:
                 )
             )
         )
-
+        logger.info(f"Sending SetChargingProfile message: {profile.dict()}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
 

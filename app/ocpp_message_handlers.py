@@ -2,6 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict
+from dataclasses import asdict
 
 from app.core import CHARGE_POINTS, TRANSACTIONS, SERVER_SETTINGS, get_active_transaction_id, set_active_transaction_id
 from app.messages import (
@@ -120,47 +121,60 @@ class OcppMessageHandlers:
         return HeartbeatResponse(currentTime=datetime.now(timezone.utc).isoformat())
 
     async def handle_start_transaction(self, charge_point_id: str, payload: StartTransactionRequest) -> StartTransactionResponse:
-        logger.info(f"Received StartTransaction from {charge_point_id}: {payload}")
+        logger.info(f"Received StartTransaction from {charge_point_id}: {payload}. CP Transaction ID: {payload.transactionId}")
 
-        # Generate a new internal transaction ID.
-        internal_transaction_id = len(TRANSACTIONS) + 1
+        # The wallbox's transactionId is now available in the payload.
+        cp_transaction_id = payload.transactionId
+
+        # Generate a new internal transaction ID for the StartTransactionResponse.
+        # This is the ID the Central System will use to refer to this transaction.
+        cs_internal_transaction_id = len(TRANSACTIONS) + 1 # Use a new internal ID for the response
 
         # Check if this is a confirmation of a remotely started transaction.
-        existing_remote_started_transaction_id = None
-        for tid, tdata in TRANSACTIONS.items():
-            if tdata.get("charge_point_id") == charge_point_id and \
-               tdata.get("connector_id") == payload.connectorId and \
-               tdata.get("id_tag") == payload.idTag and \
-               tdata.get("remote_started") is True and \
-               tdata.get("status") == "Ongoing":
-                existing_remote_started_transaction_id = tid
+        # We look for a pending remote start based on charge_point_id and connectorId.
+        existing_transaction_data = None
+        for key, t_data in TRANSACTIONS.items():
+            if t_data.get("charge_point_id") == charge_point_id and \
+               t_data.get("connector_id") == payload.connectorId and \
+               t_data.get("remote_started") is True and \
+               t_data.get("status") == "Ongoing":
+                existing_transaction_data = t_data
+                # Update the key in TRANSACTIONS to use the CP's transactionId
+                # This is important for subsequent MeterValues/StopTransaction messages
+                # that will use the CP's transactionId as the key.
+                TRANSACTIONS[cp_transaction_id] = TRANSACTIONS.pop(key)
                 break
 
-        if existing_remote_started_transaction_id:
+        if existing_transaction_data:
             # This is a confirmation of a remotely started transaction.
-            # Update the existing transaction record.
-            TRANSACTIONS[existing_remote_started_transaction_id].update({
+            # Update the existing transaction record with the CP's transactionId.
+            existing_transaction_data.update({
                 "start_time": payload.timestamp,
                 "meter_start": payload.meterStart,
                 "remote_started": False, # Mark it as confirmed by StartTransaction
-                "cp_transaction_id": payload.transactionId # Store CP's transactionId
+                "cp_transaction_id": cp_transaction_id, # Store the CP's transaction ID
+                "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
             })
-            logger.info(f"Updated existing remotely started transaction {existing_remote_started_transaction_id} with StartTransaction data.")
-            transaction_id_to_return = existing_remote_started_transaction_id
+            logger.info(f"Updated existing remotely started transaction (CP ID: {cp_transaction_id}) with StartTransaction data.")
+            transaction_id_to_return = cs_internal_transaction_id
         else:
             # This is a new transaction initiated by the Charge Point.
-            TRANSACTIONS[internal_transaction_id] = {
+            # Store it directly with the CP's transactionId as the key.
+            TRANSACTIONS[cp_transaction_id] = {
                 "charge_point_id": charge_point_id,
                 "id_tag": payload.idTag,
                 "start_time": payload.timestamp,
                 "meter_start": payload.meterStart,
                 "connector_id": payload.connectorId,
                 "status": "Ongoing",
-                "remote_started": False # This transaction was initiated by CP, not remotely by us
+                "remote_started": False, # This transaction was initiated by CP, not remotely by us
+                "cp_transaction_id": cp_transaction_id, # Store the CP's transaction ID
+                "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
             }
-            logger.info(f"Created new transaction {internal_transaction_id} initiated by CP.")
-            transaction_id_to_return = internal_transaction_id
+            logger.info(f"Created new transaction (CP ID: {cp_transaction_id}) initiated by CP.")
+            transaction_id_to_return = cs_internal_transaction_id
 
+        set_active_transaction_id(cp_transaction_id) # Update the global active transaction ID with CP's ID
         return StartTransactionResponse(
             transactionId=transaction_id_to_return,
             idTagInfo=IdTagInfo(status="Accepted")
@@ -168,33 +182,37 @@ class OcppMessageHandlers:
 
     async def handle_stop_transaction(self, charge_point_id: str, payload: StopTransactionRequest) -> StopTransactionResponse:
         logger.info(f"Received StopTransaction from {charge_point_id}: {payload}")
-        # Update the active transaction ID with the one from the StopTransaction payload
-        set_active_transaction_id(payload.transactionId)
-        # Find the transaction using the CP's transactionId
-        found_internal_transaction_id = None
-        for internal_tid, tdata in TRANSACTIONS.items():
-            if tdata.get("charge_point_id") == charge_point_id and \
-               tdata.get("status") == "Ongoing" and \
-               tdata.get("cp_transaction_id") == payload.transactionId: # Match by CP's transactionId
-                found_internal_transaction_id = internal_tid
-                break
+        
+        # Try to find the transaction using the CP's transactionId as the key
+        transaction_data = TRANSACTIONS.get(payload.transactionId)
 
-        if found_internal_transaction_id:
-            # Store the CP's transactionId if not already set
-            if TRANSACTIONS[found_internal_transaction_id].get("cp_transaction_id") is None:
-                TRANSACTIONS[found_internal_transaction_id]["cp_transaction_id"] = payload.transactionId
+        if transaction_data:
+            # Found by CP's transactionId
+            logger.debug(f"Found transaction {payload.transactionId} by its CP ID for StopTransaction.")
             
-            TRANSACTIONS[found_internal_transaction_id].update({
+            transaction_data.update({
                 "stop_time": payload.timestamp,
                 "meter_stop": payload.meterStop,
                 "status": "Completed",
                 "reason": payload.reason
             })
+            # Ensure cp_transaction_id is set (it should be, but for safety)
+            if transaction_data.get("cp_transaction_id") is None:
+                transaction_data["cp_transaction_id"] = payload.transactionId
+
+            # Remove the transaction from the TRANSACTIONS dictionary
+            del TRANSACTIONS[payload.transactionId]
+            logger.info(f"Transaction {payload.transactionId} removed from active transactions.")
+
             # Clear the active transaction ID
             set_active_transaction_id(None)
+            await asyncio.sleep(0.1) # Add a small delay
             return StopTransactionResponse()
         else:
-            logger.warning(f"StopTransaction received for unknown or non-ongoing transaction (CP ID: {payload.transactionId}).")
+            logger.info(f"StopTransaction received for transaction (CP ID: {payload.transactionId}) not found in active records. Acknowledging stop.")
+            # Clear the active transaction ID even if not found, as the transaction is ending from CP\'s perspective
+            set_active_transaction_id(None) 
+            await asyncio.sleep(0.1) # Add a small delay
             return StopTransactionResponse() # Still send a response even if not found internally
 
     async def handle_meter_values(self, charge_point_id: str, payload: MeterValuesRequest) -> MeterValuesResponse:
@@ -208,7 +226,47 @@ class OcppMessageHandlers:
                 logger.info("Detected a triggered MeterValues message, setting event.")
                 self.pending_triggered_message_events["MeterValues"].set()
 
-        logger.debug(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId} (transactionId: {payload.transactionId})")
+        logger.info(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId}. Entire Payload: {asdict(payload)}")
+        
+        if payload.transactionId is not None:
+            logger.info(f"Extracting transaction ID from MeterValues.req: {payload.transactionId}")
+            # Find the transaction using the CP's transactionId as the key
+            transaction_data = TRANSACTIONS.get(payload.transactionId)
+
+            if transaction_data:
+                # Found by CP's transactionId
+                logger.debug(f"Found transaction {payload.transactionId} by its CP ID.")
+                
+                # Ensure cp_transaction_id is set (it should be, but for safety)
+                if transaction_data.get("cp_transaction_id") is None:
+                    transaction_data["cp_transaction_id"] = payload.transactionId
+                
+                if "meter_values" not in transaction_data:
+                    transaction_data["meter_values"] = []
+                transaction_data["meter_values"].extend(payload.meterValue)
+                set_active_transaction_id(payload.transactionId)
+
+            else:
+                # Transaction not found, create a new entry based on MeterValues.
+                logger.info(f"Information: MeterValues received a new transaction id {payload.transactionId}. It started a new transaction.")
+                TRANSACTIONS[payload.transactionId] = {
+                    "charge_point_id": charge_point_id,
+                    "id_tag": "unknown", # idTag is not available in MeterValues.req
+                    "start_time": payload.meterValue[0].timestamp if payload.meterValue else datetime.now(timezone.utc).isoformat(),
+                    "meter_start": payload.meterValue[0].sampledValue[0].value if payload.meterValue and payload.meterValue[0].sampledValue else 0,
+                    "connector_id": payload.connectorId,
+                    "status": "Ongoing",
+                    "remote_started": False, # This transaction was initiated by CP, not remotely by us
+                    "cp_transaction_id": payload.transactionId, # Store the CP's transaction ID
+                    "cs_internal_transaction_id": None # CS internal ID not known from MeterValues
+                }
+                if "meter_values" not in TRANSACTIONS[payload.transactionId]:
+                    TRANSACTIONS[payload.transactionId]["meter_values"] = []
+                TRANSACTIONS[payload.transactionId]["meter_values"].extend(payload.meterValue)
+                set_active_transaction_id(payload.transactionId)
+        else:
+            logger.warning(f"MeterValues received from {charge_point_id} without a transaction ID. Cannot associate with a specific transaction.")
+
         for mv in payload.meterValue:
             logger.debug(f"  -> Timestamp: {mv.timestamp}")
             for sv in mv.sampledValue:
@@ -222,73 +280,8 @@ class OcppMessageHandlers:
                 details = f" ({', '.join(details_parts)})" if details_parts else ""
 
                 log_message = f"    - {measurand}: {sv.value}{unit}{details}"
-                # Highlight the offered current from the wallbox itself
-                if measurand == "Current.Offered":
-                    logger.info(log_message)
-                else:
-                    logger.debug(log_message)
-        # Find the transaction using the CP's transactionId
-        found_internal_transaction_id = None
-        for internal_tid, tdata in TRANSACTIONS.items():
-            logger.debug(f"Checking transaction {internal_tid}: CP ID={tdata.get('charge_point_id')}, Status={tdata.get('status')}, CP_Tx_ID={tdata.get('cp_transaction_id')}. Payload Tx ID={payload.transactionId}")
-            # Match by charge_point_id and status, and if cp_transaction_id is not set yet, or matches
-            if tdata.get("charge_point_id") == charge_point_id and \
-               tdata.get("status") == "Ongoing" and \
-               (tdata.get("cp_transaction_id") is None or tdata.get("cp_transaction_id") == payload.transactionId):
-                found_internal_transaction_id = internal_tid
-                break
-
-        if found_internal_transaction_id:
-            # Store the CP's transactionId if not already set
-            if TRANSACTIONS[found_internal_transaction_id].get("cp_transaction_id") is None:
-                TRANSACTIONS[found_internal_transaction_id]["cp_transaction_id"] = payload.transactionId
+                logger.info(log_message)
             
-            if "meter_values" not in TRANSACTIONS[found_internal_transaction_id]:
-                TRANSACTIONS[found_internal_transaction_id]["meter_values"] = []
-            TRANSACTIONS[found_internal_transaction_id]["meter_values"].extend(payload.meterValue)
-
-            # Set the active transaction ID
-            set_active_transaction_id(payload.transactionId)
-        else:
-            # Transaction not found as ongoing, or not found at all.
-            # Attempt to find it by cp_transaction_id if it exists but is not ongoing.
-            # Or create a new one if it's completely unknown.
-            found_by_cp_tx_id = None
-            for internal_tid, tdata in TRANSACTIONS.items():
-                if tdata.get("charge_point_id") == charge_point_id and \
-                   tdata.get("cp_transaction_id") == payload.transactionId:
-                    found_by_cp_tx_id = internal_tid
-                    break
-
-            if found_by_cp_tx_id:
-                # Found an existing transaction record, but it wasn't marked as "Ongoing".
-                # Update its status to "Ongoing" and add meter values.
-                TRANSACTIONS[found_by_cp_tx_id].update({
-                    "status": "Ongoing",
-                    "cp_transaction_id": payload.transactionId # Ensure it's set
-                })
-                if "meter_values" not in TRANSACTIONS[found_by_cp_tx_id]:
-                    TRANSACTIONS[found_by_cp_tx_id]["meter_values"] = []
-                TRANSACTIONS[found_by_cp_tx_id]["meter_values"].extend(payload.meterValue)
-                logger.info(f"Discovered and updated transaction {found_by_cp_tx_id} from MeterValues.")
-                set_active_transaction_id(payload.transactionId)
-            else:
-                # Completely new transaction, create a new entry.
-                new_internal_transaction_id = len(TRANSACTIONS) + 1
-                TRANSACTIONS[new_internal_transaction_id] = {
-                    "charge_point_id": charge_point_id,
-                    "id_tag": "unknown", # We don't have idTag from MeterValues
-                    "start_time": datetime.now(timezone.utc).isoformat(),
-                    "meter_start": payload.meterValue[0].sampledValue[0].value if payload.meterValue else 0, # Use first meter value as start
-                    "connector_id": payload.connectorId,
-                    "status": "Ongoing",
-                    "cp_transaction_id": payload.transactionId
-                }
-                if "meter_values" not in TRANSACTIONS[new_internal_transaction_id]:
-                    TRANSACTIONS[new_internal_transaction_id]["meter_values"] = []
-                TRANSACTIONS[new_internal_transaction_id]["meter_values"].extend(payload.meterValue)
-                logger.info(f"Discovered and created new transaction {new_internal_transaction_id} from MeterValues.")
-                set_active_transaction_id(payload.transactionId)
         return MeterValuesResponse()
 
     async def handle_unknown_action(self, charge_point_id: str, payload: dict):

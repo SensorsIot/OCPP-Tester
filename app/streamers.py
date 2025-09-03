@@ -58,7 +58,7 @@ class WebSocketLogHandler(logging.Handler):
                 "levelname": record.levelname,
                 "message": self.format(record)
             }
-            asyncio.run_coroutine_threadsafe(self.streamer.broadcast(json.dumps(msg)), self.loop)
+            self.loop.call_soon_threadsafe(self.loop.create_task, self.streamer.broadcast(json.dumps(msg)))
         except Exception:
             self.handleError(record)
 

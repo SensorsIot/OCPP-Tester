@@ -15,6 +15,7 @@ Erata:
 
 import asyncio
 import logging
+import signal
 from logging import StreamHandler
 
 import uvicorn
@@ -142,10 +143,6 @@ async def main():
     console.setFormatter(ColoredFormatter())
     root_logger.addHandler(console)
 
-    # Initialize shutdown event
-    shutdown_event = asyncio.Event()
-    set_shutdown_event(shutdown_event)
-
     # Streamers
     log_streamer = LogStreamer()
     ev_status_streamer = EVStatusStreamer()
@@ -202,11 +199,26 @@ async def main():
 
     logger.info("Server shut down gracefully.")
 
+    # Stop the event loop
+    loop.stop()
+
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # Initialize shutdown event
+    shutdown_event = asyncio.Event()
+    set_shutdown_event(shutdown_event)
+
+    # Set up signal handler for graceful shutdown
+    def handle_sigint(sig, frame):
+        logger.info("Ctrl-C (SIGINT) received. Initiating graceful shutdown...")
+        shutdown_event.set()
+
+    signal.signal(signal.SIGINT, handle_sigint)
+
     try:
-        loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        pass # Ignore Ctrl+C
+        main_task = loop.create_task(main())
+        loop.run_until_complete(main_task)
     finally:
         loop.close()

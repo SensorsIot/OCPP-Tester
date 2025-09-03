@@ -3750,5 +3750,621 @@
     "type": "user",
     "message": "(venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:32: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\n2025-09-02 21:03:02,756 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')\n2025-09-02 21:03:02,756 - __main__ - INFO - Web server listening on 0.0.0.0:5000\n2025-09-02 21:03:02,771 - websockets.server - INFO - server listening on 0.0.0.0:8887\n2025-09-02 21:03:02,771 - app.ev_simulator_manager - INFO - EV Simulator Manager polling task started.\n2025-09-02 21:03:03,104 - websockets.server - INFO - connection open\n2025-09-02 21:03:03,104 - app.streamers - INFO - EV status stream client connected: ('192.168.0.10', 62904)\n2025-09-02 21:03:03,119 - websockets.server - INFO - connection open\n2025-09-02 21:03:03,119 - app.streamers - INFO - Log stream client connected: ('192.168.0.10', 8727)\n^C(venv) opcc@evcc:~$ ^C\n(venv) opcc@evcc:~$",
     "timestamp": "2025-09-02T19:03:44.188Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 79,
+    "type": "user",
+    "message": "PLEASE rewrite of the asyncio event loop management",
+    "timestamp": "2025-09-02T19:06:04.410Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 80,
+    "type": "user",
+    "message": "(venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:32: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\n2025-09-02 21:06:57,271 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')\n2025-09-02 21:06:57,272 - __main__ - INFO - Web server listening on 0.0.0.0:5000\n2025-09-02 21:06:57,302 - websockets.server - INFO - server listening on 0.0.0.0:8887\n2025-09-02 21:06:57,303 - app.ev_simulator_manager - INFO - EV Simulator Manager polling task started.\n2025-09-02 21:06:57,524 - websockets.server - INFO - connection open\n2025-09-02 21:06:57,524 - app.streamers - INFO - Log stream client connected: ('192.168.0.10', 2586)\n2025-09-02 21:06:58,634 - websockets.server - INFO - connection open\n2025-09-02 21:06:58,634 - app.streamers - INFO - EV status stream client connected: ('192.168.0.10', 57051)\n^C(venv) opcc@evcc:~$",
+    "timestamp": "2025-09-02T19:07:09.863Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 81,
+    "type": "user",
+    "message": "(venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:32: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\nTraceback (most recent call last):\n  File \"/home/opcc/main.py\", line 214, in <module>\n    while not get_shutdown_event().is_set():\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'NoneType' object has no attribute 'is_set'\nTask was destroyed but it is pending!\ntask: <Task pending name='Task-1' coro=<main() running at /home/opcc/main.py:133>>\nsys:1: RuntimeWarning: coroutine 'main' was never awaited\n(venv) opcc@evcc:~$",
+    "timestamp": "2025-09-02T19:07:58.517Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 82,
+    "type": "user",
+    "message": "(venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:32: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\n2025-09-02 21:08:39,764 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')\n2025-09-02 21:08:39,764 - __main__ - INFO - Web server listening on 0.0.0.0:5000\n2025-09-02 21:08:39,778 - websockets.server - INFO - server listening on 0.0.0.0:8887\n2025-09-02 21:08:39,779 - app.ev_simulator_manager - INFO - EV Simulator Manager polling task started.\n^C(venv) opcc@evcc:~$",
+    "timestamp": "2025-09-02T19:08:49.492Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 83,
+    "type": "user",
+    "message": "(venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:32: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\nTraceback (most recent call last):\n  File \"/home/opcc/main.py\", line 217, in <module>\n    signal.signal(signal.SIGINT, handle_sigint)\n    ^^^^^^\nNameError: name 'signal' is not defined\n(venv) opcc@evcc:~$",
+    "timestamp": "2025-09-02T19:09:58.682Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 84,
+    "type": "user",
+    "message": "Globally ignore Ctrl-C\nimport signal\n\n# Ignore Ctrl-C everywhere (Unix & Windows consoles)\nsignal.signal(signal.SIGINT, signal.SIG_IGN)\n\n# your program...\nwhile True:\n    pass",
+    "timestamp": "2025-09-02T19:10:40.383Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 85,
+    "type": "user",
+    "message": "you could also go this way: import signal\n\ndef no_ctrl_c(sig, frame):\n    print(\"Ctrl-C is disabled.\")\nsignal.signal(signal.SIGINT, no_ctrl_c)",
+    "timestamp": "2025-09-02T19:11:59.982Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 86,
+    "type": "user",
+    "message": "(venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:33: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\n2025-09-02 21:12:04,562 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')\n2025-09-02 21:12:04,563 - __main__ - INFO - Web server listening on 0.0.0.0:5000\n2025-09-02 21:12:04,577 - websockets.server - INFO - server listening on 0.0.0.0:8887\n2025-09-02 21:12:04,577 - app.ev_simulator_manager - INFO - EV Simulator Manager polling task started.\n2025-09-02 21:12:04,599 - websockets.server - INFO - connection open\n2025-09-02 21:12:04,599 - app.streamers - INFO - EV status stream client connected: ('192.168.0.10', 5625)\n^C2025-09-02 21:12:07,391 - websockets.server - INFO - connection open\n2025-09-02 21:12:07,391 - __main__ - INFO - Connection received from ('192.168.0.16', 52437) on path '/Wallbox001'\n2025-09-02 21:12:07,391 - app.ocpp_handler - INFO - New connection from Charge Point: Wallbox001\n2025-09-02 21:12:07,392 - app.ocpp_handler - INFO - Set Wallbox001 as the active charge point.\n2025-09-02 21:12:07,392 - app.ocpp_handler - INFO - Main logic task for Wallbox001 started.\n2025-09-02 21:12:07,392 - app.ocpp_handler - INFO - Connection for Wallbox001 established. Starting periodic health checks.\n2025-09-02 21:12:07,432 - app.ocpp_handler - DEBUG - Received CALL 'BootNotification' for Wallbox001. Payload: {'chargePointVendor': 'EV CHARGER', 'chargePointModel': 'SingleSocketCharger', 'chargeBoxSerialNumber': 'EV CHARGER', 'chargePointSerialNumber': 'Wallbox001', 'firmwareVersion': '347.230.01'}\n2025-09-02 21:12:07,432 - app.ocpp_handler - DEBUG - Received CALL 'BootNotification' from Wallbox001\n2025-09-02 21:12:07,432 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-02 21:12:07,432 - app.ocpp_message_handlers - INFO - Received BootNotification from Wallbox001: BootNotificationRequest(chargePointVendor='EV CHARGER', chargePointModel='SingleSocketCharger', chargeBoxSerialNumber='EV CHARGER', chargePointSerialNumber='Wallbox001', firmwareVersion='347.230.01', iccid=None, imsi=None, meterSerialNumber=None, meterType=None)\n\n\n------------OCPP Call----------\n2025-09-02 21:12:07,433 - app.ocpp_handler - DEBUG - RAW >> [3, \"2023084067\", {\"status\": \"Accepted\", \"currentTime\": \"2025-09-02T19:12:07.432890+00:00\", \"interval\": 60}]\n2025-09-02 21:12:07,433 - app.ocpp_handler - INFO - Sent response for 'BootNotification' to Wallbox001.\n2025-09-02 21:12:07,442 - websockets.server - INFO - connection open\n2025-09-02 21:12:07,442 - app.streamers - INFO - Log stream client connected: ('192.168.0.10', 45271)\n2025-09-02 21:12:08,710 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' for Wallbox001. Payload: {'connectorId': 0, 'errorCode': 'NoError', 'info': '', 'status': 'Available', 'timestamp': '2025-09-02T19:12:07.000Z', 'vendorId': '', 'vendorErrorCode': ''}\n2025-09-02 21:12:08,711 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Wallbox001\n2025-09-02 21:12:08,711 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-02 21:12:08,711 - app.ocpp_message_handlers - DEBUG - Handling StatusNotification from Wallbox001: Available\n2025-09-02 21:12:08,711 - app.ocpp_message_handlers - INFO - Received StatusNotification from Wallbox001: Connector 0 is Available (equivalent to CP State A)\n\n\n------------OCPP Call----------\n2025-09-02 21:12:08,711 - app.ocpp_handler - DEBUG - RAW >> [3, \"4095712272\", {}]\n2025-09-02 21:12:08,711 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Wallbox001.\n2025-09-02 21:12:08,711 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' for Wallbox001. Payload: {'connectorId': 1, 'errorCode': 'NoError', 'info': '', 'status': 'Preparing', 'timestamp': '2025-09-02T19:12:08.000Z', 'vendorId': '', 'vendorErrorCode': ''}\n2025-09-02 21:12:08,711 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Wallbox001\n2025-09-02 21:12:08,711 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-02 21:12:08,711 - app.ocpp_message_handlers - DEBUG - Handling StatusNotification from Wallbox001: Preparing\n2025-09-02 21:12:08,711 - app.ocpp_message_handlers - INFO - Received StatusNotification from Wallbox001: Connector 1 is Preparing (equivalent to CP State B)\n\n\n------------OCPP Call----------\n2025-09-02 21:12:08,712 - app.ocpp_handler - DEBUG - RAW >> [3, \"696744389\", {}]\n2025-09-02 21:12:08,712 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Wallbox001.\n^C2025-09-02 21:12:20,494 - app.streamers - INFO - EV status stream client disconnected: ('192.168.0.10', 5625)\n2025-09-02 21:12:20,494 - app.streamers - INFO - Log stream client disconnected: ('192.168.0.10', 45271)\n2025-09-02 21:12:20,495 - websockets.server - INFO - connection closed\n2025-09-02 21:12:20,495 - websockets.server - INFO - connection closed",
+    "timestamp": "2025-09-02T19:12:55.866Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 87,
+    "type": "user",
+    "message": "please kill main.py",
+    "timestamp": "2025-09-02T19:13:29.464Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 88,
+    "type": "user",
+    "message": "if I press ctrl-c, the ui does no more respond: (venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:33: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\n2025-09-02 21:14:03,441 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')\n2025-09-02 21:14:03,442 - __main__ - INFO - Web server listening on 0.0.0.0:5000\n2025-09-02 21:14:03,476 - websockets.server - INFO - server listening on 0.0.0.0:8887\n2025-09-02 21:14:03,477 - app.ev_simulator_manager - INFO - EV Simulator Manager polling task started.\n2025-09-02 21:14:07,682 - websockets.server - INFO - connection open\n2025-09-02 21:14:07,682 - __main__ - INFO - Connection received from ('192.168.0.16', 52439) on path '/Wallbox001'\n2025-09-02 21:14:07,682 - app.ocpp_handler - INFO - New connection from Charge Point: Wallbox001\n2025-09-02 21:14:07,682 - app.ocpp_handler - INFO - Set Wallbox001 as the active charge point.\n2025-09-02 21:14:07,682 - app.ocpp_handler - INFO - Main logic task for Wallbox001 started.\n2025-09-02 21:14:07,683 - app.ocpp_handler - INFO - Connection for Wallbox001 established. Starting periodic health checks.\n2025-09-02 21:14:08,226 - websockets.server - INFO - connection open\n2025-09-02 21:14:08,226 - app.streamers - INFO - EV status stream client connected: ('192.168.0.10', 39361)\n2025-09-02 21:14:08,250 - websockets.server - INFO - connection open\n2025-09-02 21:14:08,250 - app.streamers - INFO - Log stream client connected: ('192.168.0.10', 46635)\n^C2025-09-02 21:14:14,312 - __main__ - INFO - Ctrl-C is disabled.\n2025-09-02 21:14:22,247 - app.streamers - INFO - EV status stream client disconnected: ('192.168.0.10', 39361)\n2025-09-02 21:14:22,247 - app.streamers - INFO - Log stream client disconnected: ('192.168.0.10', 46635)\n2025-09-02 21:14:22,247 - websockets.server - INFO - connection closed\n2025-09-02 21:14:22,248 - app.streamers - INFO - Removed disconnected log stream client: ('192.168.0.10', 46635)\n2025-09-02 21:14:22,248 - websockets.server - INFO - connection closed",
+    "timestamp": "2025-09-02T19:14:53.063Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 89,
+    "type": "user",
+    "message": "I still want teh output in the terminal. how can i run it in the background and would this help?",
+    "timestamp": "2025-09-02T19:16:30.466Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 90,
+    "type": "user",
+    "message": "revert to a standard behavior of ctrl-c first",
+    "timestamp": "2025-09-02T19:17:26.248Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 91,
+    "type": "user",
+    "message": "the ui shutdown button still works?",
+    "timestamp": "2025-09-02T19:18:44.788Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 92,
+    "type": "user",
+    "message": "kill main.py",
+    "timestamp": "2025-09-02T19:19:15.383Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 93,
+    "type": "user",
+    "message": "(venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:33: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\n2025-09-02 21:20:12,932 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')\n2025-09-02 21:20:12,933 - __main__ - INFO - Web server listening on 0.0.0.0:5000\n2025-09-02 21:20:12,960 - websockets.server - INFO - server listening on 0.0.0.0:8887\n2025-09-02 21:20:12,960 - app.ev_simulator_manager - INFO - EV Simulator Manager polling task started.\n2025-09-02 21:20:17,817 - websockets.server - INFO - connection open\n2025-09-02 21:20:17,817 - __main__ - INFO - Connection received from ('192.168.0.16', 52442) on path '/Wallbox001'\n2025-09-02 21:20:17,818 - app.ocpp_handler - INFO - New connection from Charge Point: Wallbox001\n2025-09-02 21:20:17,818 - app.ocpp_handler - INFO - Set Wallbox001 as the active charge point.\n2025-09-02 21:20:17,818 - app.ocpp_handler - INFO - Main logic task for Wallbox001 started.\n2025-09-02 21:20:17,818 - app.ocpp_handler - INFO - Connection for Wallbox001 established. Starting periodic health checks.\n2025-09-02 21:20:18,301 - websockets.server - INFO - connection open\n2025-09-02 21:20:18,301 - app.streamers - INFO - EV status stream client connected: ('192.168.0.10', 35309)\n2025-09-02 21:20:18,312 - websockets.server - INFO - connection open\n2025-09-02 21:20:18,313 - app.streamers - INFO - Log stream client connected: ('192.168.0.10', 7655)\n2025-09-02 21:20:24,189 - __main__ - INFO - Shutdown event received. Closing servers...\n2025-09-02 21:20:24,190 - websockets.server - INFO - server closing\n2025-09-02 21:20:24,191 - app.streamers - INFO - Log stream client disconnected: ('192.168.0.10', 7655)\n2025-09-02 21:20:24,191 - websockets.server - INFO - connection closed\n2025-09-02 21:20:24,191 - app.streamers - INFO - Removed disconnected log stream client: ('192.168.0.10', 7655)\n2025-09-02 21:20:24,192 - app.streamers - INFO - EV status stream client disconnected: ('192.168.0.10', 35309)\n2025-09-02 21:20:24,192 - websockets.server - INFO - connection closed\n2025-09-02 21:20:24,336 - app.ocpp_handler - INFO - Connection with Wallbox001 closing. Cancelling logic task.\n2025-09-02 21:20:24,336 - app.ocpp_handler - INFO - Logic task for Wallbox001 cancelled.\n2025-09-02 21:20:24,336 - app.ocpp_handler - INFO - Cleaned up state for Wallbox001.\n2025-09-02 21:20:24,337 - websockets.server - INFO - connection closed\n2025-09-02 21:20:24,337 - websockets.server - INFO - server closed\n2025-09-02 21:20:24,337 - app.ev_simulator_manager - INFO - EV Simulator Manager task cancelled.\n2025-09-02 21:20:24,337 - __main__ - INFO - Server shut down gracefully.\n/usr/lib/python3.11/asyncio/base_events.py:678: RuntimeWarning: coroutine 'LogStreamer.broadcast' was never awaited\n  self._ready.clear()\nRuntimeWarning: Enable tracemalloc to get the object allocation traceback\n(venv) opcc@evcc:~$",
+    "timestamp": "2025-09-02T19:20:39.382Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 94,
+    "type": "user",
+    "message": "(venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:33: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\n2025-09-02 21:21:02,701 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')\n2025-09-02 21:21:02,702 - __main__ - INFO - Web server listening on 0.0.0.0:5000\n2025-09-02 21:21:02,715 - websockets.server - INFO - server listening on 0.0.0.0:8887\n2025-09-02 21:21:02,716 - app.ev_simulator_manager - INFO - EV Simulator Manager polling task started.\n2025-09-02 21:21:02,966 - websockets.server - INFO - connection open\n2025-09-02 21:21:02,966 - app.streamers - INFO - Log stream client connected: ('192.168.0.10', 51235)\n2025-09-02 21:21:04,470 - websockets.server - INFO - connection open\n2025-09-02 21:21:04,470 - app.streamers - INFO - EV status stream client connected: ('192.168.0.10', 61529)\n2025-09-02 21:21:04,992 - websockets.server - INFO - connection open\n2025-09-02 21:21:04,992 - __main__ - INFO - Connection received from ('192.168.0.16', 52445) on path '/Wallbox001'\n2025-09-02 21:21:04,992 - app.ocpp_handler - INFO - New connection from Charge Point: Wallbox001\n2025-09-02 21:21:04,992 - app.ocpp_handler - INFO - Set Wallbox001 as the active charge point.\n2025-09-02 21:21:04,992 - app.ocpp_handler - INFO - Main logic task for Wallbox001 started.\n2025-09-02 21:21:04,992 - app.ocpp_handler - INFO - Connection for Wallbox001 established. Starting periodic health checks.\n2025-09-02 21:21:07,261 - app.streamers - INFO - Log stream client disconnected: ('192.168.0.10', 51235)\n2025-09-02 21:21:07,262 - websockets.server - INFO - connection closed\n2025-09-02 21:21:07,262 - app.streamers - INFO - EV status stream client disconnected: ('192.168.0.10', 61529)\n2025-09-02 21:21:07,262 - websockets.server - INFO - connection closed\n2025-09-02 21:21:07,373 - websockets.server - INFO - connection open\n2025-09-02 21:21:07,373 - app.streamers - INFO - EV status stream client connected: ('192.168.0.10', 14717)\n2025-09-02 21:21:07,389 - websockets.server - INFO - connection open\n2025-09-02 21:21:07,389 - app.streamers - INFO - Log stream client connected: ('192.168.0.10', 22124)\n2025-09-02 21:21:16,480 - __main__ - INFO - Shutdown event received. Closing servers...\n2025-09-02 21:21:16,480 - websockets.server - INFO - server closing\n2025-09-02 21:21:16,482 - app.streamers - INFO - Log stream client disconnected: ('192.168.0.10', 22124)\n2025-09-02 21:21:16,482 - websockets.server - INFO - connection closed\n2025-09-02 21:21:16,483 - app.streamers - INFO - EV status stream client disconnected: ('192.168.0.10', 14717)\n2025-09-02 21:21:16,483 - websockets.server - INFO - connection closed\n2025-09-02 21:21:16,483 - app.streamers - INFO - Removed disconnected log stream client: ('192.168.0.10', 22124)\n2025-09-02 21:21:16,589 - app.ocpp_handler - INFO - Connection with Wallbox001 closing. Cancelling logic task.\n2025-09-02 21:21:16,589 - app.ocpp_handler - INFO - Logic task for Wallbox001 cancelled.\n2025-09-02 21:21:16,589 - app.ocpp_handler - INFO - Cleaned up state for Wallbox001.\n2025-09-02 21:21:16,590 - websockets.server - INFO - connection closed\n2025-09-02 21:21:16,590 - websockets.server - INFO - server closed\n2025-09-02 21:21:16,590 - app.ev_simulator_manager - INFO - EV Simulator Manager task cancelled.\n2025-09-02 21:21:16,590 - __main__ - INFO - Server shut down gracefully.\n/usr/lib/python3.11/asyncio/base_events.py:678: RuntimeWarning: coroutine 'LogStreamer.broadcast' was never awaited\n  self._ready.clear()\nRuntimeWarning: Enable tracemalloc to get the object allocation traceback\n(venv) opcc@evcc:~$",
+    "timestamp": "2025-09-02T19:21:36.903Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 95,
+    "type": "user",
+    "message": "--- Step E.2 for Wallbox001 complete. ---\n2025-09-02 21:27:23,493 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' for Wallbox001. Payload: {'connectorId': 1, 'idTag': 'test_id_1', 'meterStart': 216680, 'timestamp': '2025-09-02T19:27:22.000Z'}\n2025-09-02 21:27:23,493 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' from Wallbox001\n2025-09-02 21:27:23,493 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-02 21:27:23,493 - app.ocpp_message_handlers - INFO - Received StartTransaction from Wallbox001: StartTransactionRequest(connectorId=1, idTag='test_id_1', timestamp='2025-09-02T19:27:22.000Z', meterStart=216680, reservationId=None)\n2025-09-02 21:27:23,493 - app.ocpp_handler - ERROR - Error handling 'StartTransaction': 'StartTransactionRequest' object has no attribute 'transactionId'\nTraceback (most recent call last):\n  File \"/home/opcc/app/ocpp_handler.py\", line 226, in handle_call\n    response_payload = await handler(self.charge_point_id, payload)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/opcc/app/ocpp_message_handlers.py\", line 146, in handle_start_transaction\n    \"cp_transaction_id\": payload.transactionId # Store CP's transactionId\n                         ^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'StartTransactionRequest' object has no attribute 'transactionId'",
+    "timestamp": "2025-09-02T19:27:40.444Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 96,
+    "type": "user",
+    "message": "i did not press ctrl-c",
+    "timestamp": "2025-09-02T19:35:40.302Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 97,
+    "type": "user",
+    "message": "I am not sure if python main.py > server.log 2>&1 &\nis in the background",
+    "timestamp": "2025-09-02T20:47:04.044Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 98,
+    "type": "user",
+    "message": "This does not prevent ctrl-c. We need a better idea",
+    "timestamp": "2025-09-02T20:50:17.496Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 99,
+    "type": "user",
+    "message": "please kill all main.py",
+    "timestamp": "2025-09-02T20:52:05.565Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 100,
+    "type": "user",
+    "message": "what do you think about this: import os, sys\nsys.stdin = open(os.devnull, 'r')  # behaves like empty stdin",
+    "timestamp": "2025-09-02T20:55:40.195Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 101,
+    "type": "user",
+    "message": "kill all main.py",
+    "timestamp": "2025-09-02T20:58:00.810Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 102,
+    "type": "user",
+    "message": "The log is not shown in the ui",
+    "timestamp": "2025-09-02T20:59:17.329Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 103,
+    "type": "user",
+    "message": "(venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:33: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\n2025-09-02 22:57:41,527 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')\n2025-09-02 22:57:41,528 - __main__ - INFO - Web server listening on 0.0.0.0:5000\n/usr/lib/python3.11/asyncio/events.py:80: RuntimeWarning: coroutine 'LogStreamer.broadcast' was never awaited\n  self._context.run(self._callback, *self._args)\nRuntimeWarning: Enable tracemalloc to get the object allocation traceback\nTraceback (most recent call last):\n  File \"/home/opcc/main.py\", line 222, in <module>\n    loop.run_until_complete(main_task)\n  File \"/usr/lib/python3.11/asyncio/base_events.py\", line 653, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File \"/home/opcc/main.py\", line 172, in main\n    ws_server = await serve(\n                ^^^^^^^^^^^^\n  File \"/home/opcc/venv/lib/python3.11/site-packages/websockets/legacy/server.py\", line 1123, in __await_impl__\n    server = await self._create_server()\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.11/asyncio/base_events.py\", line 1525, in create_server\n    raise OSError(err.errno, 'error while attempting '\nOSError: [Errno 98] error while attempting to bind on address ('0.0.0.0', 8887): address already in use\n(venv) opcc@evcc:~$ python main.py\n/home/opcc/main.py:33: DeprecationWarning: websockets.server.serve is deprecated\n  from websockets.server import serve\n2025-09-02 22:58:54,342 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')\n2025-09-02 22:58:54,343 - __main__ - INFO - Web server listening on 0.0.0.0:5000\n/usr/lib/python3.11/asyncio/events.py:80: RuntimeWarning: coroutine 'LogStreamer.broadcast' was never awaited\n  self._context.run(self._callback, *self._args)\nRuntimeWarning: Enable tracemalloc to get the object allocation traceback\n2025-09-02 22:58:54,377 - websockets.server - INFO - server listening on 0.0.0.0:8887\n2025-09-02 22:58:54,377 - app.ev_simulator_manager - INFO - EV Simulator Manager polling task started.",
+    "timestamp": "2025-09-02T21:00:08.299Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 104,
+    "type": "user",
+    "message": "2025-09-02 23:17:04,462 - app.ocpp_message_handlers - WARNING - StopTransaction received for unknown or non-ongoing transaction (CP ID: 0). please answer this call in any case",
+    "timestamp": "2025-09-02T21:17:32.576Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 105,
+    "type": "user",
+    "message": "2025-09-02 23:19:19,641 - app.ocpp_handler - DEBUG - Sent RemoteStartTransaction from Wallbox001. Payload: RemoteStartTransactionRequest(idTag='test_id_1', connectorId=1, chargingProfile=None)\n2025-09-02 23:19:19,641 - app.ocpp_handler - INFO - Sent RemoteStartTransaction (id=9d8c133a-bb46-4786-b855-8bdef7757a39). Waiting...\n2025-09-02 23:19:20,036 - app.ocpp_handler - INFO - Received CALLRESULT for 'RemoteStartTransaction' (id=9d8c133a-bb46-4786-b855-8bdef7757a39) from Wallbox001.\n2025-09-02 23:19:20,037 - app.ocpp_test_steps - INFO - PASSED: RemoteStartTransaction was accepted as expected from State B.\n2025-09-02 23:19:20,037 - app.ocpp_server_logic - DEBUG - Stored test result for Wallbox001 - run_e2_remote_start_state_b: PASSED\n2025-09-02 23:19:20,037 - app.ocpp_test_steps - INFO - Transaction 3 registered internally.\n2025-09-02 23:19:20,037 - app.ocpp_test_steps - INFO - Setting EV state to 'C' to simulate charging.\n2025-09-02 23:19:20,037 - app.ocpp_server_logic - INFO - Skipping EV state change to 'C'; simulator is disabled.\n2025-09-02 23:19:20,037 - app.ocpp_test_steps - INFO - --- Step E.2 for Wallbox001 complete. ---\n2025-09-02 23:19:21,236 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' for Wallbox001. Payload: {'connectorId': 1, 'idTag': 'test_id_1', 'meterStart': 227601, 'timestamp': '2025-09-02T21:19:19.000Z'}\n2025-09-02 23:19:21,236 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' from Wallbox001\n2025-09-02 23:19:21,236 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-02 23:19:21,237 - app.ocpp_message_handlers - INFO - Received StartTransaction from Wallbox001: StartTransactionRequest(connectorId=1, idTag='test_id_1', timestamp='2025-09-02T21:19:19.000Z', meterStart=227601, reservationId=None)\n2025-09-02 23:19:21,237 - app.ocpp_handler - ERROR - Error handling 'StartTransaction': 'StartTransactionRequest' object has no attribute 'transactionId'\nTraceback (most recent call last):\n  File \"/home/opcc/app/ocpp_handler.py\", line 226, in handle_call\n    response_payload = await handler(self.charge_point_id, payload)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/opcc/app/ocpp_message_handlers.py\", line 146, in handle_start_transaction\n    \"cp_transaction_id\": payload.transactionId # Store CP's transactionId\n                         ^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'StartTransactionRequest' object has no attribute 'transactionId'\n2025-09-02 23:19:28,043 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' for Wallbox001. Payload: {}",
+    "timestamp": "2025-09-02T21:19:42.276Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 106,
+    "type": "user",
+    "message": "kill then",
+    "timestamp": "2025-09-02T21:20:42.728Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 107,
+    "type": "user",
+    "message": "which processes block port 8887",
+    "timestamp": "2025-09-02T21:21:28.891Z"
+  },
+  {
+    "sessionId": "bcaf5bd2-05cb-4c83-9267-5be40aa49e43",
+    "messageId": 108,
+    "type": "user",
+    "message": "StopTransaction received for unknown or non-ongoing transaction (CP ID: 0) : Please reply to this message to synchronize the states between the wallabox and the server even if you think it is not needed",
+    "timestamp": "2025-09-02T21:27:05.742Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 0,
+    "type": "user",
+    "message": "hello",
+    "timestamp": "2025-09-02T21:28:51.482Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 1,
+    "type": "user",
+    "message": "StopTransaction received for unknown or non-ongoing transaction (CP ID: 0) : Please reply to this message to synchronize the states between the wallabox and the server even if you think it is not needed",
+    "timestamp": "2025-09-02T21:28:57.199Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 2,
+    "type": "user",
+    "message": "StopTransaction received for unknown or non-ongoing transaction (CP ID: 0) : Please reply to this message to synchronize the states between the wallabox and the server even if you think it is not needed",
+    "timestamp": "2025-09-02T21:29:02.870Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 3,
+    "type": "user",
+    "message": "Please make sure that our program answers this request that the wallbox can close its transaction",
+    "timestamp": "2025-09-02T21:29:57.084Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 4,
+    "type": "user",
+    "message": "2025-09-02 23:32:54,154 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' for Wallbox001. Payload: {'connectorId': 1, 'idTag': 'test_id_1', 'meterStart': 228380, 'timestamp': '2025-09-02T21:32:52.000Z'}\n2025-09-02 23:32:54,154 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' from Wallbox001\n2025-09-02 23:32:54,154 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-02 23:32:54,154 - app.ocpp_message_handlers - INFO - Received StartTransaction from Wallbox001: StartTransactionRequest(connectorId=1, idTag='test_id_1', timestamp='2025-09-02T21:32:52.000Z', meterStart=228380, reservationId=None)\n2025-09-02 23:32:54,155 - app.ocpp_handler - ERROR - Error handling 'StartTransaction': 'StartTransactionRequest' object has no attribute 'transactionId'\nTraceback (most recent call last):\n  File \"/home/opcc/app/ocpp_handler.py\", line 226, in handle_call\n    response_payload = await handler(self.charge_point_id, payload)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/opcc/app/ocpp_message_handlers.py\", line 146, in handle_start_transaction\n    \"cp_transaction_id\": payload.transactionId # Store CP's transactionId\n                         ^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'StartTransactionRequest' object has no attribute 'transactionId'\n2025-09-02 23:32:57,674 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' for Wallbox001. Payload: {}\nplease correct",
+    "timestamp": "2025-09-02T21:33:16.203Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 5,
+    "type": "user",
+    "message": "We have a global variable for the transaction id that is updated whenever the wallbox transmits a valid id. please use this one",
+    "timestamp": "2025-09-02T21:34:28.821Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 6,
+    "type": "user",
+    "message": "In short, the charging session is over. The Wallbox is likely re-transmitting the StopTransaction message because it didn't receive a confirmation the first time, or due to a separate state synchronization issue, but the server has correctly logged the transaction as finished.: Can you check if the server sends the correct stop transaction message and confirms it",
+    "timestamp": "2025-09-02T21:38:52.345Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 7,
+    "type": "user",
+    "message": "maybe you add a small deldy",
+    "timestamp": "2025-09-02T21:39:56.738Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 8,
+    "type": "user",
+    "message": "maybe you add a small delay",
+    "timestamp": "2025-09-02T21:40:01.049Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 9,
+    "type": "user",
+    "message": "can you change the command in e.4 to watt and not A like this one: [\n    2,\n    \"<unique_message_id>\",\n    \"SetChargingProfile\",\n    {\n        \"connectorId\": 1,\n        \"csChargingProfiles\": {\n            \"chargingProfileId\": 412,\n            \"stackLevel\": 1,\n            \"chargingProfilePurpose\": \"TxProfile\",\n            \"chargingProfileKind\": \"Absolute\",\n            \"chargingSchedule\": {\n                \"chargingRateUnit\": \"W\",\n                \"chargingSchedulePeriod\": [\n                    {\n                        \"startPeriod\": 0,\n                        \"limit\": 1380.0\n                    }\n                ]\n            },\n            \"transactionId\": 1\n        }\n    }\n]",
+    "timestamp": "2025-09-02T21:48:56.770Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 10,
+    "type": "user",
+    "message": "--- Step E.2: RemoteStartTransaction from State B for Wallbox001 ---\n2025-09-02 23:53:00,488 - app.ocpp_server_logic - INFO - Skipping EV state change to 'B'; simulator is disabled.\n2025-09-02 23:53:01,391 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' for Wallbox001. Payload: {'connectorId': 1, 'errorCode': 'NoError', 'info': '', 'status': 'Finishing', 'timestamp': '2025-09-02T21:53:01.000Z', 'vendorId': '', 'vendorErrorCode': ''}\n2025-09-02 23:53:01,391 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Wallbox001\n2025-09-02 23:53:01,391 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-02 23:53:01,391 - app.ocpp_message_handlers - DEBUG - Handling StatusNotification from Wallbox001: Finishing\n2025-09-02 23:53:01,391 - app.ocpp_message_handlers - INFO - Received StatusNotification from Wallbox001: Connector 1 is Finishing (equivalent to CP State X)\n\n\n------------OCPP Call----------\n2025-09-02 23:53:01,391 - app.ocpp_handler - DEBUG - RAW >> [3, \"195379291\", {}]\n2025-09-02 23:53:01,391 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Wallbox001.\n2025-09-02 23:53:02,490 - app.ocpp_test_steps - INFO - Sending RemoteStartTransaction...\n\n\n------------OCPP Call----------\n2025-09-02 23:53:02,490 - app.ocpp_handler - DEBUG - RAW >> [2, \"3671a80b-cd92-432a-8f14-f020d8c90ab5\", \"RemoteStartTransaction\", {\"idTag\": \"test_id_1\", \"connectorId\": 1}]\n2025-09-02 23:53:02,490 - app.ocpp_handler - DEBUG - Sent RemoteStartTransaction from Wallbox001. Payload: RemoteStartTransactionRequest(idTag='test_id_1', connectorId=1, chargingProfile=None)\n2025-09-02 23:53:02,490 - app.ocpp_handler - INFO - Sent RemoteStartTransaction (id=3671a80b-cd92-432a-8f14-f020d8c90ab5). Waiting...\n2025-09-02 23:53:02,630 - app.ocpp_handler - INFO - Received CALLRESULT for 'RemoteStartTransaction' (id=3671a80b-cd92-432a-8f14-f020d8c90ab5) from Wallbox001.\n2025-09-02 23:53:02,630 - app.ocpp_test_steps - INFO - PASSED: RemoteStartTransaction was accepted as expected from State B.\n2025-09-02 23:53:02,630 - app.ocpp_server_logic - DEBUG - Stored test result for Wallbox001 - run_e2_remote_start_state_b: PASSED\n2025-09-02 23:53:02,630 - app.ocpp_test_steps - INFO - Transaction 3 registered internally.\n2025-09-02 23:53:02,630 - app.ocpp_test_steps - INFO - Setting EV state to 'C' to simulate charging.\n2025-09-02 23:53:02,630 - app.ocpp_server_logic - INFO - Skipping EV state change to 'C'; simulator is disabled.\n--- Step E.2 for Wallbox001 complete. ---\nthis message should also update the global transaction id",
+    "timestamp": "2025-09-02T21:54:36.235Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 11,
+    "type": "user",
+    "message": "can you check that this global transaction id is used in all cases where we need such an id. Also it is shown in the gui",
+    "timestamp": "2025-09-02T21:56:02.222Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 12,
+    "type": "user",
+    "message": "during start transaction (E.2): can you add more debugging to verify that 2025-09-02 23:57:21,749 - app.ocpp_test_steps - INFO - Transaction 4 registered internally. transaction id is 4 and if so, update the global transaction ID",
+    "timestamp": "2025-09-02T22:01:09.853Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 13,
+    "type": "user",
+    "message": "why is transaction_id calculated?",
+    "timestamp": "2025-09-02T22:01:43.646Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 14,
+    "type": "user",
+    "message": "why is transaction_id calculated?",
+    "timestamp": "2025-09-02T22:02:01.805Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 15,
+    "type": "user",
+    "message": "that is the problem. The wallbox provides us with a transaction ID. We need to use this one",
+    "timestamp": "2025-09-02T22:02:49.076Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 16,
+    "type": "user",
+    "message": "yes",
+    "timestamp": "2025-09-02T22:03:29.768Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 17,
+    "type": "user",
+    "message": "--- Step E.2: RemoteStartTransaction from State B for Wallbox001 ---\n2025-09-03 00:07:55,601 - app.ocpp_server_logic - INFO - Skipping EV state change to 'B'; simulator is disabled.\n2025-09-03 00:07:57,601 - app.ocpp_test_steps - INFO - Sending RemoteStartTransaction...\n\n\n------------OCPP Call----------\n2025-09-03 00:07:57,602 - app.ocpp_handler - DEBUG - RAW >> [2, \"ec6e6c8d-fe81-4e15-aeb2-06d1e11ebc7a\", \"RemoteStartTransaction\", {\"idTag\": \"test_id_1\", \"connectorId\": 1}]\n2025-09-03 00:07:57,602 - app.ocpp_handler - DEBUG - Sent RemoteStartTransaction from Wallbox001. Payload: RemoteStartTransactionRequest(idTag='test_id_1', connectorId=1, chargingProfile=None)\n2025-09-03 00:07:57,602 - app.ocpp_handler - INFO - Sent RemoteStartTransaction (id=ec6e6c8d-fe81-4e15-aeb2-06d1e11ebc7a). Waiting...\n2025-09-03 00:07:57,713 - app.ocpp_handler - INFO - Received CALLRESULT for 'RemoteStartTransaction' (id=ec6e6c8d-fe81-4e15-aeb2-06d1e11ebc7a) from Wallbox001.\n2025-09-03 00:07:57,714 - app.ocpp_test_steps - INFO - PASSED: RemoteStartTransaction was accepted as expected from State B.\n2025-09-03 00:07:57,714 - app.ocpp_server_logic - DEBUG - Stored test result for Wallbox001 - run_e2_remote_start_state_b: PASSED\n2025-09-03 00:07:57,714 - root - ERROR - Error running test step\nTraceback (most recent call last):\n  File \"/home/opcc/app/web_ui_server.py\", line 219, in run_test_step\n    future.result(timeout=120)\n  File \"/usr/lib/python3.11/concurrent/futures/_base.py\", line 456, in result\n    return self.__get_result()\n           ^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.11/concurrent/futures/_base.py\", line 401, in __get_result\n    raise self._exception\n  File \"/home/opcc/app/web_ui_server.py\", line 215, in run_test_with_lock\n    await method()\n  File \"/home/opcc/app/ocpp_server_logic.py\", line 364, in run_e2_remote_start_state_b\n    return await self.test_steps.run_e2_remote_start_state_b()\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/opcc/app/ocpp_test_steps.py\", line 699, in run_e2_remote_start_state_b\n    set_active_transaction_id(cs_internal_transaction_id) # Update the global active transaction ID with CS's ID\n    ^^^^^^^^^^^^^^^^^^^^^^^^^\nNameError: name 'set_active_transaction_id' is not defined\n2025-09-03 00:07:58,914 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' for Wallbox001. Payload: {}",
+    "timestamp": "2025-09-02T22:08:11.929Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 18,
+    "type": "user",
+    "message": "there is only one transaction_id that is given by the wallbox during start transaction. This transaction ID is used by otehr functions. Remove everything that updates this transaction ID in all programs",
+    "timestamp": "2025-09-02T22:11:17.237Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 19,
+    "type": "user",
+    "message": "this is the sequence: The normal sequence of events is:\n\nCS sends RemoteStartTransaction.req to the CP, including an idTag for authorization and a connectorId.\n\nCP receives and processes the request.\n\nCP responds with RemoteStartTransaction.conf, confirming acceptance. At this point, the transaction has not yet begun.\n\nCP initiates the transaction locally once the vehicle is plugged in and ready to charge.\n\nCP sends StartTransaction.req to the CS. This is the first message from the CP that contains the transactionId that the CP has assigned to the new session.\n\nCS responds with StartTransaction.conf, which includes the same transactionId and confirms that the transaction is now formally recorded on the server side.  and this is the starttransaction.req: [\n    2,\n    \"unique_message_id\",\n    \"StartTransaction\",\n    {\n        \"connectorId\": <integer>,\n        \"idTag\": \"<string>\",\n        \"meterStart\": <integer>,\n        \"timestamp\": \"<dateTime>\",\n        \"reservationId\": <integer>\n    }\n]",
+    "timestamp": "2025-09-02T22:16:30.984Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 20,
+    "type": "user",
+    "message": "do we follow this process in E.2?",
+    "timestamp": "2025-09-02T22:18:02.277Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 21,
+    "type": "user",
+    "message": "do we follow this process in E.2? CS sends RemoteStartTransaction.req to the CP, including an idTag for authorization and a connectorId.\n\nCP receives and processes the request.\n\nCP responds with RemoteStartTransaction.conf, confirming acceptance. At this point, the transaction has not yet begun.\n\nCP initiates the transaction locally once the vehicle is plugged in and ready to charge.\n\nCP sends StartTransaction.req to the CS. This is the first message from the CP that contains the transactionId that the CP has assigned to the new session.\n\nCS responds with StartTransaction.conf, which includes the same transactionId and confirms that the transaction is now formally recorded on the server side.",
+    "timestamp": "2025-09-02T22:18:07.669Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 22,
+    "type": "user",
+    "message": "please adapt the process to CS sends RemoteStartTransaction.req to the CP, including an idTag for authorization and a connectorId.\n\nCP receives and processes the request.\n\nCP responds with RemoteStartTransaction.conf, confirming acceptance. At this point, the transaction has not yet begun.\n\nCP initiates the transaction locally once the vehicle is plugged in and ready to charge.\n\nCP sends StartTransaction.req to the CS. This is the first message from the CP that contains the transactionId that the CP has assigned to the new session.\n\nCS responds with StartTransaction.conf, which includes the same transactionId and confirms that the transaction is now formally recorded on the server side. and add logging, particularly for the transaction ID",
+    "timestamp": "2025-09-02T22:19:30.472Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 23,
+    "type": "user",
+    "message": "please adapt the process to CS sends RemoteStartTransaction.req to the CP, including an idTag for authorization and a connectorId.\n\nCP receives and processes the request.\n\nCP responds with RemoteStartTransaction.conf, confirming acceptance. At this point, the transaction has not yet begun.\n\nCP initiates the transaction locally once the vehicle is plugged in and ready to charge.\n\nCP sends StartTransaction.req to the CS. This is the first message from the CP that contains the transactionId that the CP has assigned to the new session.\n\nCS responds with StartTransaction.conf, which includes the same transactionId and confirms that the transaction is now formally recorded on the server side. and add logging, particularly for the transaction ID. Only the wallbox sensd a transaction ID. The server only stores it",
+    "timestamp": "2025-09-02T22:20:28.427Z"
+  },
+  {
+    "sessionId": "171b47e2-7043-4ef6-9434-8b6f11316934",
+    "messageId": 24,
+    "type": "user",
+    "message": "please adapt the process to CS sends RemoteStartTransaction.req to the CP, including an idTag for authorization and a connectorId.                                                                                                                        │\n│                                                                                                                                                                                                                                                              │\n│    CP receives and processes the request.                                                                                                                                                                                                                    │\n│                                                                                                                                                                                                                                                              │\n│    CP responds with RemoteStartTransaction.conf, confirming acceptance. At this point, the transaction has not yet begun.                                                                                                                                    │\n│                                                                                                                                                                                                                                                              │\n│    CP initiates the transaction locally once the vehicle is plugged in and ready to charge.                                                                                                                                                                  │\n│                                                                                                                                                                                                                                                              │\n│    CP sends StartTransaction.req to the CS. This is the first message from the CP that contains the transactionId that the CP has assigned to the new session.                                                                                               │\n│                                                                                                                                                                                                                                                              │\n│    CS responds with StartTransaction.conf, which includes the same transactionId and confirms that the transaction is now formally recorded on the server side. and add logging, particularly for the transaction ID. Only the wallbox sensd a transaction   │\n│    ID. The server only stores it",
+    "timestamp": "2025-09-02T22:26:36.382Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 0,
+    "type": "user",
+    "message": "read all project py files",
+    "timestamp": "2025-09-02T22:27:25.121Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 1,
+    "type": "user",
+    "message": "read all project py files",
+    "timestamp": "2025-09-02T22:27:31.410Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 2,
+    "type": "user",
+    "message": "please adapt the process to CS sends RemoteStartTransaction.req to the CP, including an idTag for authorization and a connectorId.                                                                                                                        │\n│                                                                                                                                                                                                                                                              │\n│    CP receives and processes the request.                                                                                                                                                                                                                    │\n│                                                                                                                                                                                                                                                              │\n│    CP responds with RemoteStartTransaction.conf, confirming acceptance. At this point, the transaction has not yet begun.                                                                                                                                    │\n│                                                                                                                                                                                                                                                              │\n│    CP initiates the transaction locally once the vehicle is plugged in and ready to charge.                                                                                                                                                                  │\n│                                                                                                                                                                                                                                                              │\n│    CP sends StartTransaction.req to the CS. This is the first message from the CP that contains the transactionId that the CP has assigned to the new session.                                                                                               │\n│                                                                                                                                                                                                                                                              │\n│    CS responds with StartTransaction.conf, which includes the same transactionId and confirms that the transaction is now formally recorded on the server side. and add logging, particularly for the transaction ID. Only the wallbox sensd a transaction   │\n│    ID. The server only stores it",
+    "timestamp": "2025-09-02T22:27:40.806Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 3,
+    "type": "user",
+    "message": "------------OCPP Call----------\n2025-09-03 00:31:31,733 - app.ocpp_handler - DEBUG - RAW >> [3, \"297448205\", {}]\n2025-09-03 00:31:31,734 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Wallbox001.\n2025-09-03 00:31:31,734 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' for Wallbox001. Payload: {'connectorId': 1, 'idTag': 'FFFFFFFF', 'meterStart': 230275, 'timestamp': '2025-09-02T22:13:29.000Z'}\n2025-09-03 00:31:31,734 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' from Wallbox001\n2025-09-03 00:31:31,734 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:31:31,734 - app.ocpp_handler - ERROR - Payload validation failed for 'StartTransaction': StartTransactionRequest.__init__() missing 1 required positional argument: 'transactionId'\n2025-09-03 00:31:31,939 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' for Wallbox001. Payload: {'connectorId': 1, 'errorCode': 'NoError', 'info': '', 'status': 'Charging', 'timestamp': '2025-09-02T22:31:30.000Z', 'vendorId': '', 'vendorErrorCode': ''}\n2025-09-03 00:31:31,939 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Wallbox001\n2025-09-03 00:31:31,939 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:31:31,939 - app.ocpp_message_handlers - DEBUG - Handling StatusNotification from Wallbox001: Charging\n2025-09-03 00:31:31,939 - app.ocpp_message_handlers - INFO - Received StatusNotification from Wallbox001: Connector 1 is Charging (equivalent to CP State C)",
+    "timestamp": "2025-09-02T22:31:49.028Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 4,
+    "type": "user",
+    "message": "Please add the extraction and storage of the transaction id from the MeterValues.req",
+    "timestamp": "2025-09-02T22:34:22.787Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 5,
+    "type": "user",
+    "message": "0 has also be treated as a valid transaction id",
+    "timestamp": "2025-09-02T22:37:56.797Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 6,
+    "type": "user",
+    "message": "ic', format=None, measurand='Current.Import', location='Body', unit='A', phase='L1-N'), SampledValue(value='234416.59', context='Sample.Periodic', format=None, measurand='Energy.Active.Import.Register', location='Body', unit='Wh', phase=None), SampledValue(value='3489.90', context='Sample.Periodic', format=None, measurand='Power.Active.Import', location='Body', unit='W', phase=None), SampledValue(value='40', context='Sample.Periodic', format=None, measurand='Temperature', location='Body', unit='Celsius', phase=None), SampledValue(value='233.16', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L1-N'), SampledValue(value='232.89', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L2-N'), SampledValue(value='233.86', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L3-N')])], transactionId=0)\n2025-09-03 00:37:36,585 - app.ocpp_message_handlers - INFO - Extracting transaction ID from MeterValues.req: 0\n2025-09-03 00:37:36,585 - app.ocpp_message_handlers - WARNING - MeterValues received for unknown transaction 0. Not storing meter values.\n2025-09-03 00:37:36,585 - app.ocpp_message_handlers - DEBUG -   -> Timestamp: 2025-09-02T22:37:34.000Z\n2025-09-03 00:37:36,585 - app.ocpp_message_handlers - DEBUG -     - Current.Import: 14.97 A (context: Sample.Periodic, location: Body, phase: L1-N)\n2025-09-03 00:37:36,585 - app.ocpp_message_handlers - DEBUG -     - Energy.Active.Import.Register: 234416.59 Wh (context: Sample.Periodic, location: Body)\n2025-09-03 00:37:36,585 - app.ocpp_message_handlers - DEBUG -     - Power.Active.Import: 3489.90 W (context: Sample.Periodic, location: Body)\n2025-09-03 00:37:36,585 - app.ocpp_message_handlers - DEBUG -     - Temperature: 40 Celsius (context: Sample.Periodic, location: Body)\n2025-09-03 00:37:36,585 - app.ocpp_message_handlers - DEBUG -     - Voltage: 233.16 V (context: Sample.Periodic, location: Body, phase: L1-N)\n2025-09-03 00:37:36,585 - app.ocpp_message_handlers - DEBUG -     - Voltage: 232.89 V (context: Sample.Periodic, location: Body, phase: L2-N)\n2025-09-03 00:37:36,585 - app.ocpp_message_handlers - DEBUG -     - Voltage: 233.86 V (context: Sample.Periodic, location: Body, phase: L3-N)\n\n\n------------OCPP Call----------\n2025-09-03 00:37:36,585 - app.ocpp_handler - DEBUG - RAW >> [3, \"394190623\", {}]\n2025-09-03 00:37:36,585 - app.ocpp_handler - INFO - Sent response for 'MeterValues' to Wallbox001.\n2025-09-03 00:37:37,112 - root - INFO - API call to run test step 'run_e8_remote_stop_transaction' for charge point 'Wallbox001'\n--- Step E.8: Stopping active transaction for Wallbox001 ---\n2025-09-03 00:37:37,113 - app.ocpp_test_steps - ERROR - FAILED: No active transaction found to stop.\n2025-09-03 00:37:37,113 - app.ocpp_server_logic - DEBUG - Stored test result for Wallbox001 - run_e8_remote_stop_transaction: FAILED",
+    "timestamp": "2025-09-02T22:38:37.671Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 7,
+    "type": "user",
+    "message": "every new transaction id has to be stored by the server. keep in mind: The wallbox is the master and the server only stores a copy",
+    "timestamp": "2025-09-02T22:40:34.029Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 8,
+    "type": "user",
+    "message": "------------OCPP Call----------\n2025-09-03 00:38:07,132 - app.ocpp_handler - DEBUG - RAW >> [3, \"2414588298\", {}]\n2025-09-03 00:38:07,132 - app.ocpp_handler - INFO - Sent response for 'MeterValues' to Wallbox001.\n2025-09-03 00:38:17,207 - app.ocpp_handler - DEBUG - Received CALL 'MeterValues' for Wallbox001. Payload: {'connectorId': 1, 'transactionId': 0, 'meterValue': [{'timestamp': '2025-09-02T22:38:15.000Z', 'sampledValue': [{'value': '14.98', 'context': 'Sample.Periodic', 'measurand': 'Current.Import', 'phase': 'L1-N', 'location': 'Body', 'unit': 'A'}, {'value': '234528.89', 'context': 'Sample.Periodic', 'measurand': 'Energy.Active.Import.Register', 'location': 'Body', 'unit': 'Wh'}, {'value': '3490.03', 'context': 'Sample.Periodic', 'measurand': 'Power.Active.Import', 'location': 'Body', 'unit': 'W'}, {'value': '40', 'context': 'Sample.Periodic', 'measurand': 'Temperature', 'location': 'Body', 'unit': 'Celsius'}, {'value': '233.29', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L1-N', 'location': 'Body', 'unit': 'V'}, {'value': '233.12', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L2-N', 'location': 'Body', 'unit': 'V'}, {'value': '233.93', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L3-N', 'location': 'Body', 'unit': 'V'}]}]}\n2025-09-03 00:38:17,207 - app.ocpp_handler - DEBUG - Received CALL 'MeterValues' from Wallbox001\n2025-09-03 00:38:17,207 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:38:17,207 - app.ocpp_message_handlers - DEBUG - Received MeterValues from Wallbox001 for connector 1. Payload: MeterValuesRequest(connectorId=1, meterValue=[MeterValue(timestamp='2025-09-02T22:38:15.000Z', sampledValue=[SampledValue(value='14.98', context='Sample.Periodic', format=None, measurand='Current.Import', location='Body', unit='A', phase='L1-N'), SampledValue(value='234528.89', context='Sample.Periodic', format=None, measurand='Energy.Active.Import.Register', location='Body', unit='Wh', phase=None), SampledValue(value='3490.03', context='Sample.Periodic', format=None, measurand='Power.Active.Import', location='Body', unit='W', phase=None), SampledValue(value='40', context='Sample.Periodic', format=None, measurand='Temperature', location='Body', unit='Celsius', phase=None), SampledValue(value='233.29', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L1-N'), SampledValue(value='233.12', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L2-N'), SampledValue(value='233.93', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L3-N')])], transactionId=0)\n2025-09-03 00:38:17,208 - app.ocpp_message_handlers - INFO - Extracting transaction ID from MeterValues.req: 0\n2025-09-03 00:38:17,208 - app.ocpp_message_handlers - WARNING - MeterValues received for unknown transaction 0. Not storing meter values.\n2025-09-03 00:38:17,208 - app.ocpp_message_handlers - DEBUG -   -> Timestamp: 2025-09-02T22:38:15.000Z\n2025-09-03 00:38:17,208 - app.ocpp_message_handlers - DEBUG -     - Current.Import: 14.98 A (context: Sample.Periodic, location: Body, phase: L1-N)\n2025-09-03 00:38:17,208 - app.ocpp_message_handlers - DEBUG -     - Energy.Active.Import.Register: 234528.89 Wh (context: Sample.Periodic, location: Body)\n2025-09-03 00:38:17,208 - app.ocpp_message_handlers - DEBUG -     - Power.Active.Import: 3490.03 W (context: Sample.Periodic, location: Body)\n2025-09-03 00:38:17,208 - app.ocpp_message_handlers - DEBUG -     - Temperature: 40 Celsius (context: Sample.Periodic, location: Body)\n2025-09-03 00:38:17,208 - app.ocpp_message_handlers - DEBUG -     - Voltage: 233.29 V (context: Sample.Periodic, location: Body, phase: L1-N)\n2025-09-03 00:38:17,208 - app.ocpp_message_handlers - DEBUG -     - Voltage: 233.12 V (context: Sample.Periodic, location: Body, phase: L2-N)\n2025-09-03 00:38:17,208 - app.ocpp_message_handlers - DEBUG -     - Voltage: 233.93 V (context: Sample.Periodic, location: Body, phase: L3-N)\ncontains a transaction id with the value 0",
+    "timestamp": "2025-09-02T22:42:48.743Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 9,
+    "type": "user",
+    "message": "warning \"MeterValues received for unknown transaction 0. Not storing meter values should be: \"Information: MeterValues received a new transaction id 0. It started a new trasnsaction\". this is needed because the server can start while the wallbox already has a running transaction",
+    "timestamp": "2025-09-02T22:46:32.476Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 10,
+    "type": "user",
+    "message": "2025-09-03 00:48:50,706 - app.ocpp_message_handlers - WARNING - StopTransaction received for unknown or non-ongoing transaction (CP ID: 0). Current TRANSACTIONS state: {}\n\n\n------------OCPP Call----------\n2025-09-03 00:48:50,807 - app.ocpp_handler - DEBUG - RAW >> [3, \"2179477483\", {}]\n2025-09-03 00:48:50,807 - app.ocpp_handler - INFO - Sent response for 'StopTransaction' to Wallbox001.\n2025-09-03 00:48:59,268 - app.ocpp_server_logic - DEBUG - Passive health check for Wallbox001. Waiting for next heartbeat.\n2025-09-03 00:48:59,721 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' for Wallbox001. Payload: {}\n2025-09-03 00:48:59,721 - app.ocpp_handler - DEBUG - Received CALL 'Heartbeat' from Wallbox001\n2025-09-03 00:48:59,721 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:48:59,721 - app.ocpp_message_handlers - INFO - Received Heartbeat from Wallbox001\n\n\n------------OCPP Call----------\n2025-09-03 00:48:59,722 - app.ocpp_handler - DEBUG - RAW >> [3, \"1965454199\", {\"currentTime\": \"2025-09-02T22:48:59.722032+00:00\"}]\n2025-09-03 00:48:59,722 - app.ocpp_handler - INFO - Sent response for 'Heartbeat' to Wallbox001.\n2025-09-03 00:49:01,023 - app.ocpp_handler - DEBUG - Received CALL 'StopTransaction' for Wallbox001. Payload: {'idTag': 'FFFFFFFF', 'meterStop': 236241, 'timestamp': '2025-09-02T22:48:48.000Z', 'transactionId': 0, 'reason': 'Remote'}\n2025-09-03 00:49:01,023 - app.ocpp_handler - DEBUG - Received CALL 'StopTransaction' from Wallbox001\n2025-09-03 00:49:01,023 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:49:01,023 - app.ocpp_message_handlers - INFO - Received StopTransaction from Wallbox001: StopTransactionRequest(transactionId=0, timestamp='2025-09-02T22:48:48.000Z', meterStop=236241, idTag='FFFFFFFF', reason='Remote', transactionData=None)\n2025-09-03 00:49:01,023 - app.ocpp_message_handlers - WARNING - StopTransaction received for unknown or non-ongoing transaction (CP ID: 0). Current TRANSACTIONS state: {}\n\n\n------------OCPP Call----------\n2025-09-03 00:49:01,124 - app.ocpp_handler - DEBUG - RAW >> [3, \"1738212728\", {}]\n2025-09-03 00:49:01,124 - app.ocpp_handler - INFO - Sent response for 'StopTransaction' to Wallbox001.\n2025-09-03 00:49:11,137 - app.ocpp_handler - DEBUG - Received CALL 'StopTransaction' for Wallbox001. Payload: {'idTag': 'FFFFFFFF', 'meterStop': 236241, 'timestamp': '2025-09-02T22:48:48.000Z', 'transactionId': 0, 'reason': 'Remote'}\n2025-09-03 00:49:11,137 - app.ocpp_handler - DEBUG - Received CALL 'StopTransaction' from Wallbox001\n2025-09-03 00:49:11,137 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:49:11,137 - app.ocpp_message_handlers - INFO - Received StopTransaction from Wallbox001: StopTransactionRequest(transactionId=0, timestamp='2025-09-02T22:48:48.000Z', meterStop=236241, idTag='FFFFFFFF', reason='Remote', transactionData=None)\n2025-09-03 00:49:11,137 - app.ocpp_message_handlers - WARNING - StopTransaction received for unknown or non-ongoing transaction (CP ID: 0). Current TRANSACTIONS state: {}\nCan you make that the code answers this stop transaction that the wallbox is ok",
+    "timestamp": "2025-09-02T22:50:06.975Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 11,
+    "type": "user",
+    "message": "2025-09-03 00:51:40,394 - app.ocpp_server_logic - DEBUG - Stored test result for Wallbox001 - run_e2_remote_start_state_b: PASSED\n2025-09-03 00:51:40,395 - root - ERROR - Error running test step\nTraceback (most recent call last):\n  File \"/home/opcc/app/web_ui_server.py\", line 219, in run_test_step\n    future.result(timeout=120)\n  File \"/usr/lib/python3.11/concurrent/futures/_base.py\", line 456, in result\n    return self.__get_result()\n           ^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.11/concurrent/futures/_base.py\", line 401, in __get_result\n    raise self._exception\n  File \"/home/opcc/app/web_ui_server.py\", line 215, in run_test_with_lock\n    await method()\n  File \"/home/opcc/app/ocpp_server_logic.py\", line 364, in run_e2_remote_start_state_b\n    return await self.test_steps.run_e2_remote_start_state_b()\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/opcc/app/ocpp_test_steps.py\", line 703, in run_e2_remote_start_state_b\n    set_active_transaction_id(cs_internal_transaction_id) # Update the global active transaction ID with CS's ID\n    ^^^^^^^^^^^^^^^^^^^^^^^^^\nNameError: name 'set_active_transaction_id' is not defined\n2025-09-03 00:51:41,593 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' for Wallbox001. Payload: {'connectorId': 1, 'idTag': 'test_id_1', 'meterStart': 236241, 'timestamp': '2025-09-02T22:51:39.000Z'}\n2025-09-03 00:51:41,594 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' from Wallbox001\n2025-09-03 00:51:41,594 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:51:41,594 - app.ocpp_handler - ERROR - Payload validation failed for 'StartTransaction': StartTransactionRequest.__init__() missing 1 required positional argument: 'transactionId'",
+    "timestamp": "2025-09-02T22:51:53.492Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 12,
+    "type": "user",
+    "message": "2025-09-03 00:52:42,203 - __main__ - INFO - Starting WebSocket server on 0.0.0.0:8887 (paths: '/logs', '/ev-status', '/<ChargePointId>')\n2025-09-03 00:52:42,204 - __main__ - INFO - Web server listening on 0.0.0.0:5000\n2025-09-03 00:52:42,244 - websockets.server - INFO - server listening on 0.0.0.0:8887\n2025-09-03 00:52:42,245 - app.ev_simulator_manager - INFO - EV Simulator Manager polling task started.\n2025-09-03 00:52:42,442 - websockets.server - INFO - connection open\n2025-09-03 00:52:42,442 - app.streamers - INFO - EV status stream client connected: ('192.168.0.10', 10268)\n2025-09-03 00:52:43,960 - websockets.server - INFO - connection open\n2025-09-03 00:52:43,960 - app.streamers - INFO - Log stream client connected: ('192.168.0.10', 46266)\n2025-09-03 00:52:49,145 - websockets.server - INFO - connection open\n2025-09-03 00:52:49,145 - __main__ - INFO - Connection received from ('192.168.0.16', 52532) on path '/Wallbox001'\n2025-09-03 00:52:49,145 - app.ocpp_handler - INFO - New connection from Charge Point: Wallbox001\n2025-09-03 00:52:49,145 - app.ocpp_handler - INFO - Set Wallbox001 as the active charge point.\n2025-09-03 00:52:49,146 - app.ocpp_handler - INFO - Main logic task for Wallbox001 started.\n2025-09-03 00:52:49,146 - app.ocpp_handler - INFO - Connection for Wallbox001 established. Starting periodic health checks.\n2025-09-03 00:52:50,363 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' for Wallbox001. Payload: {'connectorId': 1, 'idTag': 'test_id_1', 'meterStart': 236241, 'timestamp': '2025-09-02T22:51:39.000Z'}\n2025-09-03 00:52:50,363 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' from Wallbox001\n2025-09-03 00:52:50,363 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:52:50,363 - app.ocpp_handler - ERROR - Payload validation failed for 'StartTransaction': StartTransactionRequest.__init__() missing 1 required positional argument: 'transactionId'\n2025-09-03 00:52:52,749 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' for Wallbox001. Payload: {'connectorId': 1, 'errorCode': 'NoError', 'info': '', 'status': 'Charging', 'timestamp': '2025-09-02T22:52:51.000Z', 'vendorId': '', 'vendorErrorCode': ''}\n2025-09-03 00:52:52,750 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Wallbox001\n2025-09-03 00:52:52,750 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:52:52,750 - app.ocpp_message_handlers - DEBUG - Handling StatusNotification from Wallbox001: Charging\n2025-09-03 00:52:52,750 - app.ocpp_message_handlers - INFO - Received StatusNotification from Wallbox001: Connector 1 is Charging (equivalent to CP State C)\nwhere is here the starttransaction",
+    "timestamp": "2025-09-02T22:53:28.425Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 13,
+    "type": "user",
+    "message": "app.ocpp_message_handlers - INFO - StopTransaction received for transaction (CP ID: 0) not found in active records. Acknowledging stop.\nthis should use the last transaction ID used to stop",
+    "timestamp": "2025-09-02T22:55:38.389Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 14,
+    "type": "user",
+    "message": "app.ocpp_message_handlers - INFO - StopTransaction received for transaction (CP ID: 0) not found in active records. Acknowledging stop.\nthis should use the last transaction ID used to stop\n\n------------OCPP Call----------\n2025-09-03 00:56:09,227 - app.ocpp_handler - DEBUG - RAW >> [2, \"31075eeb-a9bd-47e6-b58c-9cf51af3570e\", \"RemoteStartTransaction\", {\"idTag\": \"test_id_1\", \"connectorId\": 1}]\n2025-09-03 00:56:09,227 - app.ocpp_handler - DEBUG - Sent RemoteStartTransaction from Wallbox001. Payload: RemoteStartTransactionRequest(idTag='test_id_1', connectorId=1, chargingProfile=None)\n2025-09-03 00:56:09,228 - app.ocpp_handler - INFO - Sent RemoteStartTransaction (id=31075eeb-a9bd-47e6-b58c-9cf51af3570e). Waiting...\n2025-09-03 00:56:09,344 - app.ocpp_handler - INFO - Received CALLRESULT for 'RemoteStartTransaction' (id=31075eeb-a9bd-47e6-b58c-9cf51af3570e) from Wallbox001.\n2025-09-03 00:56:09,344 - app.ocpp_test_steps - INFO - PASSED: RemoteStartTransaction was accepted as expected from State B.\n2025-09-03 00:56:09,344 - app.ocpp_server_logic - DEBUG - Stored test result for Wallbox001 - run_e2_remote_start_state_b: PASSED\n2025-09-03 00:56:09,344 - app.ocpp_test_steps - INFO - Transaction (temp key: Wallbox001-1, CS ID: None) registered internally.\n2025-09-03 00:56:09,344 - app.ocpp_test_steps - INFO - Setting EV state to 'C' to simulate charging.\n2025-09-03 00:56:09,344 - app.ocpp_server_logic - INFO - Skipping EV state change to 'C'; simulator is disabled.\n--- Step E.2 for Wallbox001 complete. ---\n2025-09-03 00:56:10,543 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' for Wallbox001. Payload: {'connectorId': 1, 'idTag': 'test_id_1', 'meterStart': 236564, 'timestamp': '2025-09-02T22:56:08.000Z'}\n2025-09-03 00:56:10,543 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' from Wallbox001\n2025-09-03 00:56:10,543 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:56:10,543 - app.ocpp_handler - ERROR - Payload validation failed for 'StartTransaction': StartTransactionRequest.__init__() missing 1 required positional argument: 'transactionId'\n2025-09-03 00:56:20,659 - app.ocpp_handler - DEBUG - Received CALL 'MeterValues' for Wallbox001. Payload: {'connectorId': 1, 'transactionId': 0, 'meterValue': [{'timestamp': '2025-09-02T22:56:18.000Z', 'sampledValue': [{'value': '0.07', 'context': 'Sample.Periodic', 'measurand': 'Current.Import', 'phase': 'L1-N', 'location': 'Body', 'unit': 'A'}, {'value': '236564.45', 'context': 'Sample.Periodic', 'measurand': 'Energy.Active.Import.Register', 'location': 'Body', 'unit': 'Wh'}, {'value': '4.07', 'context': 'Sample.Periodic', 'measurand': 'Power.Active.Import', 'location': 'Body', 'unit': 'W'}, {'value': '41', 'context': 'Sample.Periodic', 'measurand': 'Temperature', 'location': 'Body', 'unit': 'Celsius'}, {'value': '235.99', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L1-N', 'location': 'Body', 'unit': 'V'}, {'value': '235.57', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L2-N', 'location': 'Body', 'unit': 'V'}, {'value': '236.37', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L3-N', 'location': 'Body', 'unit': 'V'}]}]}\n2025-09-03 00:56:20,659 - app.ocpp_handler - DEBUG - Received CALL 'MeterValues' from Wallbox001\n2025-09-03 00:56:20,659 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - DEBUG - Received MeterValues from Wallbox001 for connector 1. Payload: MeterValuesRequest(connectorId=1, meterValue=[MeterValue(timestamp='2025-09-02T22:56:18.000Z', sampledValue=[SampledValue(value='0.07', context='Sample.Periodic', format=None, measurand='Current.Import', location='Body', unit='A', phase='L1-N'), SampledValue(value='236564.45', context='Sample.Periodic', format=None, measurand='Energy.Active.Import.Register', location='Body', unit='Wh', phase=None), SampledValue(value='4.07', context='Sample.Periodic', format=None, measurand='Power.Active.Import', location='Body', unit='W', phase=None), SampledValue(value='41', context='Sample.Periodic', format=None, measurand='Temperature', location='Body', unit='Celsius', phase=None), SampledValue(value='235.99', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L1-N'), SampledValue(value='235.57', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L2-N'), SampledValue(value='236.37', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L3-N')])], transactionId=0)\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - INFO - Extracting transaction ID from MeterValues.req: 0\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - INFO - Information: MeterValues received a new transaction id 0. It started a new transaction.\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - DEBUG -   -> Timestamp: 2025-09-02T22:56:18.000Z\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - DEBUG -     - Current.Import: 0.07 A (context: Sample.Periodic, location: Body, phase: L1-N)\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - DEBUG -     - Energy.Active.Import.Register: 236564.45 Wh (context: Sample.Periodic, location: Body)\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - DEBUG -     - Power.Active.Import: 4.07 W (context: Sample.Periodic, location: Body)\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - DEBUG -     - Temperature: 41 Celsius (context: Sample.Periodic, location: Body)\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - DEBUG -     - Voltage: 235.99 V (context: Sample.Periodic, location: Body, phase: L1-N)\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - DEBUG -     - Voltage: 235.57 V (context: Sample.Periodic, location: Body, phase: L2-N)\n2025-09-03 00:56:20,660 - app.ocpp_message_handlers - DEBUG -     - Voltage: 236.37 V (context: Sample.Periodic, location: Body, phase: L3-N)\n\ndoes this fit the requirements: CS sends RemoteStartTransaction.req to the CP, including an idTag for authorization and a connectorId.\n\nCP receives and processes the request.\n\nCP responds with RemoteStartTransaction.conf, confirming acceptance. At this point, the transaction has not yet begun.\n\nCP initiates the transaction locally once the vehicle is plugged in and ready to charge.\n\nCP sends StartTransaction.req to the CS. This is the first message from the CP that contains the transactionId that the CP has assigned to the new session.\n\nCS responds with StartTransaction.conf, which includes the same transactionId and confirms that the transaction is now formally recorded on the server side. Just answer. no coding",
+    "timestamp": "2025-09-02T22:58:30.799Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 15,
+    "type": "user",
+    "message": "------------OCPP Call----------\n2025-09-03 00:56:30,775 - app.ocpp_handler - DEBUG - RAW >> [3, \"3535461195\", {}]\n2025-09-03 00:56:30,775 - app.ocpp_handler - INFO - Sent response for 'MeterValues' to Wallbox001.\n2025-09-03 00:56:32,053 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' for Wallbox001. Payload: {'connectorId': 1, 'idTag': 'test_id_1', 'meterStart': 236564, 'timestamp': '2025-09-02T22:56:08.000Z'}\n2025-09-03 00:56:32,054 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' from Wallbox001\n2025-09-03 00:56:32,054 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:56:32,054 - app.ocpp_handler - ERROR - Payload validation failed for 'StartTransaction': StartTransactionRequest.__init__() missing 1 required positional argument: 'transactionId'\n2025-09-03 00:56:34,455 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' for Wallbox001. Payload: {'connectorId': 1, 'errorCode': 'NoError', 'info': '', 'status': 'Charging', 'timestamp': '2025-09-02T22:56:32.000Z', 'vendorId': '', 'vendorErrorCode': ''}\n2025-09-03 00:56:34,455 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Wallbox001\n2025-09-03 00:56:34,455 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:56:34,455 - app.ocpp_message_handlers - DEBUG - Handling StatusNotification from Wallbox001: Charging\n2025-09-03 00:56:34,455 - app.ocpp_message_handlers - INFO - Received StatusNotification from Wallbox001: Connector 1 is Charging (equivalent to CP State C)\n\n\n------------OCPP Call----------\n2025-09-03 00:56:34,456 - app.ocpp_handler - DEBUG - RAW >> [3, \"1907335091\", {}]\n2025-09-03 00:56:34,456 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Wallbox001.\n2025-09-03 00:56:35,821 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' for Wallbox001. Payload: {'connectorId': 1, 'errorCode': 'NoError', 'info': '', 'status': 'Charging', 'timestamp': '2025-09-02T22:56:34.000Z', 'vendorId': '', 'vendorErrorCode': ''}\n2025-09-03 00:56:35,821 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Wallbox001\n2025-09-03 00:56:35,822 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:56:35,822 - app.ocpp_message_handlers - DEBUG - Handling StatusNotification from Wallbox001: Charging\n2025-09-03 00:56:35,822 - app.ocpp_message_handlers - INFO - Received StatusNotification from Wallbox001: Connector 1 is Charging (equivalent to CP State C)\n\n\n------------OCPP Call----------\n2025-09-03 00:56:35,822 - app.ocpp_handler - DEBUG - RAW >> [3, \"4117009780\", {}]\n2025-09-03 00:56:35,822 - app.ocpp_handler - INFO - Sent response for 'StatusNotification' to Wallbox001.\n2025-09-03 00:56:40,351 - app.ocpp_handler - DEBUG - Received CALL 'MeterValues' for Wallbox001. Payload: {'connectorId': 1, 'transactionId': 0, 'meterValue': [{'timestamp': '2025-09-02T22:56:38.000Z', 'sampledValue': [{'value': '1.09', 'context': 'Sample.Periodic', 'measurand': 'Current.Import', 'phase': 'L1-N', 'location': 'Body', 'unit': 'A'}, {'value': '236564.45', 'context': 'Sample.Periodic', 'measurand': 'Energy.Active.Import.Register', 'location': 'Body', 'unit': 'Wh'}, {'value': '131.50', 'context': 'Sample.Periodic', 'measurand': 'Power.Active.Import', 'location': 'Body', 'unit': 'W'}, {'value': '41', 'context': 'Sample.Periodic', 'measurand': 'Temperature', 'location': 'Body', 'unit': 'Celsius'}, {'value': '235.81', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L1-N', 'location': 'Body', 'unit': 'V'}, {'value': '235.54', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L2-N', 'location': 'Body', 'unit': 'V'}, {'value': '236.26', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L3-N', 'location': 'Body', 'unit': 'V'}]}]}\n2025-09-03 00:56:40,351 - app.ocpp_handler - DEBUG - Received CALL 'MeterValues' from Wallbox001\n2025-09-03 00:56:40,351 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 00:56:40,351 - app.ocpp_message_handlers - DEBUG - Received MeterValues from Wallbox001 for connector 1. Payload: MeterValuesRequest(connectorId=1, meterValue=[MeterValue(timestamp='2025-09-02T22:56:38.000Z', sampledValue=[SampledValue(value='1.09', context='Sample.Periodic', format=None, measurand='Current.Import', location='Body', unit='A', phase='L1-N'), SampledValue(value='236564.45', context='Sample.Periodic', format=None, measurand='Energy.Active.Import.Register', location='Body', unit='Wh', phase=None), SampledValue(value='131.50', context='Sample.Periodic', format=None, measurand='Power.Active.Import', location='Body', unit='W', phase=None), SampledValue(value='41', context='Sample.Periodic', format=None, measurand='Temperature', location='Body', unit='Celsius', phase=None), SampledValue(value='235.81', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L1-N'), SampledValue(value='235.54', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L2-N'), SampledValue(value='236.26', context='Sample.Periodic', format=None, measurand='Voltage', location='Body', unit='V', phase='L3-N')])], transactionId=0)\n2025-09-03 00:56:40,351 - app.ocpp_message_handlers - INFO - Extracting transaction ID from MeterValues.req: 0\n2025-09-03 00:56:40,351 - app.ocpp_message_handlers - DEBUG - Found transaction 0 by its CP ID.\n2025-09-03 00:56:40,351 - app.ocpp_message_handlers - DEBUG -   -> Timestamp: 2025-09-02T22:56:38.000Z\n2025-09-03 00:56:40,351 - app.ocpp_message_handlers - DEBUG -     - Current.Import: 1.09 A (context: Sample.Periodic, location: Body, phase: L1-N)\n2025-09-03 00:56:40,351 - app.ocpp_message_handlers - DEBUG -     - Energy.Active.Import.Register: 236564.45 Wh (context: Sample.Periodic, location: Body)\n2025-09-03 00:56:40,351 - app.ocpp_message_handlers - DEBUG -     - Power.Active.Import: 131.50 W (context: Sample.Periodic, location: Body)\n2025-09-03 00:56:40,352 - app.ocpp_message_handlers - DEBUG -     - Temperature: 41 Celsius (context: Sample.Periodic, location: Body)\n2025-09-03 00:56:40,352 - app.ocpp_message_handlers - DEBUG -     - Voltage: 235.81 V (context: Sample.Periodic, location: Body, phase: L1-N)\n2025-09-03 00:56:40,352 - app.ocpp_message_handlers - DEBUG -     - Voltage: 235.54 V (context: Sample.Periodic, location: Body, phase: L2-N)\n2025-09-03 00:56:40,352 - app.ocpp_message_handlers - DEBUG -     - Voltage: 236.26 V (context: Sample.Periodic, location: Body, phase: L3-N)\n\ndid it come later with a delay?",
+    "timestamp": "2025-09-02T22:59:53.938Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 16,
+    "type": "user",
+    "message": "That seems to be an error. But we got a meter message with a transaction id that solved the problem",
+    "timestamp": "2025-09-02T23:02:46.150Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 17,
+    "type": "user",
+    "message": "/usr/lib/python3.11/asyncio/base_events.py:678: RuntimeWarning: coroutine 'LogStreamer.broadcast' was never awaited\n  self._ready.clear()\nRuntimeWarning: Enable tracemalloc to get the object allocation traceback\n(venv) opcc@evcc:~$ ^C\n(venv) opcc@evcc:~$ python main.py\n^CTraceback (most recent call last):\n  File \"/home/opcc/main.py\", line 25, in <module>\n    from app import web_ui_server\n  File \"/home/opcc/app/web_ui_server.py\", line 10, in <module>\n    import aiohttp\n  File \"/home/opcc/venv/lib/python3.11/site-packages/aiohttp/__init__.py\", line 6, in <module>\n    from .client import (\n  File \"/home/opcc/venv/lib/python3.11/site-packages/aiohttp/client.py\", line 87, in <module>\n    from .connector import (\n  File \"/home/opcc/venv/lib/python3.11/site-packages/aiohttp/connector.py\", line 34, in <module>\n    import aiohappyeyeballs\n  File \"/home/opcc/venv/lib/python3.11/site-packages/aiohappyeyeballs/__init__.py\", line 3, in <module>\n    from .impl import start_connection\n  File \"/home/opcc/venv/lib/python3.11/site-packages/aiohappyeyeballs/impl.py\", line 11, in <module>\n    from . import _staggered\n  File \"<frozen importlib._bootstrap>\", line 1178, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1149, in _find_and_load_unlocked\n  File \"<frozen importlib._bootstrap>\", line 690, in _load_unlocked\n  File \"<frozen importlib._bootstrap_external>\", line 936, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1032, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1131, in get_data\nKeyboardInterrupt\n\n(venv) opcc@evcc:~$\nmain.py does not start anything",
+    "timestamp": "2025-09-02T23:04:24.498Z"
+  },
+  {
+    "sessionId": "7194714a-ddce-40ec-a2c0-d7e15a5bb85c",
+    "messageId": 18,
+    "type": "user",
+    "message": "can you add debugging that shows the entire SetChargingProfile message",
+    "timestamp": "2025-09-02T23:13:00.940Z"
+  },
+  {
+    "sessionId": "91fc219c-4794-49bd-90bb-bd111c530f7f",
+    "messageId": 0,
+    "type": "user",
+    "message": "can you add debugging that shows the entire SetChargingProfile message",
+    "timestamp": "2025-09-02T23:15:30.766Z"
+  },
+  {
+    "sessionId": "91fc219c-4794-49bd-90bb-bd111c530f7f",
+    "messageId": 1,
+    "type": "user",
+    "message": "can you add debugging that shows the entire SetChargingProfile message",
+    "timestamp": "2025-09-02T23:15:35.363Z"
+  },
+  {
+    "sessionId": "91fc219c-4794-49bd-90bb-bd111c530f7f",
+    "messageId": 2,
+    "type": "user",
+    "message": "can you add debugging that shows the entire SetChargingProfile message . please implement",
+    "timestamp": "2025-09-02T23:15:59.027Z"
+  },
+  {
+    "sessionId": "91fc219c-4794-49bd-90bb-bd111c530f7f",
+    "messageId": 3,
+    "type": "user",
+    "message": "I fear the parsing of the MeterValues.req is not correct. it only shows current on one phase and ony 33% of the power. can you check",
+    "timestamp": "2025-09-02T23:17:30.169Z"
+  },
+  {
+    "sessionId": "91fc219c-4794-49bd-90bb-bd111c530f7f",
+    "messageId": 4,
+    "type": "user",
+    "message": "can you add debugging that shows the entire SetChargingProfile message . please implement",
+    "timestamp": "2025-09-02T23:19:11.829Z"
+  },
+  {
+    "sessionId": "91fc219c-4794-49bd-90bb-bd111c530f7f",
+    "messageId": 5,
+    "type": "user",
+    "message": "2025-09-03 01:18:51,277 - app.ocpp_handler - ERROR - Error handling 'MeterValues': 'MeterValuesRequest' object has no attribute 'dict'\nTraceback (most recent call last):\n  File \"/home/opcc/app/ocpp_handler.py\", line 226, in handle_call\n    response_payload = await handler(self.charge_point_id, payload)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/opcc/app/ocpp_message_handlers.py\", line 228, in handle_meter_values\n    logger.info(f\"Received MeterValues from {charge_point_id} for connector {payload.connectorId}. Entire Payload: {payload.dict()}\")\n                                                                                                                    ^^^^^^^^^^^^\nAttributeError: 'MeterValuesRequest' object has no attribute 'dict'\n2025-09-03 01:19:01,390 - app.ocpp_handler - DEBUG - Received CALL 'MeterValues' for Wallbox001. Payload: {'connectorId': 1, 'transactionId': 0, 'meterValue': [{'timestamp': '2025-09-02T23:18:59.000Z', 'sampledValue': [{'value': '0.07', 'context': 'Sample.Periodic', 'measurand': 'Current.Import', 'phase': 'L1-N', 'location': 'Body', 'unit': 'A'}, {'value': '238298.12', 'context': 'Sample.Periodic', 'measurand': 'Energy.Active.Import.Register', 'location': 'Body', 'unit': 'Wh'}, {'value': '5.24', 'context': 'Sample.Periodic', 'measurand': 'Power.Active.Import', 'location': 'Body', 'unit': 'W'}, {'value': '40', 'context': 'Sample.Periodic', 'measurand': 'Temperature', 'location': 'Body', 'unit': 'Celsius'}, {'value': '236.51', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L1-N', 'location': 'Body', 'unit': 'V'}, {'value': '236.36', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L2-N', 'location': 'Body', 'unit': 'V'}, {'value': '237.07', 'context': 'Sample.Periodic', 'measurand': 'Voltage', 'phase': 'L3-N', 'location': 'Body', 'unit': 'V'}]}]}\n2025-09-03 01:19:01,390 - app.ocpp_handler - DEBUG - Received CALL 'MeterValues' from Wallbox001\n2025-09-03 01:19:01,390 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 01:19:01,390 - app.ocpp_handler - ERROR - Error handling 'MeterValues': 'MeterValuesRequest' object has no attribute 'dict'\nTraceback (most recent call last):\n  File \"/home/opcc/app/ocpp_handler.py\", line 226, in handle_call\n    response_payload = await handler(self.charge_point_id, payload)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/opcc/app/ocpp_message_handlers.py\", line 228, in handle_meter_values\n    logger.info(f\"Received MeterValues from {charge_point_id} for connector {payload.connectorId}. Entire Payload: {payload.dict()}\")\n                                                                                                                    ^^^^^^^^^^^^\nAttributeError: 'MeterValuesRequest' object has no attribute 'dict'\n2025-09-03 01:19:02,710 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' for Wallbox001. Payload: {'connectorId': 1, 'idTag': 'test_id_1', 'meterStart': 238298, 'timestamp': '2025-09-02T23:18:39.000Z'}\n2025-09-03 01:19:02,710 - app.ocpp_handler - DEBUG - Received CALL 'StartTransaction' from Wallbox001\n2025-09-03 01:19:02,710 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 01:19:02,710 - app.ocpp_handler - ERROR - Payload validation failed for 'StartTransaction': StartTransactionRequest.__init__() missing 1 required positional argument: 'transactionId'\n2025-09-03 01:19:05,108 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' for Wallbox001. Payload: {'connectorId': 1, 'errorCode': 'NoError', 'info': '', 'status': 'Charging', 'timestamp': '2025-09-02T23:19:03.000Z', 'vendorId': '', 'vendorErrorCode': ''}\n2025-09-03 01:19:05,108 - app.ocpp_handler - DEBUG - Received CALL 'StatusNotification' from Wallbox001\n2025-09-03 01:19:05,108 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 01:19:05,109 - app.ocpp_message_handlers - DEBUG - Handling StatusNotification from Wallbox001: Charging\n2025-09-03 01:19:05,109 - app.ocpp_message_handlers - INFO - Received StatusNotification from Wallbox001: Connector 1 is Charging (equivalent to CP State C)\n\n\n------------OCPP Call----------\n2025-09-03 01:19:05,109 - app.ocpp_handler - DEBUG - RAW >> [3, \"2272449434\", {}]",
+    "timestamp": "2025-09-02T23:19:18.072Z"
+  },
+  {
+    "sessionId": "91fc219c-4794-49bd-90bb-bd111c530f7f",
+    "messageId": 6,
+    "type": "user",
+    "message": "yes",
+    "timestamp": "2025-09-02T23:19:52.108Z"
+  },
+  {
+    "sessionId": "91fc219c-4794-49bd-90bb-bd111c530f7f",
+    "messageId": 7,
+    "type": "user",
+    "message": "2025-09-03 01:20:46,295 - app.ocpp_handler - ERROR - Error handling 'MeterValues': 'MeterValuesRequest' object has no attribute 'json'\nTraceback (most recent call last):\n  File \"/home/opcc/app/ocpp_handler.py\", line 234, in handle_call\n    response_payload = await handler(self.charge_point_id, payload)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/opcc/app/ocpp_message_handlers.py\", line 228, in handle_meter_values\n    logger.info(f\"Received MeterValues from {charge_point_id} for connector {payload.connectorId}. Entire Payload: {payload.json()}\")\n                                                                                                                    ^^^^^^^^^^^^\nAttributeError: 'MeterValuesRequest' object has no attribute 'json'",
+    "timestamp": "2025-09-02T23:20:57.332Z"
+  },
+  {
+    "sessionId": "91fc219c-4794-49bd-90bb-bd111c530f7f",
+    "messageId": 8,
+    "type": "user",
+    "message": "2025-09-03 01:21:34,786 - app.ocpp_handler - DEBUG - Received CALL 'MeterValues' from Wallbox001\n2025-09-03 01:21:34,786 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 01:21:34,786 - app.ocpp_message_handlers - INFO - Received MeterValues from Wallbox001 for connector 1. Entire Payload: {'connectorId': 1, 'meterValue': [{'timestamp': '2025-09-02T23:21:33.000Z', 'sampledValue': [{'value': '14.93', 'context': 'Sample.Periodic', 'format': None, 'measurand': 'Current.Import', 'location': 'Body', 'unit': 'A', 'phase': 'L1-N'}, {'value': '238691.22', 'context': 'Sample.Periodic', 'format': None, 'measurand': 'Energy.Active.Import.Register', 'location': 'Body', 'unit': 'Wh', 'phase': None}, {'value': '3499.31', 'context': 'Sample.Periodic', 'format': None, 'measurand': 'Power.Active.Import', 'location': 'Body', 'unit': 'W', 'phase': None}, {'value': '40', 'context': 'Sample.Periodic', 'format': None, 'measurand': 'Temperature', 'location': 'Body', 'unit': 'Celsius', 'phase': None}, {'value': '234.64', 'context': 'Sample.Periodic', 'format': None, 'measurand': 'Voltage', 'location': 'Body', 'unit': 'V', 'phase': 'L1-N'}, {'value': '234.34', 'context': 'Sample.Periodic', 'format': None, 'measurand': 'Voltage', 'location': 'Body', 'unit': 'V', 'phase': 'L2-N'}, {'value': '235.05', 'context': 'Sample.Periodic', 'format': None, 'measurand': 'Voltage', 'location': 'Body', 'unit': 'V', 'phase': 'L3-N'}]}], 'transactionId': 0}\n2025-09-03 01:21:34,786 - app.ocpp_message_handlers - INFO - Extracting transaction ID from MeterValues.req: 0\n2025-09-03 01:21:34,786 - app.ocpp_message_handlers - INFO - Information: MeterValues received a new transaction id 0. It started a new transaction.\n2025-09-03 01:21:34,786 - app.ocpp_message_handlers - DEBUG -   -> Timestamp: 2025-09-02T23:21:33.000Z\n2025-09-03 01:21:34,786 - app.ocpp_message_handlers - INFO -     - Current.Import: 14.93 A (context: Sample.Periodic, location: Body, phase: L1-N)\n2025-09-03 01:21:34,786 - app.ocpp_message_handlers - INFO -     - Energy.Active.Import.Register: 238691.22 Wh (context: Sample.Periodic, location: Body)\n2025-09-03 01:21:34,786 - app.ocpp_message_handlers - INFO -     - Power.Active.Import: 3499.31 W (context: Sample.Periodic, location: Body)\n2025-09-03 01:21:34,786 - app.ocpp_message_handlers - INFO -     - Temperature: 40 Celsius (context: Sample.Periodic, location: Body)\n2025-09-03 01:21:34,786 - app.ocpp_message_handlers - INFO -     - Voltage: 234.64 V (context: Sample.Periodic, location: Body, phase: L1-N)\n2025-09-03 01:21:34,787 - app.ocpp_message_handlers - INFO -     - Voltage: 234.34 V (context: Sample.Periodic, location: Body, phase: L2-N)\n2025-09-03 01:21:34,787 - app.ocpp_message_handlers - INFO -     - Voltage: 235.05 V (context: Sample.Periodic, location: Body, phase: L3-N)",
+    "timestamp": "2025-09-02T23:22:10.390Z"
+  },
+  {
+    "sessionId": "91fc219c-4794-49bd-90bb-bd111c530f7f",
+    "messageId": 9,
+    "type": "user",
+    "message": "can you add Correct ChangeConfiguration Command\nHere is the correct command to send. This command will update the MeterValuesSampledData key to include the appropriate phase-specific measurands for a three-phase setup.\n\nJSON\n\n[\n    2,\n    \"<unique_message_id>\",\n    \"ChangeConfiguration\",\n    {\n        \"key\": \"MeterValuesSampledData\",\n        \"value\": \"Current.Import.L1,Current.Import.L2,Current.Import.L3,Power.Active.Import.L1,Power.Active.Import.L2,Power.Active.Import.L3,Energy.Active.Import.Register,Voltage.L1-N,Voltage.L2-N,Voltage.L3-N\"\n    }\n] to test A.3",
+    "timestamp": "2025-09-02T23:27:46.662Z"
+  },
+  {
+    "sessionId": "01183c1d-6e6b-4067-9649-618f22f920f1",
+    "messageId": 0,
+    "type": "user",
+    "message": "2025-09-03 07:54:25,293 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001\n2025-09-03 07:54:25,293 - app.ocpp_handler - ERROR - StartTransaction message from Wallbox001 is missing mandatory 'transactionId'. Rejecting with FormatViolation.\n Starttransaction does not contain a transactionid. so you can remove its extraction",
+    "timestamp": "2025-09-03T05:55:22.896Z"
+  },
+  {
+    "sessionId": "01183c1d-6e6b-4067-9649-618f22f920f1",
+    "messageId": 1,
+    "type": "user",
+    "message": "> 2025-09-03 07:54:25,293 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001                                                                │\n│    2025-09-03 07:54:25,293 - app.ocpp_handler - ERROR - StartTransaction message from Wallbox001 is missing mandatory 'transactionId'. Rejecting with FormatViolation.  │\n│     Starttransaction does not contain a transactionid. so you can remove its extraction",
+    "timestamp": "2025-09-03T05:55:38.113Z"
+  },
+  {
+    "sessionId": "01183c1d-6e6b-4067-9649-618f22f920f1",
+    "messageId": 2,
+    "type": "user",
+    "message": "2025-09-03 07:54:25,293 - app.ocpp_handler - INFO - handle_call for Wallbox001. Active CP: Wallbox001                                                                │\n│    2025-09-03 07:54:25,293 - app.ocpp_handler - ERROR - StartTransaction message from Wallbox001 is missing mandatory 'transactionId'. Rejecting with FormatViolation.  │\n│     Starttransaction does not contain a transactionid. so you can remove its extraction",
+    "timestamp": "2025-09-03T05:55:59.743Z"
+  },
+  {
+    "sessionId": "01183c1d-6e6b-4067-9649-618f22f920f1",
+    "messageId": 3,
+    "type": "user",
+    "message": "2025-09-03 07:57:16,792 - app.ocpp_handler - ERROR - Payload validation failed for 'StartTransaction': StartTransactionRequest.__init__() missing 1 required positional argument: 'transactionId'\nremove this too",
+    "timestamp": "2025-09-03T05:57:50.887Z"
   }
 ]

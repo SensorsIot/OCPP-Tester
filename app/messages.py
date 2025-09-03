@@ -164,6 +164,7 @@ class StartTransactionRequest:
     idTag: str
     timestamp: str
     meterStart: int
+    transactionId: Optional[int] = None # Added transactionId
     reservationId: Optional[int] = None
 
 @dataclass
