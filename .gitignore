@@ -25,6 +25,7 @@ __pycache__/
 
 # Added by Gemini CLI
 .bash_history
+.bashrc
 .config/configstore/
 .gemini/
 .npm/
@@ -35,6 +36,13 @@ __pycache__/
 .config/git/
 .csm_setup_V2rSpds07
 .evcc/
+
+# System and user configuration files
+.bashrc
+.profile
+.bash_profile
+
+# Project-specific files to ignore
 CLAUDE.md
 requirements_simulator.txt
 simulator_control.py
