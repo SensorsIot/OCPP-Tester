@@ -12,7 +12,7 @@ from flask import Flask, jsonify, request, render_template
 
 from app.ocpp_server_logic import OcppServerLogic
 from app.ocpp_test_steps import OcppTestSteps
-from app.core import CHARGE_POINTS, EV_SIMULATOR_STATE, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id, get_active_transaction_id, get_shutdown_event, set_shutdown_event, EV_SIMULATOR_BASE_URL, OCPP_PORT
+from app.core import CHARGE_POINTS, EV_SIMULATOR_STATE, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id, get_active_transaction_id, get_shutdown_event, set_shutdown_event, EV_SIMULATOR_BASE_URL, OCPP_PORT, get_current_charging_values
 from app.streamers import EVStatusStreamer
 
 app = Flask(__name__)
@@ -36,17 +36,23 @@ def index():
 
 @app.route("/api/charge_points", methods=["GET"])
 def list_charge_points():
-    cp_details = {
-        cp_id: {
+    cp_details = {}
+    for cp_id, data in CHARGE_POINTS.items():
+        # Get current power and current values
+        current_power_w, current_current_a = get_current_charging_values(cp_id)
+
+        cp_details[cp_id] = {
             "model": data.get("model"),
             "vendor": data.get("vendor"),
             "status": data.get("status"),
+            "boot_time": data.get("boot_time"),
+            "first_status_time": data.get("first_status_time"),
             "last_heartbeat": data.get("last_heartbeat"),
             "test_results": data.get("test_results", {}),
             "use_simulator": data.get("use_simulator", False),
+            "current_power_w": current_power_w,
+            "current_current_a": current_current_a,
         }
-        for cp_id, data in CHARGE_POINTS.items()
-    }
     return jsonify({"charge_points": cp_details, "active_charge_point_id": get_active_charge_point_id(), "active_transaction_id": get_active_transaction_id()})
 
 @app.route("/api/set_active_charge_point", methods=["POST"])
@@ -63,7 +69,7 @@ def set_active_charge_point():
     old_active_charge_point_id = get_active_charge_point_id()
     set_active_charge_point_id(charge_point_id)
 
-    logging.info(f"Active charge point changed from {old_active_charge_point_id} to {get_active_charge_point_id()}")
+    logging.info(f"Active charge point changed from {old_active_charge_point_id} to {get_active_charge_point_id()}. Log filtering updated.")
 
     if old_active_charge_point_id and old_active_charge_point_id != get_active_charge_point_id():
         if old_active_charge_point_id in CHARGE_POINTS:
@@ -94,6 +100,10 @@ def list_test_steps():
 def get_server_settings():
     """Returns server-wide runtime settings, like the EV simulator mode."""
     return jsonify(SERVER_SETTINGS)
+
+
+
+
 
 @app.route("/api/settings/ev_simulator_charge_point_id", methods=["POST"])
 def set_ev_simulator_charge_point_id():
@@ -127,6 +137,31 @@ def set_ev_simulator_charge_point_id():
 @app.route("/api/ev_status", methods=["GET"])
 def get_ev_status():
     return jsonify(EV_SIMULATOR_STATE)
+
+@app.route("/api/charging_rate_unit", methods=["GET", "POST"])
+def charging_rate_unit():
+    if request.method == "GET":
+        return jsonify({
+            "current_unit": SERVER_SETTINGS.get("charging_rate_unit", "W"),
+            "available_units": ["W", "A"],
+            "auto_detected": SERVER_SETTINGS.get("charging_rate_unit_auto_detected", False),
+            "detection_completed": SERVER_SETTINGS.get("auto_detection_completed", False)
+        })
+
+    elif request.method == "POST":
+        data = request.get_json(force=True, silent=True) or {}
+        unit = data.get("unit")
+
+        if unit not in ["W", "A"]:
+            return jsonify({"error": "Invalid unit. Must be 'W' or 'A'"}), 400
+
+        SERVER_SETTINGS["charging_rate_unit"] = unit
+        SERVER_SETTINGS["charging_rate_unit_auto_detected"] = False  # Reset auto-detected flag on manual change
+        return jsonify({
+            "status": f"Charging rate unit set to {unit}",
+            "unit": unit,
+            "auto_detected": False
+        })
 
 
 async def _set_and_refresh_ev_state(state: str) -> Dict[str, Any]:
@@ -207,8 +242,6 @@ def run_test_step(step_name):
 
     if not app.loop or not app.loop.is_running():
         return jsonify({"error": "Server loop not available"}), 500
-
-    data = request.get_json(force=True, silent=True) or {}
 
     async def run_test_with_lock():
         async with ocpp_handler.test_lock:

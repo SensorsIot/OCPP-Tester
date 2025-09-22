@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict
 from dataclasses import asdict
 
-from app.core import CHARGE_POINTS, TRANSACTIONS, SERVER_SETTINGS, get_active_transaction_id, set_active_transaction_id
+from app.core import CHARGE_POINTS, TRANSACTIONS, SERVER_SETTINGS, get_active_transaction_id, set_active_transaction_id, auto_detect_charging_rate_unit
 from app.messages import (
     BootNotificationRequest, BootNotificationResponse,
     AuthorizeRequest, AuthorizeResponse, IdTagInfo,
@@ -16,6 +16,7 @@ from app.messages import (
     StartTransactionRequest, StartTransactionResponse,
     StopTransactionRequest, StopTransactionResponse,
     MeterValuesRequest, MeterValuesResponse,
+    GetConfigurationRequest,
 )
 
 if TYPE_CHECKING:
@@ -41,21 +42,32 @@ class OcppMessageHandlers:
         self.initial_status_received = ocpp_server_logic.initial_status_received
 
     async def handle_boot_notification(self, charge_point_id: str, payload: BootNotificationRequest) -> BootNotificationResponse:
+        logger.info(f"🥾 BOOT NOTIFICATION HANDLER called for {charge_point_id}")
+
         if "BootNotification" in self.pending_triggered_message_events:
-            logger.info("Detected a triggered BootNotification message, setting event.")
+            logger.info("📍 Detected a triggered BootNotification message, setting event.")
             self.pending_triggered_message_events["BootNotification"].set()
-            
-        logger.info(f"Received BootNotification from {charge_point_id}: {payload}")
+
+        logger.info(f"🔌 Received BootNotification from {charge_point_id}: {payload}")
+        logger.info(f"🔍 Vendor: {payload.chargePointVendor}, Model: {payload.chargePointModel}")
+
         if charge_point_id not in CHARGE_POINTS:
+            logger.info(f"📋 Creating new entry for charge point {charge_point_id}")
             CHARGE_POINTS[charge_point_id] = {}
+        else:
+            logger.info(f"📋 Updating existing entry for charge point {charge_point_id}")
+        boot_time = datetime.now(timezone.utc).isoformat()
         CHARGE_POINTS[charge_point_id].update({
             "model": payload.chargePointModel,
             "vendor": payload.chargePointVendor,
             "status": "Available",
-            "last_heartbeat": datetime.now(timezone.utc).isoformat()
+            "boot_time": boot_time,
+            "last_heartbeat": boot_time
         })
         if self.initial_status_received and not self.initial_status_received.is_set():
             self.initial_status_received.set()
+
+        # Auto-detection will be handled by StatusNotification only
 
         return BootNotificationResponse(
             status="Accepted",
@@ -82,6 +94,22 @@ class OcppMessageHandlers:
         logger.info(f"Received StatusNotification from {charge_point_id}: Connector {payload.connectorId} is {payload.status}{cp_state_log_message}")
         if charge_point_id in CHARGE_POINTS:
             CHARGE_POINTS[charge_point_id]["status"] = payload.status
+
+            # Capture the first StatusNotification timestamp from the charge point
+            # This is more accurate than server-side boot time as it comes from the device itself
+            if payload.timestamp and "first_status_time" not in CHARGE_POINTS[charge_point_id]:
+                CHARGE_POINTS[charge_point_id]["first_status_time"] = payload.timestamp
+                logger.info(f"📅 Captured first StatusNotification timestamp from {charge_point_id}: {payload.timestamp}")
+
+        # Trigger auto-detection ONCE on first StatusNotification only
+        is_first_status = self.initial_status_received and not self.initial_status_received.is_set()
+        if (is_first_status and
+            not SERVER_SETTINGS.get("auto_detection_completed", False) and
+            "auto_detection_triggered" not in CHARGE_POINTS[charge_point_id]):
+            logger.info("🔍 Triggering GetConfiguration for auto-detection (fire-and-forget) on FIRST StatusNotification...")
+            # Mark that we've triggered auto-detection for this charge point
+            CHARGE_POINTS[charge_point_id]["auto_detection_triggered"] = True
+            asyncio.create_task(self._trigger_get_configuration())
 
         if self.initial_status_received and not self.initial_status_received.is_set():
             self.initial_status_received.set()
@@ -118,6 +146,8 @@ class OcppMessageHandlers:
         logger.info(f"Received Heartbeat from {charge_point_id}")
         if charge_point_id in CHARGE_POINTS:
             CHARGE_POINTS[charge_point_id]["last_heartbeat"] = datetime.now(timezone.utc).isoformat()
+
+
         return HeartbeatResponse(currentTime=datetime.now(timezone.utc).isoformat())
 
     async def handle_start_transaction(self, charge_point_id: str, payload: StartTransactionRequest) -> StartTransactionResponse:
@@ -128,7 +158,7 @@ class OcppMessageHandlers:
 
         # Generate a new internal transaction ID for the StartTransactionResponse.
         # This is the ID the Central System will use to refer to this transaction.
-        cs_internal_transaction_id = len(TRANSACTIONS) + 1 # Use a new internal ID for the response
+        cs_internal_transaction_id = 555 + len(TRANSACTIONS) # Use a new internal ID for the response
 
         # Check if this is a confirmation of a remotely started transaction.
         # We look for a pending remote start based on charge_point_id and connectorId.
@@ -228,6 +258,9 @@ class OcppMessageHandlers:
 
         logger.info(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId}. Entire Payload: {asdict(payload)}")
         
+        # Auto-detection will be handled by unsolicited GetConfiguration response processing
+        # to avoid blocking the message processing loop
+
         if payload.transactionId is not None:
             logger.info(f"Extracting transaction ID from MeterValues.req: {payload.transactionId}")
             # Find the transaction using the CP's transactionId as the key
@@ -287,3 +320,17 @@ class OcppMessageHandlers:
     async def handle_unknown_action(self, charge_point_id: str, payload: dict):
         logger.warning(f"Unknown/unsupported action for {charge_point_id}: {payload}")
         return None
+
+    async def _trigger_get_configuration(self):
+        """Send GetConfiguration without waiting for response - fire and forget."""
+        try:
+            from app.ocpp_handler import create_ocpp_message
+            import uuid
+
+            unique_id = str(uuid.uuid4())
+            request_payload = GetConfigurationRequest(key=[])
+            message = create_ocpp_message(2, unique_id, request_payload, "GetConfiguration", self.charge_point_id)
+            await self.handler.websocket.send(message)
+            logger.info(f"🔍 Sent GetConfiguration (fire-and-forget) for auto-detection from {self.charge_point_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to send GetConfiguration for auto-detection: {e}")

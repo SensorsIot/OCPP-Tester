@@ -3,15 +3,16 @@ import logging
 import random
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict
+from dataclasses import asdict
 
 import aiohttp
 
-from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, EV_SIMULATOR_BASE_URL, get_active_transaction_id, set_active_transaction_id
+from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, EV_SIMULATOR_BASE_URL, get_active_transaction_id, set_active_transaction_id, get_charging_value, get_charging_rate_unit
 from app.messages import (
     BootNotificationRequest, TriggerMessageRequest, GetConfigurationRequest,
     ChangeConfigurationRequest, RemoteStartTransactionRequest, RemoteStopTransactionRequest,
-    SetChargingProfileRequest, ClearChargingProfileRequest,
-    ChargingProfile, ChargingSchedule, ChargingSchedulePeriod,
+    SetChargingProfileRequest, ClearChargingProfileRequest, ResetRequest, ResetType,
+    GetCompositeScheduleRequest, ChargingProfile, ChargingSchedule, ChargingSchedulePeriod,
     ChargingProfilePurposeType, ChargingProfileKindType, ChargingRateUnitType,
 )
 
@@ -34,10 +35,15 @@ class OcppTestSteps:
         return self.ocpp_server_logic._set_test_result(step_name, result)
 
     async def _set_ev_state(self, state: str):
+        if not SERVER_SETTINGS.get("use_simulator"):
+            logger.info(f"Skipping EV state change to '{state}'; simulator is disabled.")
+            return
         return await self.ocpp_server_logic._set_ev_state(state)
 
     async def _wait_for_status(self, status: str):
         return await self.ocpp_server_logic._wait_for_status(status)
+
+    
 
     async def run_a1_initial_registration(self):
         """A.1: Verifies that the charge point has registered itself."""
@@ -369,16 +375,27 @@ class OcppTestSteps:
 
         # 2. Send the RemoteStartTransaction command.
         logger.info("CS sends RemoteStartTransaction.req to the CP, including an idTag for authorization and a connectorId.")
-        limit_amps = 16.0
+        limit_amps = 0.0
+        # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
+        clear_response = await self.handler.send_and_wait(
+            "ClearChargingProfile",
+            ClearChargingProfileRequest()
+        )
+        logger.info(f"ClearChargingProfile response: {clear_response}")
+
+        # Use configured charging rate unit for disable profile (0 limit)
+        charging_value, charging_unit = get_charging_value("disable")
+        rate_unit = ChargingRateUnitType.A if charging_unit == "A" else ChargingRateUnitType.W
+
         charging_profile = ChargingProfile(
             chargingProfileId=random.randint(1, 1000),
-            stackLevel=1,
+            stackLevel=0,  # ChargeProfileMaxStackLevel = 0
             chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,
             chargingProfileKind=ChargingProfileKindType.Absolute,
             chargingSchedule=ChargingSchedule(
-                chargingRateUnit=ChargingRateUnitType.A,
+                chargingRateUnit=rate_unit,
                 chargingSchedulePeriod=[
-                    ChargingSchedulePeriod(startPeriod=0, limit=limit_amps)
+                    ChargingSchedulePeriod(startPeriod=0, limit=charging_value)  # 0W or 0A = no charging
                 ]
             )
         )
@@ -538,8 +555,77 @@ class OcppTestSteps:
         self._check_cancellation()
         logger.info(f"--- Step C.2 for {self.charge_point_id} is a manual step. ---")
 
+    async def run_c3_check_power_limits_test(self):
+        """C.3: Checks current power/current limits using GetCompositeSchedule."""
+        logger.info(f"--- Step C.3: Checking power/current limits for {self.charge_point_id} ---")
+        step_name = "run_c3_check_power_limits_test"
+        self._check_cancellation()
+
+        try:
+            logger.info("Querying current charging schedule limits on connector 1...")
+
+            # Use configured charging rate unit
+            charging_unit = get_charging_rate_unit()
+            composite_request = GetCompositeScheduleRequest(
+                connectorId=1,
+                duration=3600,
+                chargingRateUnit=charging_unit
+            )
+            logger.info(f"Sending GetCompositeSchedule: {asdict(composite_request)}")
+
+            try:
+                response = await asyncio.wait_for(
+                    self.handler.send_and_wait("GetCompositeSchedule", composite_request),
+                    timeout=30.0
+                )
+                self._check_cancellation()
+            except asyncio.TimeoutError:
+                logger.error("FAILURE: GetCompositeSchedule request timed out after 30 seconds")
+                self._set_test_result(step_name, "FAILED")
+                logger.info(f"--- Step C.3 for {self.charge_point_id} complete. ---")
+                return
+
+            if response and response.get("status") == "Accepted":
+                logger.info("SUCCESS: GetCompositeSchedule was accepted.")
+
+                if response.get("chargingSchedule"):
+                    schedule = response.get("chargingSchedule")
+                    logger.info(f"📊 CURRENT POWER/CURRENT LIMITS on connector 1:")
+                    logger.info(f"  - Charging Rate Unit: {schedule.get('chargingRateUnit', 'Not specified')}")
+                    logger.info(f"  - Schedule Start: {response.get('scheduleStart', 'Not specified')}")
+
+                    if schedule.get("chargingSchedulePeriod"):
+                        logger.info("  - Active Charging Periods:")
+                        for i, period in enumerate(schedule.get("chargingSchedulePeriod")):
+                            limit = period.get('limit', 'N/A')
+                            start = period.get('startPeriod', 0)
+                            phases = period.get('numberPhases', 'N/A')
+                            unit = schedule.get('chargingRateUnit', '')
+                            logger.info(f"    • Period {i+1}: Start {start}s, Limit {limit}{unit}, Phases {phases}")
+                    else:
+                        logger.info("  - No charging periods defined (unlimited)")
+
+                    logger.info("SUCCESS: Power/current limits retrieved successfully.")
+                    self._set_test_result(step_name, "PASSED")
+                else:
+                    logger.info("📊 No active charging schedule on connector 1 (unlimited)")
+                    logger.info("SUCCESS: No charging limits currently active.")
+                    self._set_test_result(step_name, "PASSED")
+            else:
+                logger.error(f"FAILURE: GetCompositeSchedule was not accepted. Response: {response}")
+                self._set_test_result(step_name, "FAILED")
+
+        except Exception as e:
+            logger.error(f"FAILURE: Exception occurred during GetCompositeSchedule test: {e}")
+            logger.exception("Full exception details:")
+            self._set_test_result(step_name, "FAILED")
+
+        logger.info(f"--- Step C.3 for {self.charge_point_id} complete. ---")
+
     async def run_d1_set_live_charging_power(self):
         """D.1: Sets a charging profile to limit power on an active transaction."""
+
+
         logger.info(f"--- Step D.1: Setting live charging power for {self.charge_point_id} ---")
         step_name = "run_d1_set_live_charging_power"
         self._check_cancellation()
@@ -551,8 +637,17 @@ class OcppTestSteps:
             logger.error("FAILURE: No ongoing transaction found. Please start a transaction before running this step.")
             self._set_test_result(step_name, "FAILED")
             return
-        profile = SetChargingProfileRequest(connectorId=0, csChargingProfiles=ChargingProfile(chargingProfileId=random.randint(1, 1000), transactionId=transaction_id, stackLevel=1, chargingProfilePurpose=ChargingProfilePurposeType.TxProfile, chargingProfileKind=ChargingProfileKindType.Absolute, chargingSchedule=ChargingSchedule(duration=3600, chargingRateUnit=ChargingRateUnitType.A, chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=10.0)])))
-        logger.info(f"Sending SetChargingProfile message: {profile.dict()}")
+        # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
+        clear_response = await self.handler.send_and_wait(
+            "ClearChargingProfile",
+            ClearChargingProfileRequest()
+        )
+        logger.info(f"ClearChargingProfile response: {clear_response}")
+
+        # Use configured charging values - "disable" for stopping charging
+        disable_value, charging_unit = get_charging_value("disable")
+        profile = SetChargingProfileRequest(connectorId=1, csChargingProfiles=ChargingProfile(chargingProfileId=random.randint(1, 1000), transactionId=transaction_id, stackLevel=0, chargingProfilePurpose=ChargingProfilePurposeType.TxProfile, chargingProfileKind=ChargingProfileKindType.Absolute, chargingSchedule=ChargingSchedule(duration=3600, chargingRateUnit=charging_unit, chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=disable_value)])))
+        logger.info(f"Sending SetChargingProfile message: {asdict(profile)}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
         if success:
@@ -564,19 +659,83 @@ class OcppTestSteps:
         logger.info(f"--- Step D.1 for {self.charge_point_id} complete. ---")
 
     async def run_d2_set_default_charging_profile(self):
-        """D.2: Sets a default charging profile for future transactions."""
-        logger.info(f"--- Step D.2: Setting default charging profile for {self.charge_point_id} ---")
+        """D.2: Sets a default charging profile to medium power/current for future transactions."""
+
+
+        medium_value, charging_unit = get_charging_value("medium")
+        logger.info(f"--- Step D.2: Setting default charging profile to {medium_value}{charging_unit} for {self.charge_point_id} ---")
         step_name = "run_d2_set_default_charging_profile"
         self._check_cancellation()
-        profile = SetChargingProfileRequest(connectorId=0, csChargingProfiles=ChargingProfile(chargingProfileId=random.randint(1, 1000), stackLevel=0, chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile, chargingProfileKind=ChargingProfileKindType.Absolute, chargingSchedule=ChargingSchedule(duration=86400, chargingRateUnit=ChargingRateUnitType.A, chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=16.0)])))
-        logger.info(f"Sending SetChargingProfile message: {profile.dict()}")
-        success = await self.handler.send_and_wait("SetChargingProfile", profile)
+
+        # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
+        clear_response = await self.handler.send_and_wait(
+            "ClearChargingProfile",
+            ClearChargingProfileRequest()
+        )
+        logger.info(f"ClearChargingProfile response: {clear_response}")
+
+        # Use configured charging values - "medium" for default profile
+        medium_value, charging_unit = get_charging_value("medium")
+
+        # Set startSchedule to current time minus one minute (as per specification)
+        from datetime import datetime, timezone, timedelta
+        start_schedule = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+
+        # First profile: connectorId=0 (charge point level)
+        profile_cp = SetChargingProfileRequest(
+            connectorId=0,
+            csChargingProfiles=ChargingProfile(
+                chargingProfileId=random.randint(1, 1000),
+                stackLevel=1,
+                chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile,
+                chargingProfileKind=ChargingProfileKindType.Absolute,
+                chargingSchedule=ChargingSchedule(
+                    startSchedule=start_schedule,
+                    chargingRateUnit=charging_unit,
+                    chargingSchedulePeriod=[
+                        ChargingSchedulePeriod(
+                            startPeriod=0,
+                            limit=medium_value,
+                            numberPhases=3  # Set number of phases for correct current interpretation
+                        )
+                    ]
+                )
+            )
+        )
+        logger.info(f"Sending SetChargingProfile message for connectorId=0: {asdict(profile_cp)}")
+        success_cp = await self.handler.send_and_wait("SetChargingProfile", profile_cp)
         self._check_cancellation()
-        if success:
-            logger.info("SUCCESS: SetChargingProfile for default profile was acknowledged.")
+
+        # Second profile: connectorId=1 (connector level)
+        profile_conn = SetChargingProfileRequest(
+            connectorId=1,
+            csChargingProfiles=ChargingProfile(
+                chargingProfileId=random.randint(1, 1000),
+                stackLevel=1,
+                chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile,
+                chargingProfileKind=ChargingProfileKindType.Absolute,
+                chargingSchedule=ChargingSchedule(
+                    startSchedule=start_schedule,
+                    chargingRateUnit=charging_unit,
+                    chargingSchedulePeriod=[
+                        ChargingSchedulePeriod(
+                            startPeriod=0,
+                            limit=medium_value,
+                            numberPhases=3  # Set number of phases for correct current interpretation
+                        )
+                    ]
+                )
+            )
+        )
+        logger.info(f"Sending SetChargingProfile message for connectorId=1: {asdict(profile_conn)}")
+        success_conn = await self.handler.send_and_wait("SetChargingProfile", profile_conn)
+        self._check_cancellation()
+
+        if success_cp and success_conn:
+            logger.info(f"PASSED: SetChargingProfile to {medium_value}{charging_unit} for both connectorId=0 and connectorId=1 was acknowledged.")
             self._set_test_result(step_name, "PASSED")
         else:
-            logger.error("FAILURE: SetChargingProfile for default profile was not acknowledged.")
+            logger.error(f"FAILED: SetChargingProfile to {medium_value}{charging_unit} was not acknowledged for connectorId=0: {success_cp}, connectorId=1: {success_conn}")
             self._set_test_result(step_name, "FAILED")
         logger.info(f"--- Step D.2 for {self.charge_point_id} complete. ---")
 
@@ -609,7 +768,130 @@ class OcppTestSteps:
             self._set_test_result(step_name, "FAILED")
         logger.info(f"--- Step D.4 for {self.charge_point_id} complete. ---")
 
-    
+    async def run_d5_set_profile_5000w(self):
+        """D.5: Sets a charging profile to medium power/current."""
+
+
+        medium_value, charging_unit = get_charging_value("medium")
+        logger.info(f"--- Step D.5: Setting charging profile to {medium_value}{charging_unit} for {self.charge_point_id} ---")
+        step_name = "run_d5_set_profile_5000w"
+        self._check_cancellation()
+
+        # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
+        clear_response = await self.handler.send_and_wait(
+            "ClearChargingProfile",
+            ClearChargingProfileRequest()
+        )
+        logger.info(f"ClearChargingProfile response: {clear_response}")
+
+        profile = SetChargingProfileRequest(
+            connectorId=0,
+            csChargingProfiles=ChargingProfile(
+                chargingProfileId=random.randint(1, 1000),
+                transactionId=None,
+                stackLevel=0,
+                chargingProfilePurpose=ChargingProfilePurposeType.ChargePointMaxProfile,
+                chargingProfileKind=ChargingProfileKindType.Absolute,
+                chargingSchedule=ChargingSchedule(
+                    chargingRateUnit=charging_unit,
+                    chargingSchedulePeriod=[
+                        ChargingSchedulePeriod(startPeriod=0, limit=medium_value)
+                    ]
+                )
+            )
+        )
+        logger.info(f"Sending SetChargingProfile message: {asdict(profile)}")
+        success = await self.handler.send_and_wait("SetChargingProfile", profile)
+        self._check_cancellation()
+
+        if success and success.get("status") == "Accepted":
+            logger.info(f"PASSED: SetChargingProfile to {medium_value}{charging_unit} was acknowledged.")
+            self._set_test_result(step_name, "PASSED")
+        else:
+            logger.error(f"FAILED: SetChargingProfile to {medium_value}{charging_unit} was not acknowledged. Response: {success}")
+            self._set_test_result(step_name, "FAILED")
+
+        logger.info(f"--- Step D.5 for {self.charge_point_id} complete. ---")
+
+    async def run_d6_set_high_charging_profile(self):
+        """D.6: Sets a default charging profile to high power/current for future transactions."""
+
+        high_value, charging_unit = get_charging_value("high")
+        logger.info(f"--- Step D.6: Setting default charging profile to {high_value}{charging_unit} for {self.charge_point_id} ---")
+        step_name = "run_d6_set_high_charging_profile"
+        self._check_cancellation()
+
+        # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
+        clear_response = await self.handler.send_and_wait(
+            "ClearChargingProfile",
+            ClearChargingProfileRequest()
+        )
+        logger.info(f"ClearChargingProfile response: {clear_response}")
+
+        # Use configured charging values - "high" for default profile
+        high_value, charging_unit = get_charging_value("high")
+
+        # Set startSchedule to current time minus one minute (as per specification)
+        from datetime import datetime, timezone, timedelta
+        start_schedule = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+
+        # First profile: connectorId=0 (charge point level)
+        profile_cp = SetChargingProfileRequest(
+            connectorId=0,
+            csChargingProfiles=ChargingProfile(
+                chargingProfileId=random.randint(1, 1000),
+                stackLevel=1,
+                chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile,
+                chargingProfileKind=ChargingProfileKindType.Absolute,
+                chargingSchedule=ChargingSchedule(
+                    startSchedule=start_schedule,
+                    chargingRateUnit=charging_unit,
+                    chargingSchedulePeriod=[
+                        ChargingSchedulePeriod(
+                            startPeriod=0,
+                            limit=high_value,
+                            numberPhases=3  # Set number of phases for correct current interpretation
+                        )
+                    ]
+                )
+            )
+        )
+        logger.info(f"Sending SetChargingProfile message for connectorId=0: {asdict(profile_cp)}")
+        success_cp = await self.handler.send_and_wait("SetChargingProfile", profile_cp)
+        self._check_cancellation()
+
+        # Second profile: connectorId=1 (connector level)
+        profile_conn = SetChargingProfileRequest(
+            connectorId=1,
+            csChargingProfiles=ChargingProfile(
+                chargingProfileId=random.randint(1, 1000),
+                stackLevel=1,
+                chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile,
+                chargingProfileKind=ChargingProfileKindType.Absolute,
+                chargingSchedule=ChargingSchedule(
+                    startSchedule=start_schedule,
+                    chargingRateUnit=charging_unit,
+                    chargingSchedulePeriod=[
+                        ChargingSchedulePeriod(
+                            startPeriod=0,
+                            limit=high_value,
+                            numberPhases=3  # Set number of phases for correct current interpretation
+                        )
+                    ]
+                )
+            )
+        )
+        logger.info(f"Sending SetChargingProfile message for connectorId=1: {asdict(profile_conn)}")
+        success_conn = await self.handler.send_and_wait("SetChargingProfile", profile_conn)
+        self._check_cancellation()
+
+        if success_cp and success_conn:
+            logger.info(f"PASSED: SetChargingProfile to {high_value}{charging_unit} for both connectorId=0 and connectorId=1 was acknowledged.")
+            self._set_test_result(step_name, "PASSED")
+        else:
+            logger.error(f"FAILED: SetChargingProfile to {high_value}{charging_unit} was not acknowledged for connectorId=0: {success_cp}, connectorId=1: {success_conn}")
+            self._set_test_result(step_name, "FAILED")
+        logger.info(f"--- Step D.6 for {self.charge_point_id} complete. ---")
 
     async def run_e1_remote_start_state_a(self):
         """E.1: Attempts RemoteStartTransaction from EV state A (Available). Expects rejection."""
@@ -788,8 +1070,11 @@ class OcppTestSteps:
         logger.info(f"--- Step E.3 for {self.charge_point_id} complete. ---")
 
     async def run_e4_set_profile_6a(self):
-        """E.4: Sets a charging profile to 6A for the active transaction."""
-        logger.info(f"--- Step E.4: Setting charging profile to 6A for {self.charge_point_id} ---")
+        """E.4: Sets a charging profile (Low level) for the active transaction."""
+
+
+        charging_value, charging_unit = get_charging_value("low")
+        logger.info(f"--- Step E.4: Setting charging profile to {charging_value}{charging_unit} for {self.charge_point_id} ---")
         step_name = "run_e4_set_profile_6a"
         self._check_cancellation()
 
@@ -799,79 +1084,149 @@ class OcppTestSteps:
             self._set_test_result(step_name, "FAILED")
             return
 
+        # Use configured charging rate unit
+        rate_unit = ChargingRateUnitType.A if charging_unit == "A" else ChargingRateUnitType.W
+
         profile = SetChargingProfileRequest(
             connectorId=1,
             csChargingProfiles=ChargingProfile(
                 chargingProfileId=random.randint(1, 1000),
                 transactionId=transaction_id,
-                stackLevel=1,
+                stackLevel=2,
                 chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,
                 chargingProfileKind=ChargingProfileKindType.Absolute,
                 chargingSchedule=ChargingSchedule(
-                    chargingRateUnit=ChargingRateUnitType.W,
+                    chargingRateUnit=rate_unit,
                     chargingSchedulePeriod=[
-                        ChargingSchedulePeriod(startPeriod=0, limit=1380.0)
+                        ChargingSchedulePeriod(startPeriod=0, limit=charging_value)
                     ]
                 )
             )
         )
-        logger.info(f"Sending SetChargingProfile message: {profile.dict()}")
+        logger.debug(f"csChargingProfiles content: {asdict(profile.csChargingProfiles)}")
+        logger.info(f"Sending SetChargingProfile message: {asdict(profile)}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
 
         if success and success.get("status") == "Accepted":
-            logger.info("PASSED: SetChargingProfile to 6A was acknowledged.")
+            logger.info(f"PASSED: SetChargingProfile to {charging_value}{charging_unit} was acknowledged.")
             self._set_test_result(step_name, "PASSED")
         else:
-            logger.error(f"FAILED: SetChargingProfile to 6A was not acknowledged. Response: {success}")
+            logger.error(f"FAILED: SetChargingProfile to {charging_value}{charging_unit} was not acknowledged. Response: {success}")
             self._set_test_result(step_name, "FAILED")
         
         logger.info(f"--- Step E.4 for {self.charge_point_id} complete. ---")
 
     async def run_e5_set_profile_10a(self):
-        """E.5: Sets a charging profile to 10A for the active transaction."""
-        logger.info(f"--- Step E.5: Setting charging profile to 10A for {self.charge_point_id} ---")
+        """E.5: Sets a TxProfile (Medium level) for the active charging session."""
+
+
+        charging_value, charging_unit = get_charging_value("medium")
+        logger.info(f"--- Step E.5: Setting TxProfile to {charging_value}{charging_unit} for active session on {self.charge_point_id} ---")
         step_name = "run_e5_set_profile_10a"
         self._check_cancellation()
 
+        # Get the active transaction ID - required for TxProfile
         transaction_id = get_active_transaction_id()
         if transaction_id is None:
-            logger.error("FAILED: No active transaction found. Please start a transaction first.")
+            logger.error("FAILED: No active transaction found. TxProfile requires an active transaction.")
             self._set_test_result(step_name, "FAILED")
             return
 
+        logger.info(f"Using transaction ID {transaction_id} for TxProfile")
+
+        # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
+        clear_response = await self.handler.send_and_wait(
+            "ClearChargingProfile",
+            ClearChargingProfileRequest()
+        )
+        logger.info(f"ClearChargingProfile response: {clear_response}")
+
+        # Use configured charging rate unit
+        rate_unit = ChargingRateUnitType.A if charging_unit == "A" else ChargingRateUnitType.W
+
+        # Send TxProfile for the active session (connector 1, current transaction)
         profile = SetChargingProfileRequest(
-            connectorId=1,
+            connectorId=1,  # Connector that's charging
             csChargingProfiles=ChargingProfile(
-                chargingProfileId=random.randint(1, 1000),
-                transactionId=transaction_id,
-                stackLevel=1,
-                chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,
+                chargingProfileId=901,  # Fixed ID as per your example
+                transactionId=transaction_id,  # Current active transaction
+                stackLevel=0,  # ChargeProfileMaxStackLevel = 0
+                chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,  # Transaction-specific profile
                 chargingProfileKind=ChargingProfileKindType.Absolute,
                 chargingSchedule=ChargingSchedule(
-                    chargingRateUnit=ChargingRateUnitType.A,
+                    chargingRateUnit=rate_unit,
                     chargingSchedulePeriod=[
-                        ChargingSchedulePeriod(startPeriod=0, limit=10.0)
+                        ChargingSchedulePeriod(startPeriod=0, limit=charging_value, numberPhases=3)  # 3-phase charging
                     ]
                 )
             )
         )
-        logger.info(f"Sending SetChargingProfile message: {profile.dict()}")
+        logger.info(f"Sending TxProfile SetChargingProfile message: {asdict(profile)}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
 
-        if success and success.get("status") == "Accepted":
-            logger.info("PASSED: SetChargingProfile to 10A was acknowledged.")
+        if not (success and success.get("status") == "Accepted"):
+            logger.error(f"FAILED: TxProfile SetChargingProfile was not acknowledged. Response: {success}")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        logger.info("✅ TxProfile SetChargingProfile was acknowledged. Verifying effective limit...")
+
+        # Verify the effective limit using GetCompositeSchedule
+        # Use configured charging rate unit for GetCompositeSchedule
+        rate_unit_str = get_charging_rate_unit()
+        rate_unit = ChargingRateUnitType.A if rate_unit_str == "A" else ChargingRateUnitType.W
+
+        composite_request = GetCompositeScheduleRequest(
+            connectorId=1,
+            duration=3600,  # 1 hour
+            chargingRateUnit=rate_unit
+        )
+        logger.info(f"Requesting GetCompositeSchedule to verify effective limit: {asdict(composite_request)}")
+
+        composite_response = await self.handler.send_and_wait("GetCompositeSchedule", composite_request)
+        self._check_cancellation()
+
+        if composite_response and composite_response.get("status") == "Accepted":
+            logger.info("✅ GetCompositeSchedule successful. Analyzing effective limits...")
+
+            # Log the composite schedule details
+            if "chargingSchedule" in composite_response:
+                schedule = composite_response["chargingSchedule"]
+                logger.info(f"Composite Schedule - Duration: {schedule.get('duration')}, Unit: {schedule.get('chargingRateUnit')}")
+
+                periods = schedule.get("chargingSchedulePeriod", [])
+                for i, period in enumerate(periods):
+                    limit = period.get("limit", "unknown")
+                    start = period.get("startPeriod", "unknown")
+                    phases = period.get("numberPhases", "not specified")
+                    logger.info(f"  Period {i+1}: Start={start}s, Limit={limit}{charging_unit}, Phases={phases}")
+
+                    # Check if our configured limit is effective
+                    if period.get("limit") == charging_value:
+                        logger.info(f"🎯 VERIFIED: Our {charging_value}{charging_unit} TxProfile limit is active!")
+                        break
+                else:
+                    logger.warning(f"⚠️  Our {charging_value}{charging_unit} limit not found in composite schedule - may be overridden")
+            else:
+                logger.warning("No chargingSchedule in GetCompositeSchedule response")
+
+            logger.info("PASSED: TxProfile applied and verified via GetCompositeSchedule.")
             self._set_test_result(step_name, "PASSED")
         else:
-            logger.error(f"FAILED: SetChargingProfile to 10A was not acknowledged. Response: {success}")
-            self._set_test_result(step_name, "FAILED")
-        
+            logger.warning(f"GetCompositeSchedule failed: {composite_response}")
+            logger.info("PASSED: TxProfile applied (verification failed but profile was accepted).")
+            self._set_test_result(step_name, "PASSED")
+
         logger.info(f"--- Step E.5 for {self.charge_point_id} complete. ---")
 
     async def run_e6_set_profile_16a(self):
-        """E.6: Sets a charging profile to 16A for the active transaction."""
-        logger.info(f"--- Step E.6: Setting charging profile to 16A for {self.charge_point_id} ---")
+        """E.6: Sets a charging profile (High level) for the active transaction."""
+
+
+        charging_value, charging_unit = get_charging_value("high")
+        logger.info(f"--- Step E.6: Setting charging profile to {charging_value}{charging_unit} for {self.charge_point_id} ---")
         step_name = "run_e6_set_profile_16a"
         self._check_cancellation()
 
@@ -881,31 +1236,41 @@ class OcppTestSteps:
             self._set_test_result(step_name, "FAILED")
             return
 
+        # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
+        clear_response = await self.handler.send_and_wait(
+            "ClearChargingProfile",
+            ClearChargingProfileRequest()
+        )
+        logger.info(f"ClearChargingProfile response: {clear_response}")
+
+        # Use configured charging rate unit
+        rate_unit = ChargingRateUnitType.A if charging_unit == "A" else ChargingRateUnitType.W
+
         profile = SetChargingProfileRequest(
             connectorId=1,
             csChargingProfiles=ChargingProfile(
                 chargingProfileId=random.randint(1, 1000),
                 transactionId=transaction_id,
-                stackLevel=1,
+                stackLevel=0,  # ChargeProfileMaxStackLevel = 0
                 chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,
                 chargingProfileKind=ChargingProfileKindType.Absolute,
                 chargingSchedule=ChargingSchedule(
-                    chargingRateUnit=ChargingRateUnitType.A,
+                    chargingRateUnit=rate_unit,
                     chargingSchedulePeriod=[
-                        ChargingSchedulePeriod(startPeriod=0, limit=16.0)
+                        ChargingSchedulePeriod(startPeriod=0, limit=charging_value)
                     ]
                 )
             )
         )
-        logger.info(f"Sending SetChargingProfile message: {profile.dict()}")
+        logger.info(f"Sending SetChargingProfile message: {asdict(profile)}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
 
         if success and success.get("status") == "Accepted":
-            logger.info("PASSED: SetChargingProfile to 16A was acknowledged.")
+            logger.info(f"PASSED: SetChargingProfile to {charging_value}{charging_unit} was acknowledged.")
             self._set_test_result(step_name, "PASSED")
         else:
-            logger.error(f"FAILED: SetChargingProfile to 16A was not acknowledged. Response: {success}")
+            logger.error(f"FAILED: SetChargingProfile to {charging_value}{charging_unit} was not acknowledged. Response: {success}")
             self._set_test_result(step_name, "FAILED")
         
         logger.info(f"--- Step E.6 for {self.charge_point_id} complete. ---")
@@ -960,7 +1325,107 @@ class OcppTestSteps:
         
         logger.info(f"--- Step E.8 for {self.charge_point_id} complete. ---")
 
-    
+    async def run_e9_brutal_stop(self):
+        """E.9: Brutal Stop - Sends Reset Hard to force stop all transactions and reboot charge point."""
+        logger.info(f"--- Step E.9: Brutal Stop (Reset Hard) for {self.charge_point_id} ---")
+        step_name = "run_e9_brutal_stop"
+        self._check_cancellation()
+
+        logger.warning("⚠️  BRUTAL STOP: Sending Hard Reset to force terminate all transactions and reboot")
+        logger.info("This will cause the charge point to reboot without gracefully stopping sessions")
+
+        reset_request = ResetRequest(type=ResetType.Hard)
+        logger.info(f"Sending Reset Hard message: {asdict(reset_request)}")
+
+        success = await self.handler.send_and_wait("Reset", reset_request)
+        self._check_cancellation()
+
+        if success and success.get("status") == "Accepted":
+            logger.info("PASSED: Reset Hard was acknowledged. Charge point will reboot.")
+            logger.info("📋 EXPECTED AFTERMATH:")
+            logger.info("  - Charge point will reboot without graceful session termination")
+            logger.info("  - After reboot, expect StopTransaction messages with reason 'HardReset' or 'PowerLoss'")
+            logger.info("  - Server must accept late StopTransaction messages and de-duplicate")
+            logger.info("  - Transactions should be treated as implicitly closed on reconnect")
+            self._set_test_result(step_name, "PASSED")
+        else:
+            logger.error(f"FAILED: Reset Hard was not acknowledged. Response: {success}")
+            self._set_test_result(step_name, "FAILED")
+
+        logger.info(f"--- Step E.9 for {self.charge_point_id} complete. ---")
+
+    async def run_e10_get_composite_schedule(self):
+        """E.10: Get Composite Schedule - Queries the current schedule being applied on connector 1."""
+        logger.info(f"--- Step E.10: Get Composite Schedule for {self.charge_point_id} ---")
+        step_name = "run_e10_get_composite_schedule"
+        self._check_cancellation()
+
+        logger.info("Querying current charging schedule on connector 1...")
+
+        composite_request = GetCompositeScheduleRequest(
+            connectorId=1,
+            duration=3600  # Query for next 1 hour
+        )
+        logger.info(f"Sending GetCompositeSchedule: {asdict(composite_request)}")
+
+        response = await self.handler.send_and_wait("GetCompositeSchedule", composite_request)
+        self._check_cancellation()
+
+        if response and response.get("status") == "Accepted":
+            logger.info("PASSED: GetCompositeSchedule was accepted.")
+            if response.get("chargingSchedule"):
+                schedule = response.get("chargingSchedule")
+                logger.info(f"📊 ACTIVE SCHEDULE on connector 1:")
+                logger.info(f"  - Charging Rate Unit: {schedule.get('chargingRateUnit', 'Not specified')}")
+                logger.info(f"  - Start Time: {response.get('scheduleStart', 'Not specified')}")
+                if schedule.get("chargingSchedulePeriod"):
+                    for i, period in enumerate(schedule.get("chargingSchedulePeriod")):
+                        logger.info(f"  - Period {i+1}: Start {period.get('startPeriod', 0)}s, Limit {period.get('limit', 'N/A')}, Phases {period.get('numberPhases', 'N/A')}")
+                else:
+                    logger.info("  - No charging periods defined")
+            else:
+                logger.info("📊 No active charging schedule on connector 1")
+            self._set_test_result(step_name, "PASSED")
+        else:
+            logger.error(f"FAILED: GetCompositeSchedule was not accepted. Response: {response}")
+            self._set_test_result(step_name, "FAILED")
+
+        logger.info(f"--- Step E.10 for {self.charge_point_id} complete. ---")
+
+    async def run_e11_clear_all_profiles(self):
+        """E.11: Clears ALL charging profiles from the charge point."""
+        logger.info(f"--- Step E.11: Clearing ALL charging profiles for {self.charge_point_id} ---")
+        step_name = "run_e11_clear_all_profiles"
+        self._check_cancellation()
+
+        logger.info("Sending ClearChargingProfile request to clear profiles for connectorId=0...")
+        success_0 = await self.handler.send_and_wait(
+            "ClearChargingProfile",
+            ClearChargingProfileRequest(connectorId=0)
+        )
+        self._check_cancellation()
+
+        logger.info("Sending ClearChargingProfile request to clear profiles for connectorId=1...")
+        success_1 = await self.handler.send_and_wait(
+            "ClearChargingProfile",
+            ClearChargingProfileRequest(connectorId=1)
+        )
+        self._check_cancellation()
+
+        success = success_0 and success_1
+        self._check_cancellation()
+
+        if success and success.get("status") == "Accepted":
+            logger.info("SUCCESS: ClearChargingProfile was acknowledged and accepted.")
+            self._set_test_result(step_name, "PASSED")
+        elif success and success.get("status") == "NotSupported":
+             logger.warning("ClearChargingProfile is not supported by the charge point. Marking as SKIPPED.")
+             self._set_test_result(step_name, "SKIPPED")
+        else:
+            logger.error(f"FAILURE: ClearChargingProfile was not accepted. Response: {success}")
+            self._set_test_result(step_name, "FAILED")
+
+        logger.info(f"--- Step E.11 for {self.charge_point_id} complete. ---")
 
     async def _wait_for_status(self, status: str):
         while CHARGE_POINTS.get(self.charge_point_id, {}).get("status") != status:

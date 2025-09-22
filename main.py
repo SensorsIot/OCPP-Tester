@@ -11,8 +11,15 @@ Entry point for the OCPP server.
 
 Erata:
     - 2025-08-24: Modified `run_a5_trigger_message_test` to request a `StatusNotification` instead of a `Heartbeat`.
+
+Post-Reset Handling (E.9 Brutal Stop aftermath):
+    - Accept StopTransaction(s) with reasons like "HardReset" / "PowerLoss"
+    - If some vendors don't send StopTransaction after reset, treat those transactions as implicitly closed on reconnect
+    - Clean CSMS state appropriately
+    - (Optional) Send ChangeAvailability(Unavailable) per connector to block new sessions while reconciling state, then flip back to Operative
 """
 
+import argparse
 import asyncio
 import logging
 import signal
@@ -27,6 +34,7 @@ from app.ocpp_handler import OCPPHandler
 from app.streamers import LogStreamer, WebSocketLogHandler, EVStatusStreamer
 
 from app.core import SERVER_SETTINGS, get_shutdown_event, set_shutdown_event
+SERVER_SETTINGS["auto_detection_completed"] = False
 from app.ev_simulator_manager import EVSimulatorManager
 import uvicorn
 import aiohttp # NEW
@@ -39,6 +47,9 @@ from app.web_ui_server import app as flask_app, attach_loop, attach_ev_status_st
 
 
 
+import re
+
+
 # ---------- Colored logging formatter ----------
 class ColoredFormatter(logging.Formatter):
     GREEN = "\033[92m"
@@ -46,6 +57,7 @@ class ColoredFormatter(logging.Formatter):
     YELLOW = "\033[93m"
     RED = "\033[91m"
     BOLD_RED = "\033[1;91m"
+    PURPLE = "\033[95m"
     RESET = "\033[0m"
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     FORMATS = {
@@ -61,9 +73,33 @@ class ColoredFormatter(logging.Formatter):
         message = record.getMessage()
         if record.levelno == logging.INFO and message.lstrip().startswith("--- Step"):
             log_fmt = self.RED + "%(message)s" + self.RESET
-        elif record.levelno == logging.DEBUG and message.lstrip().startswith("------------OCPP Call----------"):
+        elif record.levelno == logging.DEBUG and "OCPP Call" in message:
             log_fmt = self.GREEN + "%(message)s" + self.RESET
-        return logging.Formatter(log_fmt).format(record)
+
+        formatter = logging.Formatter(log_fmt)
+        formatted_message = formatter.format(record)
+
+        # Apply purple color to transaction IDs
+        transaction_id_patterns = [
+            (r"(CP Transaction ID: )(\d+)", f"\1{self.PURPLE}\2{self.RESET}"),
+            (r"(transactionId=)(\d+)", f"\1{self.PURPLE}\2{self.RESET}"),
+            (r"(transaction id )(\d+)", f"\1{self.PURPLE}\2{self.RESET}"),
+            (r"(transaction )(\d+)\b", f"\1{self.PURPLE}\2{self.RESET}"), # General with word boundary
+            (r"(Transaction ID: )(\d+)", f"\1{self.PURPLE}\2{self.RESET}"),
+            (r"(transactionId: )(\d+)", f"\1{self.PURPLE}\2{self.RESET}"),
+            (r"(CP ID: )(\d+)", f"\1{self.PURPLE}\2{self.RESET}"),
+            (r"(CS Internal ID: )(\d+)", f"\1{self.PURPLE}\2{self.RESET}"),
+        ]
+
+        for pattern, replacement in transaction_id_patterns:
+            formatted_message = re.sub(pattern, replacement, formatted_message)
+
+        if ("Received" in message or "Failed to parse" in message or "Unknown OCPP message type" in message):
+            return f"*** {formatted_message}"
+        elif "Sent " in message and ("Payload:" in message or "Waiting..." in message or "Sent response for" in message):
+            return f"---- {formatted_message}"
+        else:
+            return formatted_message
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +107,19 @@ logger = logging.getLogger(__name__)
 async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: asyncio.Event, ev_sim_manager: EVSimulatorManager):
     """Handle OCPP charge point connection on /{charge_point_id}."""
     charge_point_id = path.strip("/")
-    logger.info(f"Connection received from {websocket.remote_address} on path '{path}'")
+    logger.info(f"🔌 OCPP connection received from {websocket.remote_address} on path '{path}'")
+    logger.info(f"🔍 Extracted charge_point_id: '{charge_point_id}'")
 
     if not charge_point_id or charge_point_id in (LOG_WS_PATH.strip("/"), EV_STATUS_WS_PATH.strip("/")):
-        logger.warning("Invalid OCPP path. Closing connection.")
+        logger.warning(f"❌ Invalid OCPP path '{path}' or conflicts with reserved paths. Closing connection.")
+        logger.warning(f"🔍 LOG_WS_PATH.strip('/'): '{LOG_WS_PATH.strip('/')}'")
+        logger.warning(f"🔍 EV_STATUS_WS_PATH.strip('/'): '{EV_STATUS_WS_PATH.strip('/')}'")
         await websocket.close()
         return
 
+    logger.info(f"✅ Valid charge point ID '{charge_point_id}'. Creating OCPP handler...")
     handler = OCPPHandler(websocket, path, refresh_trigger, ev_sim_manager)
+    logger.info(f"🚀 Starting OCPP handler for charge point '{charge_point_id}'...")
     await handler.start()
 
 async def handle_log_stream(websocket: ServerConnection, streamer: LogStreamer):
@@ -104,14 +145,20 @@ async def ws_router(websocket: ServerConnection,
     path = "unknown"
     try:
         path = websocket.path
+        logger.info(f"🔍 WebSocket connection attempt from {websocket.remote_address} on path: '{path}'")
+        logger.info(f"🔍 LOG_WS_PATH='{LOG_WS_PATH}', EV_STATUS_WS_PATH='{EV_STATUS_WS_PATH}'")
+
         if path == LOG_WS_PATH:
+            logger.info(f"🔍 Routing to log stream handler")
             await handle_log_stream(websocket, log_streamer)
         elif path == EV_STATUS_WS_PATH:
+            logger.info(f"🔍 Routing to EV status stream handler")
             await handle_ev_status_stream(websocket, ev_status_streamer)
         else:
+            logger.info(f"🔍 Routing to OCPP handler for charge point path: '{path}'")
             await handle_ocpp(websocket, path, ev_refresh_trigger, ev_sim_manager)
     except Exception as e:
-        logger.error(f"WebSocket router error on path '{path}': {e}", exc_info=True)
+        logger.error(f"❌ WebSocket router error on path '{path}': {e}", exc_info=True)
         try:
             await websocket.close()
         except Exception:
@@ -167,8 +214,22 @@ async def main():
     # Start the HTTP server first so the UI is always available
     http_task = asyncio.create_task(start_http_server())
 
-    logger.info(f"Starting WebSocket server on {OCPP_HOST}:{OCPP_PORT} "
+    logger.info(f"🚀 Starting WebSocket server on {OCPP_HOST}:{OCPP_PORT} "
                 f"(paths: '{LOG_WS_PATH}', '{EV_STATUS_WS_PATH}', '/<ChargePointId>')")
+    logger.info(f"🌐 WebSocket server will accept connections at ws://{OCPP_HOST}:{OCPP_PORT}/<charge_point_id>")
+    logger.info(f"🖥️  Web UI available at http://{HTTP_HOST}:{HTTP_PORT}")
+    logger.info(f"📡 To connect a charge point, use: ws://{OCPP_HOST}:{OCPP_PORT}/YourChargePointID")
+
+    # Log network interface information
+    try:
+        import socket
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+        logger.info(f"🌍 Server hostname: {hostname}")
+        logger.info(f"🔗 Server local IP: {local_ip}")
+        logger.info(f"📍 Listening on all interfaces (0.0.0.0) - accessible from network")
+    except Exception as e:
+        logger.warning(f"Could not determine network info: {e}")
     ws_server = await serve(
         lambda ws: ws_router(ws, log_streamer, ev_status_streamer, ev_refresh_trigger, ev_sim_manager),
         OCPP_HOST,
@@ -203,6 +264,19 @@ async def main():
     loop.stop()
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="OCPP Server with auto-detection")
+    parser.add_argument("--unit", choices=["W", "A"],
+                       help="Override charging rate unit (W=Watts, A=Amperes). If not specified, auto-detection will be attempted.")
+    args = parser.parse_args()
+
+    # Set override unit if specified
+    if args.unit:
+        from app.core import SERVER_SETTINGS
+        SERVER_SETTINGS["charging_rate_unit"] = args.unit
+        SERVER_SETTINGS["charging_rate_unit_auto_detected"] = False
+        SERVER_SETTINGS["auto_detection_completed"] = True
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 

@@ -76,4 +76,160 @@ SERVER_SETTINGS = {
     "use_simulator": False,  # Controlled by UI/config: True if EV simulator mode is active
     "ev_simulator_available": False,  # Tracks if the simulator service is reachable
     "ev_simulator_charge_point_id": EV_SIMULATOR_CHARGE_POINT_ID,
+    "charging_rate_unit": "W",  # "W" for Watts or "A" for Amperes - default setting
+    "charging_rate_unit_auto_detected": False,  # True if unit was auto-detected from charge point
+    "auto_detection_completed": False,  # True when auto-detection attempt has finished (success or failure) - start as False to enable auto-detection
 }
+
+# Predefined charging power/current values for tests
+CHARGING_RATE_CONFIG = {
+    "power_values_w": [4000, 6000, 8000, 11000],  # Watts
+    "current_values_a": [6, 8, 10, 16],           # Amperes
+    "test_value_mapping": {
+        "disable": {"W": 0, "A": 0},         # 0W or 0A (disable charging)
+        "low": {"W": 4000, "A": 6},          # Low power: 4000W or 6A
+        "medium": {"W": 8000, "A": 11},      # Medium power: 8000W or 11A
+        "high": {"W": 11000, "A": 16}        # High power: 11000W or 16A
+    }
+}
+
+def get_charging_value(test_level: str) -> tuple[float, str]:
+    """
+    Get the appropriate charging value and unit based on current configuration.
+
+    Args:
+        test_level: "disable", "low", "medium", or "high"
+
+    Returns:
+        tuple of (value, unit) e.g., (6000, "W") or (8, "A")
+    """
+    unit = SERVER_SETTINGS.get("charging_rate_unit", "A") # Default to A
+    value = CHARGING_RATE_CONFIG["test_value_mapping"][test_level][unit]
+    return float(value), unit
+
+def get_charging_rate_unit() -> str:
+    """Get the current charging rate unit (W or A)."""
+    return SERVER_SETTINGS.get("charging_rate_unit", "A") # Default to A
+
+def get_current_charging_values(charge_point_id: str) -> tuple[float, float]:
+    """
+    Extract current power and current from the latest meter values for a charge point.
+
+    Args:
+        charge_point_id: The ID of the charge point
+
+    Returns:
+        tuple of (current_power_w, current_current_a) - returns (0.0, 0.0) if no data
+    """
+    current_power_w = 0.0
+    current_current_a = 0.0
+
+    # Find the active transaction for this charge point
+    active_transaction = None
+    for transaction_id, transaction_data in TRANSACTIONS.items():
+        if (transaction_data.get("charge_point_id") == charge_point_id and
+            transaction_data.get("status") == "Ongoing"):
+            active_transaction = transaction_data
+            break
+
+    if not active_transaction:
+        return (current_power_w, current_current_a)
+
+    meter_values = active_transaction.get("meter_values", [])
+    if not meter_values:
+        return (current_power_w, current_current_a)
+
+    # Get the latest meter value entry
+    latest_meter_value = meter_values[-1]
+    sampled_values = latest_meter_value.sampledValue
+
+    # Extract power and current values
+    for sv in sampled_values:
+        measurand = sv.measurand or ""
+        value = sv.value or "0"
+
+        try:
+            numeric_value = float(value)
+
+            if measurand == "Power.Active.Import":
+                current_power_w = numeric_value
+            elif measurand == "Current.Import" and sv.phase == "L1-N":
+                # Use L1-N phase current as representative current
+                current_current_a = numeric_value
+        except (ValueError, TypeError):
+            continue
+
+    return (current_power_w, current_current_a)
+
+async def auto_detect_charging_rate_unit(ocpp_handler) -> None:
+    """
+    Auto-detect the charging rate unit supported by the charge point.
+    Reads ChargingScheduleAllowedChargingRateUnit from GetConfiguration response.
+    """
+    import logging
+    from app.messages import GetConfigurationRequest
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info("🔍 Auto-detecting charging rate unit from charge point configuration...")
+
+        # Request all configuration keys since this charge point has GetConfigurationMaxKeys=1
+        # and may not handle specific key requests properly
+        # Use a longer timeout since configuration requests can be slow
+        # Add extra buffer time to avoid race conditions with timing precision
+        response = await ocpp_handler.send_and_wait(
+            "GetConfiguration",
+            GetConfigurationRequest(key=[]),
+            timeout=65
+        )
+
+        if response:
+            # Try to process the configuration response
+            if process_configuration_response(response):
+                return  # Successfully detected
+
+        logger.info("ℹ️ ChargingScheduleAllowedChargingRateUnit not found, keeping default unit 'A'")
+        SERVER_SETTINGS["auto_detection_completed"] = True
+
+    except Exception as e:
+        logger.error(f"❌ Failed to auto-detect charging rate unit: {e}")
+        logger.info("ℹ️ Keeping default charging rate unit 'A'")
+        SERVER_SETTINGS["auto_detection_completed"] = True
+
+def process_configuration_response(response_payload: dict) -> bool:
+    """
+    Process a GetConfiguration response and extract charging rate unit.
+    Returns True if detection was successful, False otherwise.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if not response_payload or not response_payload.get("configurationKey"):
+        return False
+
+    for key_value in response_payload["configurationKey"]:
+        key = key_value.get("key")
+        value = key_value.get("value")
+
+        if key == "ChargingScheduleAllowedChargingRateUnit":
+            # Map charge point responses to our internal units
+            unit_mapping = {
+                "Power": "W",  # Power means Watts
+                "Current": "A",  # Current means Amperes
+                "W": "W",      # Direct mapping
+                "A": "A"       # Direct mapping
+            }
+
+            mapped_unit = unit_mapping.get(value)
+            if mapped_unit:
+                old_unit = SERVER_SETTINGS.get("charging_rate_unit", "A")
+                SERVER_SETTINGS["charging_rate_unit"] = mapped_unit
+                SERVER_SETTINGS["charging_rate_unit_auto_detected"] = True
+                SERVER_SETTINGS["auto_detection_completed"] = True
+                logger.info(f"✅ Auto-detected charging rate unit: {mapped_unit} (from '{value}', was: {old_unit})")
+                return True
+            else:
+                logger.warning(f"⚠️ Unsupported charging rate unit: {value}, keeping default")
+
+    return False

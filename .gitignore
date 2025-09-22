@@ -22,3 +22,22 @@ __pycache__/
 # If it's truly a project-specific .gitconfig, you might include it,
 # but that's rare for typical projects.
 .gitconfig
+
+# Added by Gemini CLI
+.bash_history
+.config/configstore/
+.gemini/
+.npm/
+.claude.json
+.claude.json.backup
+.claude/
+.codex/
+.config/git/
+.csm_setup_V2rSpds07
+.evcc/
+CLAUDE.md
+requirements_simulator.txt
+simulator_control.py
+server.log
+Erata.txt
+index.html

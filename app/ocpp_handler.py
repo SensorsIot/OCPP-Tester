@@ -9,6 +9,7 @@ import logging
 import uuid
 from dataclasses import asdict, is_dataclass, fields, is_dataclass as is_dc
 from typing import Any, Dict, Type, Callable, Optional
+import websockets
 
 from app.ev_simulator_manager import EVSimulatorManager
 
@@ -74,16 +75,16 @@ MESSAGE_HANDLERS: Dict[str, Dict[str, Any]] = {
 # Optional: safe fallback if some vendor sends an action we don't support.
 
 
-def create_ocpp_message(message_type_id: int, unique_id: str, payload: Any, action: str = None) -> str:
+def create_ocpp_message(message_type_id: int, unique_id: str, payload: Any, action: str = None, charge_point_id: Optional[str] = None) -> str:
     dict_factory = lambda data: {k: v for (k, v) in data if v is not None}
     payload_to_send = asdict(payload, dict_factory=dict_factory) if is_dataclass(payload) else payload
     if action:
         message = [message_type_id, unique_id, action, payload_to_send]
     else:
         message = [message_type_id, unique_id, payload_to_send]
-    logger.debug("\n\n------------OCPP Call----------")
+    logger.debug(f"\n\n------------OCPP Call ({charge_point_id})----------")
     json_message = json.dumps(message)
-    logger.debug(f"RAW >> {json_message}")
+    logger.debug(f"RAW ({charge_point_id}) >> {json_message}")
     return json_message
 
 def _filter_payload(payload_cls: Type, data: Dict) -> Dict:
@@ -112,25 +113,35 @@ class OCPPHandler:
         self._cancellation_event.set()
 
     async def start(self):
+        logger.info(f"🚀 OCPPHandler.start() called for charge point ID: '{self.charge_point_id}'")
+
         if not self.charge_point_id:
-            logger.warning("Connection closed: missing Charge Point ID in path.")
+            logger.warning("❌ Connection closed: missing Charge Point ID in path.")
             await self.websocket.close()
             return
 
         # Set the charge point in the global state immediately
         CHARGE_POINTS[self.charge_point_id] = {"ocpp_handler": self, "use_simulator": False}
-        logger.info(f"New connection from Charge Point: {self.charge_point_id}")
+        logger.info(f"📋 Registered charge point '{self.charge_point_id}' in global state")
+        logger.info(f"🔌 New connection from Charge Point: {self.charge_point_id}")
 
         # If no active charge point is set, make this one the active one
-        if get_active_charge_point_id() is None:
+        active_cp = get_active_charge_point_id()
+        logger.info(f"🔍 Current active charge point: {active_cp}")
+        if active_cp is None:
             set_active_charge_point_id(self.charge_point_id)
-            logger.info(f"Set {self.charge_point_id} as the active charge point.")
+            logger.info(f"✅ Set {self.charge_point_id} as the active charge point.")
+        else:
+            logger.info(f"📌 Keeping {active_cp} as the active charge point.")
 
+        logger.info(f"🏃 Starting logic and periodic tasks for {self.charge_point_id}...")
         self._logic_task = asyncio.create_task(self.run_logic_and_periodic_tasks())
         logger.info(f"Main logic task for {self.charge_point_id} started.")
 
         try:
+            logger.info(f"📡 Starting message loop for {self.charge_point_id}. Waiting for messages...")
             async for message in self.websocket:
+                logger.info(f"📨 Received WebSocket message from {self.charge_point_id}: {message}")
                 await self.process_message(message)
         except ConnectionClosedOK:
             logger.info(f"Connection with {self.charge_point_id} closed gracefully.")
@@ -166,7 +177,7 @@ class OCPPHandler:
         event = asyncio.Event()
         pending_request = {"action": action, "event": event}
         self.pending_requests[unique_id] = pending_request
-        message = create_ocpp_message(2, unique_id, request_payload, action)
+        message = create_ocpp_message(2, unique_id, request_payload, action, self.charge_point_id)
         active_cp_id = get_active_charge_point_id() # Ensure we get the latest global value
         logger.debug(f"Sent {action} from {self.charge_point_id}. Payload: {request_payload}")
         await self.websocket.send(message)
@@ -182,26 +193,30 @@ class OCPPHandler:
 
     async def process_message(self, raw: str):
         active_cp_id = get_active_charge_point_id() # Ensure we get the latest global value
+        logger.info(f"🔍 Processing message from {self.charge_point_id}. Active CP: {active_cp_id}")
+
         try:
             msg = json.loads(raw)
             message_type_id, unique_id = msg[0], msg[1]
+            logger.info(f"✅ Successfully parsed OCPP message. Type: {message_type_id}, ID: {unique_id}")
         except (json.JSONDecodeError, IndexError) as e:
-            logger.error(f"Failed to parse OCPP message: {raw}, error: {e}")
+            logger.error(f"❌ Failed to parse OCPP message: {raw}, error: {e}")
             return
 
         if message_type_id == 2:  # CALL
             action, payload_dict = msg[2], msg[3]
-            logger.debug(f"Received CALL '{action}' for {self.charge_point_id}. Payload: {payload_dict}")
+            logger.info(f"📞 Received CALL '{action}' for {self.charge_point_id}. Payload: {payload_dict}")
             await self.handle_call(unique_id, action, payload_dict)
         elif message_type_id == 3:  # CALLRESULT
             payload = msg[2]
+            logger.info(f"✅ Received CALLRESULT for {self.charge_point_id}. Payload: {payload}")
             await self.handle_call_result(unique_id, payload)
         elif message_type_id == 4:  # CALLERROR
             errorCode, errorDescription, details = msg[2], msg[3], msg[4] if len(msg) > 4 else {}
-            logger.info(f"Received CALLERROR for {self.charge_point_id}. Code: {errorCode}, Desc: {errorDescription}, Details: {details}")
+            logger.warning(f"❌ Received CALLERROR for {self.charge_point_id}. Code: {errorCode}, Desc: {errorDescription}, Details: {details}")
             await self.handle_call_error(unique_id, errorCode, errorDescription, details)
         else:
-            logger.warning(f"Unknown OCPP message type {message_type_id} from {self.charge_point_id}")
+            logger.warning(f"❓ Unknown OCPP message type {message_type_id} from {self.charge_point_id}")
 
     async def handle_call(self, unique_id: str, action: str, payload_dict: Dict):
         logger.debug(f"Received CALL '{action}' from {self.charge_point_id}")
@@ -228,7 +243,7 @@ class OCPPHandler:
             payload = payload_class(**filtered)
             response_payload = await handler(self.charge_point_id, payload)
             if response_payload is not None:
-                response_message = create_ocpp_message(3, unique_id, response_payload)
+                response_message = create_ocpp_message(3, unique_id, response_payload, charge_point_id=self.charge_point_id)
                 await self.websocket.send(response_message)
                 logger.info(f"Sent response for '{action}' to {self.charge_point_id}.")
         except TypeError as e:
@@ -245,7 +260,7 @@ class OCPPHandler:
         if unique_id in self.pending_requests:
             request_info = self.pending_requests[unique_id]
             action = request_info.get("action", "unknown action")
-            logger.info(f"Received CALLRESULT for '{action}' (id={unique_id}) from {self.charge_point_id}.")
+            logger.debug(f"Received CALLRESULT for '{action}' (id={unique_id}) from {self.charge_point_id}. Payload: {payload}")
             if action == "GetConfiguration":
                 logger.debug(f"GetConfiguration response: {payload}")
             request_info["response_payload"] = payload
@@ -254,6 +269,15 @@ class OCPPHandler:
                 event.set()
         else:
             logger.warning(f"Received unsolicited CALLRESULT with id {unique_id} from {self.charge_point_id}")
+
+            # Try to process GetConfiguration responses for auto-detection
+            from app.core import process_configuration_response, SERVER_SETTINGS, CHARGE_POINTS
+            if (not SERVER_SETTINGS.get("auto_detection_completed", False) and
+                isinstance(payload, dict) and payload.get("configurationKey") and
+                self.charge_point_id in CHARGE_POINTS and
+                CHARGE_POINTS[self.charge_point_id].get("auto_detection_triggered", False)):
+                logger.info("🔍 Processing unsolicited GetConfiguration response for auto-detection...")
+                process_configuration_response(payload)
 
     async def handle_call_error(self, unique_id: str, error_code: str, error_description: str, details: Dict):
         """Handle a CALLERROR message from the charge point."""

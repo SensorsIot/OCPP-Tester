@@ -530,3 +530,22 @@ class RemoteStopTransactionResponse:
     Represents the payload for a RemoteStopTransaction.conf message.
     """
     status: str # "Accepted" or "Rejected"
+
+@dataclass
+class ResetRequest:
+    """
+    Represents the payload for a Reset.req message.
+    """
+    type: str # "Hard" or "Soft"
+
+@dataclass
+class ResetResponse:
+    """
+    Represents the payload for a Reset.conf message.
+    """
+    status: str # "Accepted" or "Rejected"
+
+class ResetType:
+    """Enum for Reset types."""
+    Hard = "Hard"
+    Soft = "Soft"

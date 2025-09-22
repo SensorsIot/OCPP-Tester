@@ -191,6 +191,9 @@ class OcppServerLogic:
     async def run_c2_user_initiated_transaction_test(self):
         return await self.test_steps.run_c2_user_initiated_transaction_test()
 
+    async def run_c3_check_power_limits_test(self):
+        return await self.test_steps.run_c3_check_power_limits_test()
+
     async def run_d1_set_live_charging_power(self):
         return await self.test_steps.run_d1_set_live_charging_power()
 
@@ -202,6 +205,12 @@ class OcppServerLogic:
 
     async def run_d4_clear_default_charging_profile(self):
         return await self.test_steps.run_d4_clear_default_charging_profile()
+
+    async def run_d5_set_profile_5000w(self):
+        return await self.test_steps.run_d5_set_profile_5000w()
+
+    async def run_d6_set_high_charging_profile(self):
+        return await self.test_steps.run_d6_set_high_charging_profile()
 
     async def run_e1_remote_start_state_a(self):
         return await self.test_steps.run_e1_remote_start_state_a()
@@ -345,6 +354,9 @@ class OcppServerLogic:
     async def run_c2_user_initiated_transaction_test(self):
         return await self.test_steps.run_c2_user_initiated_transaction_test()
 
+    async def run_c3_check_power_limits_test(self):
+        return await self.test_steps.run_c3_check_power_limits_test()
+
     async def run_d1_set_live_charging_power(self):
         return await self.test_steps.run_d1_set_live_charging_power()
 
@@ -356,6 +368,12 @@ class OcppServerLogic:
 
     async def run_d4_clear_default_charging_profile(self):
         return await self.test_steps.run_d4_clear_default_charging_profile()
+
+    async def run_d5_set_profile_5000w(self):
+        return await self.test_steps.run_d5_set_profile_5000w()
+
+    async def run_d6_set_high_charging_profile(self):
+        return await self.test_steps.run_d6_set_high_charging_profile()
 
     async def run_e1_remote_start_state_a(self):
         return await self.test_steps.run_e1_remote_start_state_a()
@@ -381,6 +399,13 @@ class OcppServerLogic:
     async def run_e8_remote_stop_transaction(self):
         return await self.test_steps.run_e8_remote_stop_transaction()
 
-    
+    async def run_e9_brutal_stop(self):
+        return await self.test_steps.run_e9_brutal_stop()
 
-    
+    async def run_e10_get_composite_schedule(self):
+        return await self.test_steps.run_e10_get_composite_schedule()
+
+    async def run_e11_clear_all_profiles(self):
+        return await self.test_steps.run_e11_clear_all_profiles()
+
+

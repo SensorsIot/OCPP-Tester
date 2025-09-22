@@ -54,6 +54,8 @@ class WebSocketLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord):
         """Formats and sends a log record to the streamer."""
         try:
+            if self.loop.is_closed():
+                return
             msg = {
                 "levelname": record.levelname,
                 "message": self.format(record)
