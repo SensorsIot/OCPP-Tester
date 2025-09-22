@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>OCPP Server UI</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <style>
         /* (unchanged styles trimmed for brevity) */
@@ -13,7 +16,6 @@
         .status-box { display:flex; justify-content:space-between; margin-bottom:20px; }
         .status-item { flex:1; padding:15px; margin:0 10px; background:#e9ecef; border-radius:8px; text-align:center; }
         .status-item h3 { margin-top:0; font-size:1em; text-align:center; }
-        #connection-status { font-weight:bold; }
         #charging-status { font-weight:bold; }
         .config-section { background:#e3f2fd; border:1px solid #90caf9; border-radius:8px; padding:15px; margin-bottom:20px; }
         .config-item { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
@@ -21,15 +23,59 @@
         .config-item select { padding:5px; border-radius:4px; border:1px solid #ccc; }
         .config-values { margin-top:10px; }
         .config-values p { margin:5px 0; font-weight:bold; }
-        #test-values-display { display:flex; flex-wrap:wrap; gap:10px; }
-        .value-item { background:#fff3e0; padding:5px 10px; border-radius:15px; border:1px solid #ffb74d; font-size:12px; }
-        #charging-unit-status { font-style:italic; color:#666; }
-        .detection-status-auto-detected { color:#28a745; font-weight:bold; }
-        .detection-status-manual { color:#ffc107; font-weight:bold; }
-        .detection-status-waiting { color:#007bff; font-weight:bold; animation:pulse 2s infinite; }
-        @keyframes pulse { 0%, 100% { opacity:1; } 50% { opacity:0.7; } }
         .button-group button:disabled { background:#6c757d; cursor:not-allowed; opacity:0.6; }
-        .control-panel-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:10px; }
+        .control-panel-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-top:10px; }
+
+        /* Wallbox Discovery Section */
+        .wallbox-discovery-section { background:#f0f8f0; border:1px solid #90c695; border-radius:8px; padding:15px; margin-bottom:20px; }
+
+        /* Wallbox Capabilities Section */
+        .wallbox-capabilities-section { background:#e8f4fd; border:1px solid #64b5f6; border-radius:8px; padding:20px; margin-bottom:20px; }
+        .capability-info { margin-bottom:20px; }
+        .capability-info h3 { color:#1565c0; margin-top:0; }
+        .capability-info ul { margin:10px 0; padding-left:20px; }
+        .capability-info li { margin-bottom:8px; line-height:1.4; }
+
+        .capability-status { background:#fff; border:1px solid #bbdefb; border-radius:6px; padding:15px; margin-bottom:20px; }
+        .capability-status h4 { color:#1976d2; margin-top:0; margin-bottom:15px; }
+        .status-indicator { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+        .status-dot { width:12px; height:12px; border-radius:50%; display:inline-block; }
+        .status-dot.waiting { background:#ffc107; animation:pulse 2s infinite; }
+        .status-dot.connected { background:#28a745; }
+        .status-dot.active { background:#17a2b8; }
+        .status-dot.error { background:#dc3545; }
+
+        .capability-action { text-align:center; }
+        .capability-action h4 { color:#1976d2; margin-bottom:10px; }
+        .quick-action { margin-top:15px; }
+        .analysis-btn { background:#1976d2; color:white; border:none; padding:12px 24px; border-radius:6px; cursor:pointer; font-size:14px; font-weight:bold; }
+        .analysis-btn:hover { background:#1565c0; }
+        .analysis-btn:active { transform:translateY(1px); }
+        .discovery-controls { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px; }
+        .autodiscovery-toggle label { display:flex; align-items:center; gap:8px; font-weight:bold; color:#2e7d32; }
+        .active-wallbox { color:#1976d2; font-size:14px; }
+        #active-wallbox-name { color:#d84315; font-weight:bold; }
+
+        .discovered-wallboxes-list h4 { margin:0 0 10px 0; color:#2e7d32; }
+        #wallboxes-container { display:flex; flex-direction:column; gap:8px; }
+        .no-wallboxes { color:#666; font-style:italic; padding:10px; text-align:center; background:#fafafa; border-radius:4px; }
+
+        .wallbox-item { display:flex; justify-content:space-between; align-items:center; padding:10px; background:#fff; border:1px solid #c8e6c9; border-radius:6px; }
+        .wallbox-item.active { border-color:#4caf50; background:#e8f5e8; box-shadow:0 2px 4px rgba(76,175,80,0.2); }
+        .wallbox-item.disconnected { border-color:#ff9800; background:#fff3e0; opacity:0.7; }
+
+        .wallbox-info { display:flex; flex-direction:column; }
+        .wallbox-name { font-weight:bold; color:#2e7d32; }
+        .wallbox-details { font-size:12px; color:#666; margin-top:2px; }
+        .wallbox-status { font-size:11px; padding:2px 6px; border-radius:10px; }
+        .wallbox-status.connected { background:#c8e6c9; color:#2e7d32; }
+        .wallbox-status.disconnected { background:#ffccbc; color:#d84315; }
+
+        .wallbox-actions { display:flex; gap:8px; }
+        .wallbox-actions button { padding:4px 8px; font-size:11px; border:none; border-radius:4px; cursor:pointer; }
+        .select-btn { background:#4caf50; color:white; }
+        .select-btn:hover { background:#45a049; }
+        .select-btn:disabled { background:#cccccc; cursor:not-allowed; }
         .test-category { background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; padding:15px; }
         .button-group { display:flex; flex-wrap:wrap; gap:10px; }
         .button-group button { padding:10px 15px; font-size:14px; border:none; border-radius:5px; color:#fff; background:#007bff; cursor:pointer; }
@@ -44,40 +90,83 @@
             background-color: #0056b3; /* A darker blue to indicate selection */
             border: 1px solid #0056b3;
         }
-    </style>
+            .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgb(0,0,0); /* Fallback color */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto; /* 15% from the top and centered */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%; /* Could be more or less, depending on screen size */
+            max-width: 500px;
+            border-radius: 8px;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+</style>
 </head>
 <body>
 <div class="container">
     <h1>OCPP Server Status</h1>
 
-    <div class="status-box">
-        <div class="status-item">
-            <h3>Connection Status</h3>
-            <span id="connection-status">Polling...</span>
-        </div>
-        <div class="status-item">
-            <h3>Active Charge Point</h3>
-            <span id="active-wallbox-display">N/A</span>
-            <button id="select-wallbox-button" class="button" style="margin-top: 10px;">Select Different Wallbox</button>
-        </div>
-        <div id="wallbox-selection-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center;">
-            <div style="background:#fff; padding:20px; border-radius:8px; box-shadow:0 0 10px rgba(0,0,0,0.2); width:80%; max-width:400px;">
-                <h2>Select Wallbox</h2>
-                <div id="wallbox-options-list" style="max-height:300px; overflow-y:auto; border:1px solid #eee; padding:10px; margin-bottom:10px;">
-                    <!-- Wallbox buttons will be rendered here by JavaScript -->
-                </div>
-                <button id="close-wallbox-modal" class="button" style="background-color:#dc3545;">Close</button>
+    <h2>Discovered Wallboxes</h2>
+    <div class="wallbox-discovery-section">
+        <div class="discovery-controls">
+            <div class="autodiscovery-toggle">
+                <label>
+                    <input type="checkbox" id="autodiscovery-enabled" checked>
+                    Auto-select first wallbox
+                </label>
+            </div>
+            <div class="active-wallbox">
+                <strong>Active Wallbox:</strong> <span id="active-wallbox-name">None selected</span>
             </div>
         </div>
-        
-        <div class="status-item">
-            <h3 id="timer-label">Time to Connect</h3>
-            <span id="timer-display">00:00</span>
-        </div>
-        
-        <div class="status-item">
-            <h3 id="timer-label">Time to Connect</h3>
-            <span id="timer-display">00:00</span>
+
+        <div class="discovered-wallboxes-list">
+            <h4>Discovered Wallboxes:</h4>
+            <div id="wallboxes-container">
+                <div class="no-wallboxes">No wallboxes discovered yet. Connect a wallbox to ws://192.168.0.150:8887/YourWallboxID</div>
+            </div>
         </div>
     </div>
 
@@ -120,23 +209,22 @@
         </div>
     </div>
 
-    <h2>Test Configuration</h2>
-    <div class="config-section">
-        <div class="config-item">
-            <label for="charging-rate-unit">Charging Rate Unit:</label>
-            <span id="charging-unit-status">Current: W</span>
-        </div>
-        <div class="detection-status-display">
-            <strong>Detection Status:</strong> <span id="detection-status-text">Waiting for charge point connection...</span>
-        </div>
-        
-        <div class="config-values">
-            <p><strong>Test Values:</strong></p>
-            <div id="test-values-display">
-                <span class="value-item">Disable: 0W</span>
-                <span class="value-item">Low: 4000W</span>
-                <span class="value-item">Medium: 8000W</span>
-                <span class="value-item">High: 11000W</span>
+    <h2>Wallbox offers to EV</h2>
+    <div class="wallbox-capabilities-section">
+        <div class="capability-info">
+            <h3>📊 Live MeterValues Data</h3>
+            <p>Current electrical measurements from OCPP MeterValues messages:</p>
+
+            <div id="meter-values-display" style="display: flex; font-family: monospace; background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                <div id="meter-values-content" style="flex: 1;">Waiting for MeterValues data...</div>
+                <div id="composite-schedule-display" style="flex: 1; padding-left: 15px; border-left: 1px solid #ddd;"></div>
+            </div>
+
+
+            <div class="quick-action" style="text-align: center; margin-top: 15px;">
+                <button onclick="runTest('run_b1_remote_start_transaction_test')" class="analysis-btn">
+                    ⚡ Start B.1 Transaction
+                </button>
             </div>
         </div>
     </div>
@@ -144,28 +232,26 @@
     <h2>Control Panel</h2>
     <div class="control-panel-grid">
         <div class="test-category">
-            <h3>A. Basic Connection & Configuration</h3>
-            <div class="button-group" id="category-a-buttons"></div>
+            <h3>A. Core Communication & Status</h3>
+            <div class="button-group" id="category-a-buttons">
+                <button data-step-key="run_a1_change_configuration_test">A.1: ChangeConfiguration</button>
+                <button data-step-key="run_a2_get_configuration_test">A.2: GetConfiguration</button>
+            </div>
         </div>
         <div class="test-category">
-            <h3>B. Data & Status Retrieval</h3>
-            <div class="button-group" id="category-b-buttons"></div>
+            <h3>B. Authorization & Transaction Management</h3>
+            <div class="button-group" id="category-b-buttons">
+                <button data-step-key="run_b1_remote_start_transaction_test">B.1: RemoteStartTransaction</button>
+                <button data-step-key="run_b2_remote_stop_transaction_test">B.2: RemoteStopTransaction</button>
+            </div>
         </div>
         <div class="test-category">
-            <h3>C. Core Transaction Management</h3>
-            <div class="button-group" id="category-c-buttons"></div>
-        </div>
-        <div class="test-category">
-            <h3>D. Advanced Smart Charging</h3>
-            <div class="button-group" id="category-d-buttons"></div>
-        </div>
-        <div class="test-category">
-            <h3>E. Real-World Transactions</h3>
-            <div class="button-group" id="category-e-buttons">
-                <button data-step-key="run_e1_real_world_transaction_test">E.1: Remote Start Transaction</button>
-                <button data-step-key="run_e2_real_world_charging_profile_test">E.2: Set Charging Profile (Low)</button>
-                <button data-step-key="run_e3_set_charging_profile_10a">E.3: Set Charging Profile (Medium)</button>
-                <button data-step-key="run_e4_set_charging_profile_16a">E.4: Set Charging Profile (High)</button>
+            <h3>C. Smart Charging Profile</h3>
+            <div class="button-group" id="category-c-buttons">
+                <button data-step-key="run_c1_set_charging_profile_test">C.1: SetChargingProfile</button>
+                <button data-step-key="run_c2_get_composite_schedule_test">C.2: GetCompositeSchedule</button>
+                <button data-step-key="run_c3_clear_charging_profile_test">C.3: ClearChargingProfile</button>
+                <button data-step-key="run_c4_tx_default_profile_test">C.4: TxDefaultProfile</button>
             </div>
         </div>
     </div>
@@ -175,16 +261,49 @@
     <div class="log-container" id="log-output"></div>
 </div>
 
+<div id="chargingProfileModal" class="modal">
+  <!-- Modal content -->
+  <div class="modal-content">
+    <span class="close" id="modal-close-button">&times;</span>
+    <h3 id="modal-title">Set Charging Profile</h3>
+    <form id="chargingProfileForm">
+        <input type="hidden" id="modal-step-key" />
+        <div class="form-group">
+            <label for="stackLevel">Stack Level</label>
+            <input type="number" id="stackLevel" name="stackLevel" value="0">
+        </div>
+        <div class="form-group">
+            <label for="chargingProfilePurpose">Profile Purpose</label>
+            <select id="chargingProfilePurpose" name="chargingProfilePurpose">
+                <option value="ChargePointMaxProfile">ChargePointMaxProfile</option>
+                <option value="TxDefaultProfile">TxDefaultProfile</option>
+                <option value="TxProfile">TxProfile</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="chargingProfileKind">Profile Kind</label>
+            <select id="chargingProfileKind" name="chargingProfileKind">
+                <option value="Absolute">Absolute</option>
+                <option value="Recurring">Recurring</option>
+                <option value="Relative">Relative</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="limit">Limit (Amps or Watts)</label>
+            <input type="number" id="limit" name="limit" value="0">
+        </div>
+        <div class="form-group">
+            <label for="duration">Duration (seconds)</label>
+            <input type="number" id="duration" name="duration" value="3600">
+        </div>
+        <button type="submit">Run Test</button>
+    </form>
+  </div>
+</div>
 <script>
-    const connectionStatusEl = document.getElementById("connection-status");
     const chargingStatusEl = document.getElementById("charging-status");
     const currentChargingEl = document.getElementById("current-charging");
-    const activeWallboxDisplay = document.getElementById("active-wallbox-display");
-    const selectWallboxButton = document.getElementById("select-wallbox-button");
     const shutdownServerButton = document.getElementById("shutdown-server-button");
-    const wallboxSelectionModal = document.getElementById("wallbox-selection-modal");
-    const wallboxOptionsList = document.getElementById("wallbox-options-list");
-    const closeWallboxModal = document.getElementById("close-wallbox-modal");
     const vendorEl = document.getElementById("vendor");
     const modelEl = document.getElementById("model");
     const firstStatusTimeEl = document.getElementById("first-status-time");
@@ -192,8 +311,6 @@
     const lastHeartbeatEl = document.getElementById("last-heartbeat");
     const statusMessageEl = document.getElementById("status-message");
     const logOutputEl = document.getElementById("log-output");
-    const timerDisplayEl = document.getElementById("timer-display");
-    const timerLabelEl = document.getElementById("timer-label");
     const activeTransactionIdDisplay = document.getElementById("active-transaction-id-display");
 
     const evStateEl = document.getElementById("ev-state");
@@ -205,30 +322,10 @@
 
     const WS_PORT = {{ ocpp_port }};
 
-    // Auto-detection state
-    
-
     let chargePointsData = {};
-    let pageLoadTime = Date.now();
-    let lastCommandTime = null;
+    let transactionsData = {};
     let isConnected = false;
     let useSimulator = false;
-    let selectedWallboxId = null; // To store the locally selected wallbox ID
-
-    function updateTimer() {
-        let startTime;
-        if (!isConnected) {
-            timerLabelEl.textContent = 'Time to Connect';
-            startTime = pageLoadTime;
-        } else {
-            timerLabelEl.textContent = 'Time Since Last Command';
-            startTime = lastCommandTime || pageLoadTime;
-        }
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
-        const s = String(elapsed % 60).padStart(2, '0');
-        timerDisplayEl.textContent = `${m}:${s}`;
-    }
 
     function showStatusMessage(message, isError = false) {
         statusMessageEl.textContent = message;
@@ -239,48 +336,45 @@
 
     function updateChargePointDetails(cpId) {
         const cp = chargePointsData[cpId];
-        console.log(`[Debug] updateChargePointDetails called for cpId: '${cpId}'. Full data object:`, cp);
-
         if (cp) {
-            // Update text fields
             vendorEl.textContent = cp.vendor || 'N/A';
             modelEl.textContent = cp.model || 'N/A';
             firstStatusTimeEl.textContent = cp.first_status_time ? new Date(cp.first_status_time).toLocaleString() : 'N/A';
             bootTimeEl.textContent = cp.boot_time ? new Date(cp.boot_time).toLocaleString() : 'N/A';
             chargingStatusEl.textContent = cp.status || 'N/A';
-
-            // Update current charging display
             const powerW = cp.current_power_w || 0;
             const currentA = cp.current_current_a || 0;
             currentChargingEl.textContent = `${powerW.toFixed(0)} W / ${currentA.toFixed(1)} A`;
-
             lastHeartbeatEl.textContent = cp.last_heartbeat ? new Date(cp.last_heartbeat).toLocaleString() : 'N/A';
-
-            // Enable all buttons for the active charge point
             document.querySelectorAll('.test-category .button-group button').forEach(btn => {
                 btn.classList.remove('disabled');
             });
-
-            // Update button colors based on test results
             const testResults = cp.test_results || {};
-            console.log("[Debug] Processing test results:", testResults);
-
             document.querySelectorAll('[data-step-key]').forEach(btn => {
                 const stepKey = btn.dataset.stepKey;
                 const result = testResults[stepKey];
-                console.log(`  - Checking button for step '${stepKey}'. Found result: '${result}'`);
-
-                btn.classList.remove('btn-success', 'btn-failure'); // Reset classes first
-                if (result === 'SUCCESS') {
-                    console.log(`    -> Applying 'btn-success' to '${stepKey}'`);
+                btn.classList.remove('btn-success', 'btn-failure');
+                if (result === 'PASSED') {
                     btn.classList.add('btn-success');
-                } else if (result === 'FAILURE') {
-                    console.log(`    -> Applying 'btn-failure' to '${stepKey}'`);
+                } else if (result === 'FAILED') {
                     btn.classList.add('btn-failure');
                 }
             });
+
+            const scheduleContainer = document.getElementById('composite-schedule-display');
+            if (cp.composite_schedule && cp.composite_schedule.chargingSchedulePeriod) {
+                let scheduleHtml = '<h4>Composite Schedule</h4>';
+                scheduleHtml += `<ul>`;
+                cp.composite_schedule.chargingSchedulePeriod.forEach((period, index) => {
+                    scheduleHtml += `<li>Period ${index + 1}: Start ${period.startPeriod}s, Limit ${period.limit}${cp.composite_schedule.chargingRateUnit}, Phases ${period.numberPhases || 'N/A'}</li>`;
+                });
+                scheduleHtml += `</ul>`;
+                scheduleContainer.innerHTML = scheduleHtml;
+            } else {
+                scheduleContainer.innerHTML = '';
+            }
+
         } else {
-            // Clear details and disable/reset buttons if no CP is selected/connected
             ['vendor', 'model', 'first-status-time', 'boot-time', 'charging-status', 'last-heartbeat'].forEach(id => document.getElementById(id).textContent = 'N/A');
             currentChargingEl.textContent = '0 W / 0.0 A';
             document.querySelectorAll('.test-category .button-group button').forEach(btn => {
@@ -291,7 +385,6 @@
     }
 
     async function fetchChargePoints() {
-        console.log(`[Debug] fetchChargePoints called.`);
         try {
             const r = await fetch('/api/charge_points');
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -299,96 +392,114 @@
             chargePointsData = responseData.charge_points;
             const activeCpId = responseData.active_charge_point_id;
             const activeTxId = responseData.active_transaction_id;
-
-            console.log("[Debug] fetchChargePoints received new data from API:", JSON.parse(JSON.stringify(chargePointsData)));
-            console.log("[Debug] Active Charge Point ID from backend:", activeCpId);
-            console.log("[Debug] Active Transaction ID from backend:", activeTxId);
-
             const ids = Object.keys(chargePointsData);
-            wallboxOptionsList.innerHTML = ''; // Clear existing buttons in the modal
-
-            if (ids.length === 0) {
-                wallboxOptionsList.innerHTML = '<p>No charge points connected</p>';
-                connectionStatusEl.textContent = 'No Connections';
-                connectionStatusEl.style.color = '#dc3545';
-                activeWallboxDisplay.textContent = 'N/A';
-                selectWallboxButton.disabled = true;
-            } else {
-                ids.forEach(id => {
-                    const button = document.createElement('button');
-                    button.textContent = id;
-                    button.dataset.id = id;
-                    button.classList.add('wallbox-button'); // Add a class for styling
-                    button.style.display = 'block'; // Make buttons block level for better stacking
-                    button.style.width = '100%';
-                    button.style.marginBottom = '5px';
-                    button.onclick = async () => {
-                        selectedWallboxId = id; // Update local selection
-                        await setActiveChargePoint(selectedWallboxId); // Activate on backend
-                        wallboxSelectionModal.style.display = 'none'; // Hide modal
-                        activeWallboxDisplay.textContent = selectedWallboxId; // Update main display
-                    };
-                    wallboxOptionsList.appendChild(button);
-                });
-
-                // Set initial active wallbox display
-                if (activeCpId) {
-                    activeWallboxDisplay.textContent = activeCpId;
-                    selectedWallboxId = activeCpId; // Ensure selectedWallboxId reflects the active one
-                } else if (ids.length > 0) {
-                    // If no active CP from backend, but CPs exist, default display to the first one
-                    activeWallboxDisplay.textContent = ids[0];
-                    selectedWallboxId = ids[0];
-                } else {
-                    activeWallboxDisplay.textContent = 'N/A';
-                }
-                selectWallboxButton.disabled = false;
-                connectionStatusEl.textContent = 'Connected';
-                connectionStatusEl.style.color = '#28a745';
-                updateChargePointDetails(activeCpId); // Always update details based on the *active* CP
+            if (ids.length > 0) {
+                updateChargePointDetails(activeCpId);
                 activeTransactionIdDisplay.textContent = activeTxId !== null ? activeTxId : 'N/A';
             }
         } catch (e) {
             console.error(e);
-            connectionStatusEl.textContent = 'Server Error';
-            connectionStatusEl.style.color = '#dc3545';
-            selectWallboxButton.disabled = true;
-            activeWallboxDisplay.textContent = 'N/A';
+        }
+    }
+
+    async function fetchTransactions() {
+        try {
+            const r = await fetch('/api/transactions');
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const responseData = await r.json();
+            transactionsData = responseData.transactions;
+            window.transactionsData = transactionsData;
+        } catch (e) {
+            console.error('Error fetching transactions:', e);
+        }
+    }
+
+    function openChargingProfileModal(stepKey) {
+        const modal = document.getElementById('chargingProfileModal');
+        const modalTitle = document.getElementById('modal-title');
+        const stepKeyInput = document.getElementById('modal-step-key');
+        const form = document.getElementById('chargingProfileForm');
+        const purposeSelect = form.chargingProfilePurpose;
+
+        stepKeyInput.value = stepKey;
+
+        // Show all options first
+        for (let i = 0; i < purposeSelect.options.length; i++) {
+            purposeSelect.options[i].style.display = "";
+        }
+
+        // Set defaults based on the test case
+        if (stepKey === 'run_c1_set_charging_profile_test') {
+            modalTitle.textContent = 'C.1: SetChargingProfile';
+            form.stackLevel.value = 0;
+            form.chargingProfilePurpose.value = 'TxProfile';
+            form.chargingProfileKind.value = 'Absolute';
+            form.limit.value = 0; // 'disable' value
+            form.duration.value = 3600;
+
+            // Hide TxDefaultProfile for C.1
+            for (let i = 0; i < purposeSelect.options.length; i++) {
+                if (purposeSelect.options[i].value === 'TxDefaultProfile') {
+                    purposeSelect.options[i].style.display = "none";
+                }
+            }
+
+        } else if (stepKey === 'run_c4_tx_default_profile_test') {
+            modalTitle.textContent = 'C.4: TxDefaultProfile';
+            form.stackLevel.value = 0;
+            form.chargingProfilePurpose.value = 'TxDefaultProfile';
+            form.chargingProfileKind.value = 'Absolute';
+            form.limit.value = 5000; // 'medium' value
+            form.duration.value = 3600;
+        }
+
+        modal.style.display = 'block';
+    }
+
+    async function runTestWithParams(stepKey, params) {
+        const btn = document.querySelector(`[data-step-key='${stepKey}']`);
+        btn.classList.add('disabled');
+        document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
+            if (otherBtn !== btn) {
+                otherBtn.classList.add('disabled');
+            }
+        });
+
+        try {
+            const r = await fetch(`/api/test/${stepKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || 'Unknown error');
+            showStatusMessage(j.status || 'Done');
+        } catch (e) {
+            showStatusMessage(`Failed: ${e.message}`, true);
+        } finally {
+            await fetchChargePoints();
+            btn.classList.remove('disabled');
+            document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
+                if (otherBtn !== btn) {
+                    otherBtn.classList.remove('disabled');
+                }
+            });
         }
     }
 
     async function fetchAndRenderTestSteps() {
         const testDefinitions = {
-            'run_a1_initial_registration': { name: 'A.1: Initial Registration', category: 'category-a-buttons' },
-            'run_a2_configuration_exchange': { name: 'A.2: Read Configuration', category: 'category-a-buttons' },
-            'run_a3_change_configuration_test': { name: 'A.3: Change Configuration Test', category: 'category-a-buttons' },
-            'run_a4_check_initial_state': { name: 'A.4: Check Status Messages', category: 'category-a-buttons' },
-            'run_a5_trigger_all_messages_test': { name: 'A.5: Trigger All Messages Test', category: 'category-a-buttons' },
-            'run_b1_status_and_meter_value_acquisition': { name: 'B.1: Status & Meter Value Acquisition', category: 'category-b-buttons' },
-            'run_c1_remote_transaction_test': { name: 'C.1: Remote Transaction Test', category: 'category-c-buttons' },
-            'run_c2_user_initiated_transaction_test': { name: 'C.2: User-Initiated Transaction Test', category: 'category-c-buttons' },
-            'run_c3_check_power_limits_test': { name: 'C.3: Check Power/Current Limits', category: 'category-c-buttons' },
-            'run_d1_set_live_charging_power': { name: 'D.1: Set Live Charging Power', category: 'category-d-buttons' },
-            'run_d2_set_default_charging_profile': { name: 'D.2: Set Default Profile (Medium)', category: 'category-d-buttons' },
-            'run_d3_smart_charging_capability_test': { name: 'D.3: Smart Charging Capability Test', category: 'category-d-buttons' },
-            'run_d4_clear_default_charging_profile': { name: 'D.4: Clear Default Charging Profile', category: 'category-d-buttons' },
-            'run_d5_set_profile_5000w': { name: 'D.5: Set Profile (Low)', category: 'category-d-buttons' },
-            'run_d6_set_high_charging_profile': { name: 'D.6: Set Default Profile (High)', category: 'category-d-buttons' },
-            'run_e1_remote_start_state_a': { name: 'E.1: Remote Start (State A)', category: 'category-e-buttons' },
-            'run_e2_remote_start_state_b': { name: 'E.2: Remote Start (State B)', category: 'category-e-buttons' },
-            'run_e3_remote_start_state_c': { name: 'E.3: Remote Start (State C)', category: 'category-e-buttons' },
-            'run_e4_set_profile_6a': { name: 'E.4: Set Profile (Low)', category: 'category-e-buttons' },
-            'run_e5_set_profile_10a': { name: 'E.5: Set Profile (Medium)', category: 'category-e-buttons' },
-            'run_e6_set_profile_16a': { name: 'E.6: Set Profile (High)', category: 'category-e-buttons' },
-            'run_e7_clear_profile': { name: 'E.7: Clear Profile', category: 'category-e-buttons' },
-            'run_e8_remote_stop_transaction': { name: 'E.8: Remote Stop Transaction', category: 'category-e-buttons' },
-            'run_e9_brutal_stop': { name: 'E.9: Brutal Stop (Reset Hard)', category: 'category-e-buttons' },
-            'run_e10_get_composite_schedule': { name: 'E.10: Get Schedule Status', category: 'category-e-buttons' },
-            'run_e11_clear_all_profiles': { name: 'E.11: Clear All Profiles', category: 'category-e-buttons' }
+            'run_a1_change_configuration_test': { name: 'A.1: ChangeConfiguration', category: 'category-a-buttons' },
+            'run_a2_get_configuration_test': { name: 'A.2: GetConfiguration', category: 'category-a-buttons' },
+            'run_b1_remote_start_transaction_test': { name: 'B.1: RemoteStartTransaction', category: 'category-b-buttons' },
+            'run_b2_remote_stop_transaction_test': { name: 'B.2: RemoteStopTransaction', category: 'category-b-buttons' },
+            'run_c1_set_charging_profile_test': { name: 'C.1: SetChargingProfile', category: 'category-c-buttons' },
+            'run_c2_get_composite_schedule_test': { name: 'C.2: GetCompositeSchedule', category: 'category-c-buttons' },
+            'run_c3_clear_charging_profile_test': { name: 'C.3: ClearChargingProfile', category: 'category-c-buttons' },
+            'run_c4_tx_default_profile_test': { name: 'C.4: TxDefaultProfile', category: 'category-c-buttons' }
         };
 
         try {
-            console.log(`[Debug] fetchAndRenderTestSteps started.`); // Added log
             const r = await fetch('/api/test_steps');
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const steps = await r.json();
@@ -401,57 +512,48 @@
                 const container = document.getElementById(def.category);
                 const btn = document.createElement('button');
                 btn.textContent = def.name;
-                btn.dataset.stepKey = key; // Tag the button with its step name
-                console.log(`[Debug] Creating button for test: ${key}`); // Added log
-                btn.onclick = async () => {
-                    console.log(`[Debug] Button clicked for test '${key}'. Inside onclick handler.`);
-                    
-                    // Pre-test check: Ensure selected wallbox matches active wallbox in backend
-                    const r = await fetch('/api/charge_points');
-                    const responseData = await r.json();
-                    const backendActiveCpId = responseData.active_charge_point_id;
+                btn.dataset.stepKey = key;
 
-                    if (!selectedWallboxId) {
-                        showStatusMessage("Please select a wallbox first.", true);
-                        return;
-                    }
+                if (key === 'run_c1_set_charging_profile_test' || key === 'run_c4_tx_default_profile_test') {
+                    btn.onclick = () => {
+                        openChargingProfileModal(key);
+                    };
+                } else {
+                    btn.onclick = async () => {
+                        const r = await fetch('/api/discovered_charge_points');
+                        const responseData = await r.json();
+                        const backendActiveCpId = responseData.active_charge_point_id;
 
-                    if (selectedWallboxId !== backendActiveCpId) {
-                        showStatusMessage(`Selected wallbox (${selectedWallboxId}) does not match active wallbox in backend (${backendActiveCpId}). Please activate it first.`, true);
-                        return;
-                    }
-
-                    lastCommandTime = Date.now();
-                    btn.classList.add('disabled'); // Disable button
-                    // Disable all other test buttons
-                    document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
-                        if (otherBtn !== btn) {
-                            otherBtn.classList.add('disabled');
+                        if (!backendActiveCpId) {
+                            showStatusMessage("Please connect a wallbox first. No active wallbox detected.", true);
+                            return;
                         }
-                    });
-                    selectWallboxButton.disabled = true; // Disable select wallbox button
 
-                    try {
-                        const r = await fetch(`/api/test/${key}`, { method: 'POST' });
-                        const j = await r.json();
-                        if (!r.ok) throw new Error(j.error || 'Unknown error');
-                        showStatusMessage(j.status || 'Done');
-                    } catch (e) {
-                        showStatusMessage(`Failed: ${e.message}`, true);
-                    } finally {
-                        console.log(`[Debug] Test '${key}' finished. Forcing UI refresh by calling fetchChargePoints().`);
-                        // Force a refresh to get the latest test results immediately
-                        await fetchChargePoints();
-                        btn.classList.remove('disabled'); // Re-enable button
-                        // Re-enable all other test buttons
+                        btn.classList.add('disabled');
                         document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
                             if (otherBtn !== btn) {
-                                otherBtn.classList.remove('disabled');
+                                otherBtn.classList.add('disabled');
                             }
                         });
-                        selectWallboxButton.disabled = false; // Re-enable select wallbox button
-                    }
-                };
+
+                        try {
+                            const r = await fetch(`/api/test/${key}`, { method: 'POST' });
+                            const j = await r.json();
+                            if (!r.ok) throw new Error(j.error || 'Unknown error');
+                            showStatusMessage(j.status || 'Done');
+                        } catch (e) {
+                            showStatusMessage(`Failed: ${e.message}`, true);
+                        } finally {
+                            await fetchChargePoints();
+                            btn.classList.remove('disabled');
+                            document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
+                                if (otherBtn !== btn) {
+                                    otherBtn.classList.remove('disabled');
+                                }
+                            });
+                        }
+                    };
+                }
                 container.appendChild(btn);
             }
         } catch (e) {
@@ -471,13 +573,13 @@
             if (settings.hasOwnProperty('use_simulator')) {
                 if (useSimulator) {
                     currentModeEl.textContent = 'EV Simulator';
-                    currentModeEl.style.color = '#007bff'; // blue
+                    currentModeEl.style.color = '#007bff';
                     document.getElementById('ev-simulator-heading').style.display = 'block';
                     document.getElementById('ev-info').style.display = 'flex';
                     setEvStateButtonsEnabled(true);
                 } else {
                     currentModeEl.textContent = 'Live EV';
-                    currentModeEl.style.color = '#28a745'; // green
+                    currentModeEl.style.color = '#28a745';
                     document.getElementById('ev-simulator-heading').style.display = 'none';
                     document.getElementById('ev-info').style.display = 'none';
                     setEvStateButtonsEnabled(false);
@@ -488,7 +590,7 @@
             console.error('Failed to fetch server settings:', e);
             const currentModeEl = document.getElementById('current-mode');
             currentModeEl.textContent = 'Status Unknown';
-            currentModeEl.style.color = '#6c757d'; // grey
+            currentModeEl.style.color = '#6c757d';
         }
     }
 
@@ -496,7 +598,7 @@
         document.querySelectorAll('#ev-info .button-group button').forEach(btn => {
             btn.disabled = !enabled;
             if (!enabled) {
-                btn.classList.remove('active-state'); // Remove active state if disabled
+                btn.classList.remove('active-state');
             }
         });
     }
@@ -516,7 +618,6 @@
         }
         evErrorEl.textContent = errorText;
 
-        // Update button styles to show the active state
         document.querySelectorAll('#ev-info .button-group button').forEach(btn => {
             btn.classList.remove('active-state');
         });
@@ -536,7 +637,7 @@
             const s = await r.json();
             updateEvStatusUI(s);
         } catch {
-            updateEvStatusUI({}); // Clear UI on error
+            updateEvStatusUI({});
         }
     }
 
@@ -547,7 +648,6 @@
 
         ws.onmessage = function(event) {
             try {
-                console.log("Received EV status via WebSocket:", event.data);
                 const message = JSON.parse(event.data);
                 if (message.type === 'ev_status' && message.data) {
                     updateEvStatusUI(message.data);
@@ -558,7 +658,6 @@
         };
 
         ws.onclose = function() {
-            console.log('EV status WebSocket closed. Reconnecting in 3 seconds...');
             setTimeout(connectEvStatusSocket, 3000);
         };
     }
@@ -582,15 +681,12 @@
         };
 
         ws.onclose = function() {
-            console.log('Log WebSocket closed. Reconnecting in 3 seconds...');
             setTimeout(connectLogSocket, 3000);
         };
     }
 
     async function setEvState(state) {
-        console.log(`setEvState called with state: ${state}`);
         if (!useSimulator) {
-            console.log(`useSimulator is false, not sending request.`);
             showStatusMessage("Cannot set EV state: Simulator is disabled.", true);
             return;
         }
@@ -607,21 +703,15 @@
             if (j.newState) {
                 updateEvStatusUI(j.newState);
             }
-            lastCommandTime = Date.now();
         } catch (e) {
             showStatusMessage(e.message, true);
         }
     }
 
-    
-
     async function setActiveChargePoint(cpId) {
-        console.log(`[Debug] setActiveChargePoint called with cpId: ${cpId}`); // Added for debugging
-        // Disable all test buttons
         document.querySelectorAll('.test-category .button-group button').forEach(btn => {
             btn.classList.add('disabled');
         });
-        // document.getElementById('change-wallbox-button').classList.add('disabled'); // Removed
 
         try {
             const r = await fetch('/api/set_active_charge_point', {
@@ -635,21 +725,11 @@
         } catch (e) {
             showStatusMessage(`Failed to set active charge point: ${e.message}`, true);
         } finally {
-            // Re-enable all test buttons
             document.querySelectorAll('.test-category .button-group button').forEach(btn => {
                 btn.classList.remove('disabled');
             });
-            // document.getElementById('change-wallbox-button').classList.remove('disabled'); // Removed
         }
     }
-
-    selectWallboxButton.onclick = () => {
-        wallboxSelectionModal.style.display = 'flex'; // Show the modal
-    };
-
-    closeWallboxModal.onclick = () => {
-        wallboxSelectionModal.style.display = 'none'; // Hide the modal
-    };
 
     shutdownServerButton.onclick = async () => {
         if (confirm("Are you sure you want to shut down the server?")) {
@@ -658,7 +738,6 @@
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || 'Unknown error');
                 showStatusMessage(j.status || 'Server shutdown initiated.');
-                // Optionally disable buttons or show a message that server is down
                 document.querySelectorAll('button').forEach(btn => btn.disabled = true);
             } catch (e) {
                 showStatusMessage(`Failed to shut down server: ${e.message}`, true);
@@ -666,78 +745,251 @@
         }
     };
 
-    // Charging Rate Unit Management
-    async function fetchChargingRateUnit() {
-        try {
-            const response = await fetch('/api/charging_rate_unit');
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
+    function updateWallboxCapabilityStatus() {
+        const meterValuesContent = document.getElementById('meter-values-content');
 
-            // Update status text
-            document.getElementById('charging-unit-status').textContent = `Current: ${data.current_unit}`;
+        if (!window.transactionsData) {
+            meterValuesContent.textContent = 'Loading transaction data...';
+            return;
+        }
 
-            // Update detection status text
-            const detectionStatusTextEl = document.getElementById('detection-status-text');
-            if (data.detection_completed) {
-                if (data.auto_detected) {
-                    detectionStatusTextEl.textContent = `Auto-detected: ${data.current_unit}`;
-                    detectionStatusTextEl.className = 'detection-status-auto-detected';
-                } else {
-                    detectionStatusTextEl.textContent = `Manual/Default: ${data.current_unit}`;
-                    detectionStatusTextEl.className = 'detection-status-manual';
+        let meterValuesFound = false;
+        for (const [txId, txData] of Object.entries(window.transactionsData)) {
+            if (txData.meter_values && txData.meter_values.length > 0) {
+                meterValuesFound = true;
+                const latestMeter = txData.meter_values[txData.meter_values.length - 1];
+                meterValuesContent.innerHTML = '';
+
+                const header = document.createElement('div');
+                header.style.marginBottom = '10px';
+                header.style.fontWeight = 'bold';
+                header.textContent = `Transaction ${txId} (${txData.status || 'Unknown'}) - ${txData.meter_values.length} readings`;
+                meterValuesContent.appendChild(header);
+
+                if (latestMeter && latestMeter.sampledValue) {
+                    const voltage = [];
+                    const current = [];
+                    const power = [];
+                    const energy = [];
+
+                    for (const sample of latestMeter.sampledValue) {
+                        const measurand = sample.measurand || 'Unknown';
+                        const value = parseFloat(sample.value || '0');
+                        const unit = sample.unit || '';
+                        const phase = sample.phase || '';
+                        const item = { measurand, value, unit, phase };
+
+                        if (measurand.includes('Voltage')) voltage.push(item);
+                        else if (measurand.includes('Current')) current.push(item);
+                        else if (measurand.includes('Power')) power.push(item);
+                        else if (measurand.includes('Energy')) energy.push(item);
+                    }
+
+                    if (voltage.length > 0) {
+                        const voltageDiv = document.createElement('div');
+                        voltageDiv.style.marginBottom = '8px';
+                        let voltageText = '🔌 Voltage: ';
+                        voltage.forEach((v, i) => {
+                            if (i > 0) voltageText += ', ';
+                            voltageText += `${v.phase || 'L' + (i+1)}: ${v.value}${v.unit}`;
+                        });
+                        voltageDiv.textContent = voltageText;
+                        meterValuesContent.appendChild(voltageDiv);
+                    }
+
+                    if (current.length > 0) {
+                        const currentDiv = document.createElement('div');
+                        currentDiv.style.marginBottom = '8px';
+                        let currentText = '⚡ Current: ';
+                        current.forEach((c, i) => {
+                            if (i > 0) currentText += ', ';
+                            currentText += `${c.phase || 'L' + (i+1)}: ${c.value}${c.unit}`;
+                        });
+                        currentDiv.textContent = currentText;
+                        meterValuesContent.appendChild(currentDiv);
+                    }
+
+                    if (power.length > 0) {
+                        const powerDiv = document.createElement('div');
+                        powerDiv.style.marginBottom = '8px';
+                        let powerText = '🔋 Power: ';
+                        power.forEach((p, i) => {
+                            if (i > 0) powerText += ', ';
+                            powerText += `${p.phase || 'L' + (i+1)}: ${p.value}${p.unit}`;
+                        });
+                        powerDiv.textContent = powerText;
+                        meterValuesContent.appendChild(powerDiv);
+                    }
+
+                    if (energy.length > 0) {
+                        const energyDiv = document.createElement('div');
+                        energyDiv.style.marginBottom = '8px';
+                        let energyText = '📊 Energy: ';
+                        energy.forEach((e, i) => {
+                            if (i > 0) energyText += ', ';
+                            energyText += `${e.value}${e.unit}`;
+                        });
+                        energyDiv.textContent = energyText;
+                        meterValuesContent.appendChild(energyDiv);
+                    }
                 }
-            } else {
-                // Check if there are any charge points connected
-                const hasChargePoints = Object.keys(chargePointsData).length > 0;
-                if (hasChargePoints) {
-                    detectionStatusTextEl.textContent = 'Waiting for detection...';
-                } else {
-                    detectionStatusTextEl.textContent = 'Waiting for charge point connection...';
-                }
-                detectionStatusTextEl.className = 'detection-status-waiting';
+                break;
             }
+        }
 
-            // Update test values display
-            updateTestValuesDisplay(data.current_unit);
-        } catch (e) {
-            console.error('Failed to fetch charging rate unit:', e);
-            document.getElementById('detection-status-text').textContent = 'Error fetching detection status';
-            document.getElementById('detection-status-text').className = '';
+        if (!meterValuesFound) {
+            meterValuesContent.textContent = 'No MeterValues data available. Start a charging transaction to see live measurements.';
         }
     }
 
-    function updateTestValuesDisplay(unit) {
-        const values = unit === 'W'
-            ? { disable: '0W', low: '4000W', medium: '8000W', high: '11000W' }
-            : { disable: '0A', low: '6A', medium: '11A', high: '16A' };
-
-        const display = document.getElementById('test-values-display');
-        display.innerHTML = Object.entries(values).map(([level, value]) =>
-            `<span class="value-item">${level.charAt(0).toUpperCase() + level.slice(1)}: ${value}</span>`
-        ).join('');
+    async function fetchDiscoveredWallboxes() {
+        try {
+            const response = await fetch('/api/discovered_charge_points');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            updateWallboxDiscoveryUI(data);
+        } catch (e) {
+            console.error('Failed to fetch discovered wallboxes:', e);
+        }
     }
 
-    
+    function updateWallboxDiscoveryUI(data) {
+        const container = document.getElementById('wallboxes-container');
+        const activeWallboxName = document.getElementById('active-wallbox-name');
+        const autodiscoveryCheckbox = document.getElementById('autodiscovery-enabled');
 
-    // Periodic tasks
-    setInterval(updateTimer, 1000);
-    setInterval(() => fetchChargePoints(), 3000); // For charge point status
-    setInterval(fetchServerSettings, 3000); // For simulator availability
-    setInterval(fetchChargingRateUnit, 3000); // For charging rate unit detection status
-    
+        autodiscoveryCheckbox.checked = data.autodiscovery_enabled;
+        activeWallboxName.textContent = data.active_charge_point_id || 'None selected';
 
-    // Initial
+        const discovered = data.discovered_charge_points;
+
+        if (Object.keys(discovered).length === 0) {
+            container.innerHTML = '<div class="no-wallboxes">No wallboxes discovered yet. Connect a wallbox to ws://192.168.0.150:8887/YourWallboxID</div>';
+        } else {
+            container.innerHTML = '';
+            Object.entries(discovered).forEach(([cpId, info]) => {
+                const isActive = cpId === data.active_charge_point_id;
+                const isConnected = info.status === 'connected';
+
+                const wallboxItem = document.createElement('div');
+                wallboxItem.className = `wallbox-item ${isActive ? 'active' : ''} ${!isConnected ? 'disconnected' : ''}`;
+
+                wallboxItem.innerHTML = `
+                    <div class="wallbox-info">
+                        <div class="wallbox-name">${cpId}</div>
+                        <div class="wallbox-details">
+                            IP: ${info.remote_address || 'N/A'} |
+                            Connections: ${info.connection_count || 0} |
+                            First seen: ${info.first_seen ? new Date(info.first_seen).toLocaleTimeString() : 'N/A'}
+                        </div>
+                    </div>
+                    <div class="wallbox-actions">
+                        <span class="wallbox-status ${isConnected ? 'connected' : 'disconnected'}">
+                            ${isConnected ? 'Connected' : 'Disconnected'}
+                        </span>
+                        ${isConnected && !isActive ?
+                            `<button class="select-btn" onclick="selectWallbox('${cpId}')">Select</button>` : ''}
+                        ${isActive ? '<span style="color:#4caf50; font-weight:bold;">ACTIVE</span>' : ''}
+                    </div>
+                `;
+
+                container.appendChild(wallboxItem);
+            });
+        }
+    }
+
+    async function selectWallbox(chargePointId) {
+        try {
+            const response = await fetch('/api/select_charge_point', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ charge_point_id: chargePointId })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                alert(`Error: ${error.error}`);
+                return;
+            }
+
+            const result = await response.json();
+            fetchDiscoveredWallboxes();
+        } catch (e) {
+            console.error('Failed to select wallbox:', e);
+            alert('Failed to select wallbox');
+        }
+    }
+
+    async function toggleAutodiscovery() {
+        const enabled = document.getElementById('autodiscovery-enabled').checked;
+
+        try {
+            const response = await fetch('/api/autodiscovery', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled })
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const result = await response.json();
+        } catch (e) {
+            console.error('Failed to toggle autodiscovery:', e);
+            document.getElementById('autodiscovery-enabled').checked = !enabled;
+        }
+    }
+
+    document.getElementById('autodiscovery-enabled').addEventListener('change', toggleAutodiscovery);
+
+    setInterval(() => {
+        fetchChargePoints();
+        fetchTransactions();
+        updateWallboxCapabilityStatus();
+    }, 3000);
+    setInterval(fetchServerSettings, 3000);
+    setInterval(fetchDiscoveredWallboxes, 2000);
+
     fetchServerSettings();
     fetchAndRenderTestSteps();
-    fetchChargingRateUnit(); // Initial fetch of charging rate unit detection status
+    fetchDiscoveredWallboxes();
+    fetchTransactions();
+
+    updateWallboxCapabilityStatus();
     refreshEvStatus();
     connectEvStatusSocket();
     connectLogSocket();
 
-    
-
-    // Initial fetch of charge points to populate dropdown and set initial active CP
     fetchChargePoints();
+
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const modal = document.getElementById('chargingProfileModal');
+        const closeButton = document.getElementById('modal-close-button');
+        const form = document.getElementById('chargingProfileForm');
+
+        closeButton.onclick = function() {
+            modal.style.display = "none";
+        }
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        form.onsubmit = function(event) {
+            event.preventDefault();
+            const stepKey = document.getElementById('modal-step-key').value;
+            const params = {
+                stackLevel: parseInt(form.stackLevel.value),
+                chargingProfilePurpose: form.chargingProfilePurpose.value,
+                chargingProfileKind: form.chargingProfileKind.value,
+                limit: parseFloat(form.limit.value),
+                duration: parseInt(form.duration.value)
+            };
+            runTestWithParams(stepKey, params);
+            modal.style.display = "none";
+        }
+    });
 </script>
 </body>
 </html>

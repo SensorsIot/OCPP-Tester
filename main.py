@@ -106,9 +106,12 @@ logger = logging.getLogger(__name__)
 # ---------- Per-path WebSocket handlers ----------
 async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: asyncio.Event, ev_sim_manager: EVSimulatorManager):
     """Handle OCPP charge point connection on /{charge_point_id}."""
+    from datetime import datetime, timezone
+    from app.core import register_discovered_charge_point, unregister_charge_point
+
     charge_point_id = path.strip("/")
     logger.info(f"🔌 OCPP connection received from {websocket.remote_address} on path '{path}'")
-    logger.info(f"🔍 Extracted charge_point_id: '{charge_point_id}'")
+    logger.debug(f"🔍 Extracted charge_point_id: '{charge_point_id}'")
 
     if not charge_point_id or charge_point_id in (LOG_WS_PATH.strip("/"), EV_STATUS_WS_PATH.strip("/")):
         logger.warning(f"❌ Invalid OCPP path '{path}' or conflicts with reserved paths. Closing connection.")
@@ -117,10 +120,28 @@ async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: a
         await websocket.close()
         return
 
-    logger.info(f"✅ Valid charge point ID '{charge_point_id}'. Creating OCPP handler...")
+    # Register the discovered charge point
+    connection_info = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "remote_address": str(websocket.remote_address)
+    }
+    auto_selected = register_discovered_charge_point(charge_point_id, connection_info)
+
+    if auto_selected:
+        logger.info(f"🎯 AUTODISCOVERY: '{charge_point_id}' is now the active charge point")
+    else:
+        logger.info(f"📋 DISCOVERY: Registered charge point '{charge_point_id}' (not auto-selected)")
+
+    logger.debug(f"✅ Valid charge point ID '{charge_point_id}'. Creating OCPP handler...")
     handler = OCPPHandler(websocket, path, refresh_trigger, ev_sim_manager)
-    logger.info(f"🚀 Starting OCPP handler for charge point '{charge_point_id}'...")
-    await handler.start()
+    logger.debug(f"🚀 Starting OCPP handler for charge point '{charge_point_id}'...")
+
+    try:
+        await handler.start()
+    finally:
+        # Unregister when connection closes
+        unregister_charge_point(charge_point_id)
+        logger.info(f"🔌 Charge point '{charge_point_id}' disconnected and unregistered")
 
 async def handle_log_stream(websocket: ServerConnection, streamer: LogStreamer):
     await streamer.add_client(websocket)
@@ -145,17 +166,17 @@ async def ws_router(websocket: ServerConnection,
     path = "unknown"
     try:
         path = websocket.path
-        logger.info(f"🔍 WebSocket connection attempt from {websocket.remote_address} on path: '{path}'")
-        logger.info(f"🔍 LOG_WS_PATH='{LOG_WS_PATH}', EV_STATUS_WS_PATH='{EV_STATUS_WS_PATH}'")
+        logger.debug(f"🔍 WebSocket connection attempt from {websocket.remote_address} on path: '{path}'")
+        logger.debug(f"🔍 LOG_WS_PATH='{LOG_WS_PATH}', EV_STATUS_WS_PATH='{EV_STATUS_WS_PATH}'")
 
         if path == LOG_WS_PATH:
-            logger.info(f"🔍 Routing to log stream handler")
+            logger.debug(f"🔍 Routing to log stream handler")
             await handle_log_stream(websocket, log_streamer)
         elif path == EV_STATUS_WS_PATH:
-            logger.info(f"🔍 Routing to EV status stream handler")
+            logger.debug(f"🔍 Routing to EV status stream handler")
             await handle_ev_status_stream(websocket, ev_status_streamer)
         else:
-            logger.info(f"🔍 Routing to OCPP handler for charge point path: '{path}'")
+            logger.debug(f"🔍 Routing to OCPP handler for charge point path: '{path}'")
             await handle_ocpp(websocket, path, ev_refresh_trigger, ev_sim_manager)
     except Exception as e:
         logger.error(f"❌ WebSocket router error on path '{path}': {e}", exc_info=True)

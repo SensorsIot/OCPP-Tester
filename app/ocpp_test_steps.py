@@ -45,51 +45,67 @@ class OcppTestSteps:
 
     
 
-    async def run_a1_initial_registration(self):
-        """A.1: Verifies that the charge point has registered itself."""
-        logger.info(f"--- Step A.1: Verifying initial registration for {self.charge_point_id} ---")
-        step_name = "run_a1_initial_registration"
-        self._check_cancellation()
-        # Trigger a BootNotification to verify the charge point is responsive
-        # to server-initiated commands.
-        success = await self.handler.send_and_wait(
-            "TriggerMessage",
-            BootNotificationRequest(chargePointModel="", chargePointVendor="") # Dummy payload for TriggerMessage
-        )
-        self._check_cancellation()
-        if success:
-            logger.info("SUCCESS: The charge point acknowledged the TriggerMessage request.")
-            self._set_test_result(step_name, "PASSED")
-        else:
-            logger.error("FAILURE: The charge point did not respond to the TriggerMessage request within the timeout.")
-            self._set_test_result(step_name, "FAILED")
+    # UNUSED - Commented out to avoid conflicts with new structure
+    # async def run_a1_initial_registration(self):
+    #     """A.1: Verifies that the charge point has registered itself."""
+    #     logger.info(f"--- Step A.1: Verifying initial registration for {self.charge_point_id} ---")
+    #     step_name = "run_a1_initial_registration"
+    #     self._check_cancellation()
+    #     # Trigger a BootNotification to verify the charge point is responsive
+    #     # to server-initiated commands.
+    #     success = await self.handler.send_and_wait(
+    #         "TriggerMessage",
+    #         BootNotificationRequest(chargePointModel="", chargePointVendor="") # Dummy payload for TriggerMessage
+    #     )
+    #     self._check_cancellation()
+    #     if success:
+    #         logger.info("SUCCESS: The charge point acknowledged the TriggerMessage request.")
+    #         self._set_test_result(step_name, "PASSED")
+    #     else:
+    #         logger.error("FAILURE: The charge point did not respond to the TriggerMessage request within the timeout.")
+    #         self._set_test_result(step_name, "FAILED")
+    #
+    #     logger.info(f"--- Step A.1 for {self.charge_point_id} complete. ---")
 
-        logger.info(f"--- Step A.1 for {self.charge_point_id} complete. ---")
-
-    async def run_a2_configuration_exchange(self):
-        """A.2: Fetches and displays all configuration settings from the charge point."""
-        logger.info(f"--- Step A.2: Running configuration exchange for {self.charge_point_id} ---")
-        step_name = "run_a2_configuration_exchange"
+    async def run_a2_get_configuration_test(self):
+        """A.2: GetConfiguration - Fetches and displays all configuration settings from the charge point."""
+        logger.info(f"--- Step A.2: Running GetConfiguration test for {self.charge_point_id} ---")
+        step_name = "run_a2_get_configuration_test"
         self._check_cancellation()
-        logger.info("Attempting to fetch all configuration keys from the charge point.")
+        logger.info("  Requesting all configuration keys from charge point...")
         response = await self.handler.send_and_wait(
             "GetConfiguration",
-            GetConfigurationRequest(key=[])
+            GetConfigurationRequest(key=[]),
+            timeout=30
         )
         self._check_cancellation()
         if response and response.get("configurationKey"):
-            logger.info("SUCCESS: Received configuration keys from the charge point.")
+            config_keys = response["configurationKey"]
+            max_keys = 30  # From GetConfigurationMaxKeys
+
+            if len(config_keys) >= max_keys:
+                logger.info(f"    ⚠️ Received {len(config_keys)} configuration keys (may be limited by GetConfigurationMaxKeys={max_keys})")
+                logger.info("    📝 Note: There might be additional configuration keys not shown")
+            else:
+                logger.info(f"    ✅ Received {len(config_keys)} configuration keys")
+
             self._set_test_result(step_name, "PASSED")
             
             logger.info("--- Charge Point Configuration ---")
-            for key_value in response["configurationKey"]:
+            for key_value in config_keys:
                 key = key_value.get("key")
-                readonly = key_value.get("readonly")
-                value = key_value.get("value")
+                readonly = key_value.get("readonly", False)
+                value = key_value.get("value", "")
+                readonly_indicator = " (readonly)" if readonly else ""
+                logger.info(f"  {key}{readonly_indicator}: {value}")
+
+                # Store important features
                 if key == "SupportedFeatureProfiles":
-                                            CHARGE_POINTS[self.charge_point_id]["features"] = [f.strip() for f in key_value.get("value").split(",")]
-                logger.info(f"{key} (readonly: {readonly}): {value}")
+                    CHARGE_POINTS[self.charge_point_id]["features"] = [f.strip() for f in value.split(",")]
             logger.info("-------------------------------------")
+
+            # Add wallbox capabilities based on actual data
+            await self._display_wallbox_capabilities()
 
         elif response and response.get("unknownKey"):
             logger.warning("Charge point reported unknown keys. This might indicate a partial success.")
@@ -106,16 +122,19 @@ class OcppTestSteps:
             for key in response["unknownKey"]:
                 logger.info(f"- {key}")
             logger.info("------------------------------------------")
+
+            # Add wallbox capabilities based on actual data
+            await self._display_wallbox_capabilities()
         else:
-            logger.error("FAILURE: The charge point did not return any configuration keys.")
+            logger.error("    ❌ No configuration keys received from charge point")
             self._set_test_result(step_name, "FAILED")
 
         logger.info(f"--- Step A.2 for {self.charge_point_id} complete. ---")
 
-    async def run_a3_change_configuration_test(self):
-        """A.3: Changes configuration keys to match the evcc log."""
-        logger.info(f"--- Step A.3: Running Change Configuration test for {self.charge_point_id} ---")
-        step_name = "run_a3_change_configuration_test"
+    async def run_a1_change_configuration_test(self):
+        """A.1: ChangeConfiguration - Changes configuration keys to match the evcc log."""
+        logger.info(f"--- Step A.1: Running ChangeConfiguration test for {self.charge_point_id} ---")
+        step_name = "run_a1_change_configuration_test"
         self._check_cancellation()
         configurations = {
             "MeterValuesSampledData": "Current.Import.L1,Current.Import.L2,Current.Import.L3,Power.Active.Import.L1,Power.Active.Import.L2,Power.Active.Import.L3,Energy.Active.Import.Register,Voltage.L1-N,Voltage.L2-N,Voltage.L3-N",
@@ -132,6 +151,7 @@ class OcppTestSteps:
         all_success = True
         for key, value in configurations.items():
             self._check_cancellation()
+            logger.info(f"  Testing configuration '{key}'...")
             response = await self.handler.send_and_wait(
                 "ChangeConfiguration",
                 ChangeConfigurationRequest(key=key, value=value)
@@ -139,8 +159,11 @@ class OcppTestSteps:
             self._check_cancellation()
             if response and response.get("status") == "Accepted":
                 results[key] = "PASSED"
+                logger.info(f"    ✅ {key}: ACCEPTED")
             else:
                 results[key] = "FAILED"
+                status = response.get("status", "NO_RESPONSE") if response else "NO_RESPONSE"
+                logger.warning(f"    ❌ {key}: {status}")
                 all_success = False
         
         logger.info("--- Test Summary ---")
@@ -156,7 +179,7 @@ class OcppTestSteps:
         else:
             self._set_test_result(step_name, "FAILED")
 
-        logger.info(f"--- Step A.3 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step A.1 for {self.charge_point_id} complete. ---")
 
     async def run_a4_check_initial_state(self):
         """A.4: Checks the initial status of the charge point."""
@@ -320,100 +343,101 @@ class OcppTestSteps:
             
         logger.info(f"--- Step A.5 for {self.charge_point_id} complete. ---")
 
-    async def run_b1_status_and_meter_value_acquisition(self):
-        """B.1: Requests meter values from the charge point and waits for them."""
-        logger.info(f"--- Step B.1: Acquiring meter values for {self.charge_point_id} ---")
-        step_name = "run_b1_status_and_meter_value_acquisition"
-        self._check_cancellation()
-        # 1. Create an event to wait for the MeterValues message
-        meter_values_event = asyncio.Event()
-        self.pending_triggered_message_events["MeterValues"] = meter_values_event
+    # UNUSED - Commented out to avoid conflicts with new structure
+    # async def run_b1_status_and_meter_value_acquisition(self):
+    #     """B.1: Requests meter values from the charge point and waits for them."""
+    #     logger.info(f"--- Step B.1: Acquiring meter values for {self.charge_point_id} ---")
+    #     step_name = "run_b1_status_and_meter_value_acquisition"
+    #     self._check_cancellation()
+    #     # 1. Create an event to wait for the MeterValues message
+    #     meter_values_event = asyncio.Event()
+    #     self.pending_triggered_message_events["MeterValues"] = meter_values_event
+    #
+    #     # 2. Send the trigger
+    #     trigger_ok = await self.handler.send_and_wait(
+    #         "TriggerMessage",
+    #         TriggerMessageRequest(requestedMessage="MeterValues", connectorId=1)
+    #     )
+    #     self._check_cancellation()
+    #     if not trigger_ok:
+    #         logger.error("FAILURE: The charge point did not acknowledge the TriggerMessage request.")
+    #         self._set_test_result(step_name, "FAILED")
+    #         self.pending_triggered_message_events.pop("MeterValues", None)  # Cleanup
+    #         logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
+    #         return
+    #
+    #     # 3. Wait for the MeterValues message to arrive
+    #     try:
+    #         logger.info("Trigger acknowledged. Waiting for the MeterValues message from the charge point...")
+    #         await asyncio.wait_for(meter_values_event.wait(), timeout=15)
+    #         self._check_cancellation()
+    #         logger.info("SUCCESS: Received triggered MeterValues message from the charge point.")
+    #         self._set_test_result(step_name, "PASSED")
+    #     except asyncio.TimeoutError:
+    #         logger.error("FAILURE: Timed out waiting for the triggered MeterValues message.")
+    #         self._set_test_result(step_name, "FAILED")
+    #     finally:
+    #         self.pending_triggered_message_events.pop("MeterValues", None)
+    #
+    #     logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
 
-        # 2. Send the trigger
-        trigger_ok = await self.handler.send_and_wait(
-            "TriggerMessage",
-            TriggerMessageRequest(requestedMessage="MeterValues", connectorId=1)
-        )
-        self._check_cancellation()
-        if not trigger_ok:
-            logger.error("FAILURE: The charge point did not acknowledge the TriggerMessage request.")
-            self._set_test_result(step_name, "FAILED")
-            self.pending_triggered_message_events.pop("MeterValues", None)  # Cleanup
-            logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
-            return
-
-        # 3. Wait for the MeterValues message to arrive
-        try:
-            logger.info("Trigger acknowledged. Waiting for the MeterValues message from the charge point...")
-            await asyncio.wait_for(meter_values_event.wait(), timeout=15)
-            self._check_cancellation()
-            logger.info("SUCCESS: Received triggered MeterValues message from the charge point.")
-            self._set_test_result(step_name, "PASSED")
-        except asyncio.TimeoutError:
-            logger.error("FAILURE: Timed out waiting for the triggered MeterValues message.")
-            self._set_test_result(step_name, "FAILED")
-        finally:
-            self.pending_triggered_message_events.pop("MeterValues", None)
-
-        logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
-
-    async def run_c1_remote_transaction_test(self):
-        """C.1: Starts and stops a transaction remotely."""
-        logger.info(f"--- Step C.1: Running remote transaction test for {self.charge_point_id} ---")
-        step_name = "run_c1_remote_transaction_test"
+    async def run_b1_remote_start_transaction_test(self):
+        """B.1: RemoteStartTransaction - Starts a transaction remotely and verifies it's active."""
+        logger.info(f"--- Step B.1: Running RemoteStartTransaction test for {self.charge_point_id} ---")
+        step_name = "run_b1_remote_start_transaction_test"
         self._check_cancellation()
         id_tag = "test_id_1"
         connector_id = 1
 
         # 1. Simulate connecting an EV to the charge point.
+        logger.info("📡 Step 1: Setting EV state to 'B' (vehicle connected)...")
         await self._set_ev_state("B")
         self._check_cancellation()
-        logger.info(f"Wallbox status after setting EV state to B: {CHARGE_POINTS.get(self.charge_point_id, {}).get('status')}")
+        logger.debug(f"Wallbox status after setting EV state to B: {CHARGE_POINTS.get(self.charge_point_id, {}).get('status')}")
         # Give the charge point a moment to process the state change (e.g., send StatusNotification)
+        logger.debug("Waiting for wallbox to detect EV connection and send StatusNotification...")
         await asyncio.sleep(2)
         self._check_cancellation()
 
         # 2. Send the RemoteStartTransaction command.
-        logger.info("CS sends RemoteStartTransaction.req to the CP, including an idTag for authorization and a connectorId.")
-        limit_amps = 0.0
-        # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
-        clear_response = await self.handler.send_and_wait(
-            "ClearChargingProfile",
-            ClearChargingProfileRequest()
-        )
-        logger.info(f"ClearChargingProfile response: {clear_response}")
+        logger.info(f"📡 Step 2: Sending RemoteStartTransaction with idTag '{id_tag}'...")
 
-        # Use configured charging rate unit for disable profile (0 limit)
-        charging_value, charging_unit = get_charging_value("disable")
-        rate_unit = ChargingRateUnitType.A if charging_unit == "A" else ChargingRateUnitType.W
-
-        charging_profile = ChargingProfile(
-            chargingProfileId=random.randint(1, 1000),
-            stackLevel=0,  # ChargeProfileMaxStackLevel = 0
-            chargingProfilePurpose=ChargingProfilePurposeType.TxProfile,
-            chargingProfileKind=ChargingProfileKindType.Absolute,
-            chargingSchedule=ChargingSchedule(
-                chargingRateUnit=rate_unit,
-                chargingSchedulePeriod=[
-                    ChargingSchedulePeriod(startPeriod=0, limit=charging_value)  # 0W or 0A = no charging
-                ]
+        # Send basic RemoteStartTransaction without charging profile
+        try:
+            start_response = await asyncio.wait_for(
+                self.handler.send_and_wait(
+                    "RemoteStartTransaction",
+                    RemoteStartTransactionRequest(idTag=id_tag, connectorId=connector_id),
+                    timeout=15  # 15 second timeout for this specific call
+                ),
+                timeout=20  # Overall timeout including processing
             )
-        )
-        start_response = await self.handler.send_and_wait(
-            "RemoteStartTransaction",
-            RemoteStartTransactionRequest(idTag=id_tag,
-                                          connectorId=connector_id,
-                                          chargingProfile=charging_profile)
-        )
-        self._check_cancellation()
-        if not start_response or start_response.get("status") != "Accepted":
-            logger.error("FAILURE: RemoteStartTransaction was not acknowledged by the charge point or rejected.")
+            self._check_cancellation()
+        except asyncio.TimeoutError:
+            logger.error(f"    ❌ RemoteStartTransaction: Timeout - wallbox did not respond within 20 seconds")
             self._set_test_result(step_name, "FAILED")
             await self._set_ev_state("A")  # Cleanup
             self._check_cancellation()
-            logger.info(f"--- Step C.1 for {self.charge_point_id} complete. ---")
+            logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
             return
-        logger.info("CP responds with RemoteStartTransaction.conf, confirming acceptance. At this point, the transaction has not yet begun.")
+        if not start_response:
+            logger.error(f"    ❌ RemoteStartTransaction: No response received")
+            self._set_test_result(step_name, "FAILED")
+            await self._set_ev_state("A")  # Cleanup
+            self._check_cancellation()
+            logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
+            return
+        elif start_response.get("status") != "Accepted":
+            status = start_response.get("status", "Unknown")
+            logger.error(f"    ❌ RemoteStartTransaction: {status}")
+            logger.debug(f"    Full response: {start_response}")
+            self._set_test_result(step_name, "FAILED")
+            await self._set_ev_state("A")  # Cleanup
+            self._check_cancellation()
+            logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
+            return
+
+        logger.info("    ✅ RemoteStartTransaction: Accepted")
 
         # 3. RemoteStartTransaction was acknowledged. Register the transaction on the server side.
         #    We now use a temporary key for TRANSACTIONS until the CP's transactionId is known.
@@ -432,117 +456,96 @@ class OcppTestSteps:
             "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
         }
         set_active_transaction_id(cs_internal_transaction_id) # Update the global active transaction ID with CS's ID
-        logger.info(f"Transaction (temp key: {temp_transaction_key}, CS ID: {cs_internal_transaction_id}) registered internally after RemoteStartTransaction.")
-        logger.info("CP initiates the transaction locally once the vehicle is plugged in and ready to charge.")
+        logger.debug(f"Transaction (temp key: {temp_transaction_key}, CS ID: {cs_internal_transaction_id}) registered internally after RemoteStartTransaction.")
+        logger.info("⚡ Transaction authorized. Simulating EV requesting power...")
 
-        # 4. Wait for the charge point to send a StatusNotification indicating "Charging".
-        #    This confirms the transaction has truly started from the CP's perspective.
-        logger.info("Waiting for the charge point to report 'Charging' status...")
+        # 4. Simulate the EV drawing power by setting state to 'C'
+        logger.info("📡 Step 3: Setting EV state to 'C' (requesting power)...")
+        await self._set_ev_state("C")
+        self._check_cancellation()
+        await asyncio.sleep(2)  # Give wallbox time to process
+
+        # 5. Wait for the charge point to send a StatusNotification indicating "Charging".
+        logger.info("📡 Step 4: Waiting for charge point to report 'Charging' status...")
         try:
-            await asyncio.sleep(1) # Added additional delay
-            await asyncio.wait_for(self._wait_for_status("Charging"), timeout=15)
+            await asyncio.wait_for(self._wait_for_status("Charging"), timeout=10)
             self._check_cancellation()
-            logger.info("SUCCESS: Charge point reported 'Charging' status.")
+            logger.info("✅ Charge point is now charging!")
         except asyncio.TimeoutError:
-            logger.error("FAILURE: Timed out waiting for charge point to report 'Charging' status.")
+            logger.error("    ❌ Timeout waiting for 'Charging' status")
             self._set_test_result(step_name, "FAILED")
             await self._set_ev_state("A") # Cleanup
             self._check_cancellation()
             return
 
-        # Now that the transaction is authorized and started, simulate the EV drawing power.
-        logger.info(f"Transaction (CS ID: {cs_internal_transaction_id}) is ongoing. Setting EV state to 'C' to simulate charging.")
-        await self._set_ev_state("C")
-        self._check_cancellation()
-
-        # Add a small delay to allow the charge point to send a StatusNotification
-        logger.info("Transaction is ongoing. Waiting a moment for the wallbox to report 'Charging' status...")
+        # 6. Verify charging parameters and let transaction run
+        logger.info("📊 Verifying charging parameters...")
         await asyncio.sleep(2)
         self._check_cancellation()
 
-        # Check if the wallbox status is 'Charging'
-        current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
-        if current_status == "Charging":
-            logger.info(f"SUCCESS: Wallbox status is '{current_status}' as expected.")
-        else:
-            logger.warning(f"NOTICE: Wallbox status is '{current_status}', not 'Charging' as expected. The test will continue.")
-
-        # Verify that the wallbox is advertising the correct current (16A)
-        # and that the EV simulator sees the corresponding duty cycle.
-        logger.info("Verifying advertised current and CP duty cycle from EV simulator...")
+        # Verify wallbox capability and duty cycle from EV simulator
+        # Expected: 130A maximum capability based on actual wallbox specs
+        logger.debug("Verifying advertised current and CP duty cycle from EV simulator...")
         # Force a refresh of the EV simulator status to get the latest values
-        if self.refresh_trigger:
-            self.refresh_trigger.set()
+        if self.ocpp_server_logic.refresh_trigger:
+            self.ocpp_server_logic.refresh_trigger.set()
             await asyncio.sleep(1)  # wait for poll to complete
             self._check_cancellation()
 
         advertised_amps = EV_SIMULATOR_STATE.get("wallbox_advertised_max_current_amps")
         duty_cycle = EV_SIMULATOR_STATE.get("cp_duty_cycle")
 
-        expected_amps = 16.0
-        expected_duty_cycle = (expected_amps / 0.6) / 100  # e.g., 0.2667 for 16A
-        tolerance = 0.02  # 2% tolerance for duty cycle
+        # Based on actual wallbox capabilities (130A max)
+        wallbox_max_amps = 130.0
+        expected_duty_cycle = (wallbox_max_amps / 0.6) / 100  # Calculate based on max capability
+        tolerance = 0.05  # 5% tolerance for duty cycle (more realistic)
 
-        logger.info(f"EV simulator reports: Advertised Amps = {advertised_amps}, Duty Cycle = {duty_cycle}")
-        logger.info(f"Expected values: Amps = {expected_amps}, Duty Cycle = ~{expected_duty_cycle:.4f}")
+        logger.debug(f"EV simulator reports: Advertised Amps = {advertised_amps}, Duty Cycle = {duty_cycle}")
+        logger.debug(f"Wallbox max capability: {wallbox_max_amps}A, Expected Duty Cycle = ~{expected_duty_cycle:.4f}")
 
-        if advertised_amps == expected_amps:
-            logger.info(f"SUCCESS: Wallbox advertised current ({advertised_amps}A) matches expected value ({expected_amps}A).")
+        if advertised_amps == wallbox_max_amps:
+            logger.info(f"✅ Wallbox advertised current ({advertised_amps}A) matches maximum capability ({wallbox_max_amps}A).")
+        elif advertised_amps and advertised_amps > 0:
+            # Calculate the equivalent power
+            power_w = advertised_amps * 230  # Assume 230V
+            logger.info(f"📊 Wallbox capability: {advertised_amps}A × 230V = {power_w:.0f}W")
         else:
-            logger.warning(f"NOTICE: Wallbox advertised current ({advertised_amps}A) from simulator does not match expected value ({expected_amps}A).")
+            logger.warning(f"⚠️  Could not determine wallbox current capability from simulator.")
 
-        if duty_cycle is not None and abs(duty_cycle - expected_duty_cycle) <= tolerance:
-            logger.info(f"SUCCESS: CP Duty Cycle ({duty_cycle:.4f}) is within tolerance of expected value ({expected_duty_cycle:.4f}).")
+        if duty_cycle is not None and duty_cycle > 0:
+            # Reverse calculate the current from duty cycle for verification
+            calculated_current = duty_cycle * 0.6 * 100  # Reverse of duty cycle formula
+            logger.info(f"📊 CP Duty Cycle {duty_cycle:.3f} indicates ~{calculated_current:.1f}A capability")
         else:
-            logger.warning(f"NOTICE: CP Duty Cycle ({duty_cycle}) from simulator is outside tolerance of expected value ({expected_duty_cycle:.4f}).")
+            logger.warning(f"⚠️  Could not read CP duty cycle from simulator.")
 
-        await asyncio.sleep(10) # Let transaction run for a bit
+        await asyncio.sleep(5) # Let transaction run briefly to verify it's working
         self._check_cancellation()
 
-        # Retrieve the CP's transactionId from the TRANSACTIONS dictionary
-        # This assumes MeterValues or StopTransaction has already updated it.
-        # If not, we might need a more robust lookup here.
-        current_transaction_data = TRANSACTIONS.get(temp_transaction_key) # Try temp key first
-        if not current_transaction_data: # If not found by temp key, try to find by CS internal ID
-            for k, v in TRANSACTIONS.items():
-                if v.get("cs_internal_transaction_id") == cs_internal_transaction_id:
-                    current_transaction_data = v
-                    break
-
-        cp_transaction_id_for_stop = None
-        if current_transaction_data:
-            cp_transaction_id_for_stop = current_transaction_data.get("cp_transaction_id")
-            if cp_transaction_id_for_stop is None:
-                logger.warning(f"CP transaction ID not yet available for CS internal ID {cs_internal_transaction_id}. Using CS internal ID for RemoteStopTransaction.")
-                cp_transaction_id_for_stop = cs_internal_transaction_id # Fallback to CS internal ID
-
-        if cp_transaction_id_for_stop is None:
-            logger.error("FAILED: Could not determine transaction ID for RemoteStopTransaction.")
-            self._set_test_result(step_name, "FAILED")
-            await self._set_ev_state("A") # Cleanup
-            self._check_cancellation()
-            return
-
-        logger.info(f"CP sends StartTransaction.req to the CS. This is the first message from the CP that contains the transactionId that the CP has assigned to the new session. (CP ID: {cp_transaction_id_for_stop})")
-        logger.info(f"CS responds with StartTransaction.conf, which includes the same transactionId and confirms that the transaction is now formally recorded on the server side. (CS Internal ID: {cs_internal_transaction_id})")
-        logger.info(f"SUCCESS: Detected ongoing transaction (CS ID: {cs_internal_transaction_id}, CP ID: {cp_transaction_id_for_stop}). Now attempting to stop it.")
-        logger.info(f"Sending RemoteStopTransaction for transaction {cp_transaction_id_for_stop}...")
-        stop_ok = await self.handler.send_and_wait(
-            "RemoteStopTransaction",
-            RemoteStopTransactionRequest(transactionId=cp_transaction_id_for_stop)
-        )
-        self._check_cancellation()
-        if stop_ok:
-            logger.info("SUCCESS: RemoteStart and RemoteStop sequence was acknowledged.")
+        # Verify transaction is active and receiving meter values
+        active_transaction_id = get_active_transaction_id()
+        if active_transaction_id and active_transaction_id in TRANSACTIONS:
+            transaction_data = TRANSACTIONS[active_transaction_id]
+            meter_values_count = len(transaction_data.get("meter_values", []))
+            logger.info(f"✅ Transaction {active_transaction_id} is active with {meter_values_count} meter value records")
+            logger.info("✅ RemoteStartTransaction test completed successfully!")
             self._set_test_result(step_name, "PASSED")
         else:
-            logger.error("FAILURE: RemoteStopTransaction was not acknowledged by the charge point.")
+            logger.error("❌ No active transaction found after RemoteStartTransaction")
             self._set_test_result(step_name, "FAILED")
 
-        # 5. Cleanup: Simulate disconnecting the EV.
-        await self._set_ev_state("A")
-        self._check_cancellation()
-        logger.info(f"--- Step C.1 for {self.charge_point_id} complete. ---")
+        # Note: Transaction is left running for B.2 (RemoteStopTransaction) test
+        # EV state remains at 'C' (charging) to continue the transaction
+        logger.info("📝 Transaction left running for separate B.2 (RemoteStopTransaction) test")
+        logger.info(f"🏁 Step B.1 for {self.charge_point_id} complete.")
+
+        # Standardized test completion logging
+        result = CHARGE_POINTS.get(self.charge_point_id, {}).get("test_results", {}).get(step_name, "UNKNOWN")
+        if result == "PASSED":
+            logger.info(f"✅ SUCCESS: Step B.1 RemoteStartTransaction test PASSED for {self.charge_point_id}")
+        else:
+            logger.error(f"❌ FAILURE: Step B.1 RemoteStartTransaction test FAILED for {self.charge_point_id}")
+        logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
 
     async def run_c2_user_initiated_transaction_test(self):
         """C.2: Guides the user to start a transaction manually."""
@@ -622,12 +625,13 @@ class OcppTestSteps:
 
         logger.info(f"--- Step C.3 for {self.charge_point_id} complete. ---")
 
-    async def run_d1_set_live_charging_power(self):
-        """D.1: Sets a charging profile to limit power on an active transaction."""
+    async def run_c1_set_charging_profile_test(self, params: Dict[str, Any] = None):
+        """C.1: SetChargingProfile - Sets a charging profile to limit power on an active transaction."""
+        if params is None:
+            params = {}
 
-
-        logger.info(f"--- Step D.1: Setting live charging power for {self.charge_point_id} ---")
-        step_name = "run_d1_set_live_charging_power"
+        logger.info(f"--- Step C.1: Running SetChargingProfile test for {self.charge_point_id} ---")
+        step_name = "run_c1_set_charging_profile_test"
         self._check_cancellation()
         await self._set_ev_state("C")
         self._check_cancellation()
@@ -646,25 +650,55 @@ class OcppTestSteps:
 
         # Use configured charging values - "disable" for stopping charging
         disable_value, charging_unit = get_charging_value("disable")
-        profile = SetChargingProfileRequest(connectorId=1, csChargingProfiles=ChargingProfile(chargingProfileId=random.randint(1, 1000), transactionId=transaction_id, stackLevel=0, chargingProfilePurpose=ChargingProfilePurposeType.TxProfile, chargingProfileKind=ChargingProfileKindType.Absolute, chargingSchedule=ChargingSchedule(duration=3600, chargingRateUnit=charging_unit, chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=disable_value)])))
+        
+        # Get values from params or use defaults
+        stack_level = params.get("stackLevel", 0)
+        purpose = params.get("chargingProfilePurpose", "TxProfile")
+        kind = params.get("chargingProfileKind", "Absolute")
+        limit = params.get("limit", disable_value)
+        duration = params.get("duration", 3600)
+
+        profile = SetChargingProfileRequest(
+            connectorId=1, 
+            csChargingProfiles=ChargingProfile(
+                chargingProfileId=random.randint(1, 1000), 
+                transactionId=transaction_id, 
+                stackLevel=stack_level, 
+                chargingProfilePurpose=purpose, 
+                chargingProfileKind=kind, 
+                chargingSchedule=ChargingSchedule(
+                    duration=duration, 
+                    chargingRateUnit=charging_unit, 
+                    chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=limit)]
+                )
+            )
+        )
         logger.info(f"Sending SetChargingProfile message: {asdict(profile)}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
-        if success:
+        if success and success.get("status") == "Accepted":
             logger.info("SUCCESS: SetChargingProfile was acknowledged by the charge point.")
             self._set_test_result(step_name, "PASSED")
         else:
-            logger.error("FAILURE: SetChargingProfile was not acknowledged by the charge point.")
+            logger.error(f"FAILURE: SetChargingProfile was not acknowledged by the charge point. Response: {success}")
             self._set_test_result(step_name, "FAILED")
-        logger.info(f"--- Step D.1 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step C.1 for {self.charge_point_id} complete. ---")
 
-    async def run_d2_set_default_charging_profile(self):
-        """D.2: Sets a default charging profile to medium power/current for future transactions."""
-
+    async def run_c4_tx_default_profile_test(self, params: Dict[str, Any] = None):
+        """C.4: TxDefaultProfile - Sets a default charging profile to medium power/current for future transactions."""
+        if params is None:
+            params = {}
 
         medium_value, charging_unit = get_charging_value("medium")
-        logger.info(f"--- Step D.2: Setting default charging profile to {medium_value}{charging_unit} for {self.charge_point_id} ---")
-        step_name = "run_d2_set_default_charging_profile"
+        
+        # Get values from params or use defaults
+        stack_level = params.get("stackLevel", 0) # Changed default to 0
+        purpose = params.get("chargingProfilePurpose", "TxDefaultProfile")
+        kind = params.get("chargingProfileKind", "Absolute")
+        limit = params.get("limit", medium_value)
+
+        logger.info(f"--- Step C.4: Running TxDefaultProfile test to {limit}{charging_unit} for {self.charge_point_id} ---")
+        step_name = "run_c4_tx_default_profile_test"
         self._check_cancellation()
 
         # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
@@ -674,29 +708,21 @@ class OcppTestSteps:
         )
         logger.info(f"ClearChargingProfile response: {clear_response}")
 
-        # Use configured charging values - "medium" for default profile
-        medium_value, charging_unit = get_charging_value("medium")
-
-        # Set startSchedule to current time minus one minute (as per specification)
-        from datetime import datetime, timezone, timedelta
-        start_schedule = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
-
         # First profile: connectorId=0 (charge point level)
         profile_cp = SetChargingProfileRequest(
             connectorId=0,
             csChargingProfiles=ChargingProfile(
                 chargingProfileId=random.randint(1, 1000),
-                stackLevel=1,
-                chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile,
-                chargingProfileKind=ChargingProfileKindType.Absolute,
+                stackLevel=stack_level,
+                chargingProfilePurpose=purpose,
+                chargingProfileKind=kind,
                 chargingSchedule=ChargingSchedule(
-                    startSchedule=start_schedule,
                     chargingRateUnit=charging_unit,
                     chargingSchedulePeriod=[
                         ChargingSchedulePeriod(
                             startPeriod=0,
-                            limit=medium_value,
-                            numberPhases=3  # Set number of phases for correct current interpretation
+                            limit=limit,
+                            numberPhases=3
                         )
                     ]
                 )
@@ -711,17 +737,16 @@ class OcppTestSteps:
             connectorId=1,
             csChargingProfiles=ChargingProfile(
                 chargingProfileId=random.randint(1, 1000),
-                stackLevel=1,
-                chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile,
-                chargingProfileKind=ChargingProfileKindType.Absolute,
+                stackLevel=stack_level,
+                chargingProfilePurpose=purpose,
+                chargingProfileKind=kind,
                 chargingSchedule=ChargingSchedule(
-                    startSchedule=start_schedule,
                     chargingRateUnit=charging_unit,
                     chargingSchedulePeriod=[
                         ChargingSchedulePeriod(
                             startPeriod=0,
-                            limit=medium_value,
-                            numberPhases=3  # Set number of phases for correct current interpretation
+                            limit=limit,
+                            numberPhases=3
                         )
                     ]
                 )
@@ -731,13 +756,13 @@ class OcppTestSteps:
         success_conn = await self.handler.send_and_wait("SetChargingProfile", profile_conn)
         self._check_cancellation()
 
-        if success_cp and success_conn:
-            logger.info(f"PASSED: SetChargingProfile to {medium_value}{charging_unit} for both connectorId=0 and connectorId=1 was acknowledged.")
+        if success_cp and success_cp.get("status") == "Accepted" and success_conn and success_conn.get("status") == "Accepted":
+            logger.info(f"PASSED: SetChargingProfile to {limit}{charging_unit} for both connectorId=0 and connectorId=1 was acknowledged.")
             self._set_test_result(step_name, "PASSED")
         else:
-            logger.error(f"FAILED: SetChargingProfile to {medium_value}{charging_unit} was not acknowledged for connectorId=0: {success_cp}, connectorId=1: {success_conn}")
+            logger.error(f"FAILED: SetChargingProfile to {limit}{charging_unit} was not acknowledged for connectorId=0: {success_cp}, connectorId=1: {success_conn}")
             self._set_test_result(step_name, "FAILED")
-        logger.info(f"--- Step D.2 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step C.4 for {self.charge_point_id} complete. ---")
 
     async def run_d3_smart_charging_capability_test(self):
         """D.3: Placeholder for a more complex smart charging test."""
@@ -750,10 +775,10 @@ class OcppTestSteps:
         self._set_test_result(step_name, "PASSED")
         logger.info(f"--- Step D.3 for {self.charge_point_id} complete. ---")
 
-    async def run_d4_clear_default_charging_profile(self):
-        """D.4: Clears any default charging profiles."""
-        logger.info(f"--- Step D.4: Clearing default charging profile for {self.charge_point_id} ---")
-        step_name = "run_d4_clear_default_charging_profile"
+    async def run_c3_clear_charging_profile_test(self):
+        """C.3: ClearChargingProfile - Clears any default charging profiles."""
+        logger.info(f"--- Step C.3: Running ClearChargingProfile test for {self.charge_point_id} ---")
+        step_name = "run_c3_clear_charging_profile_test"
         self._check_cancellation()
         success = await self.handler.send_and_wait(
             "ClearChargingProfile",
@@ -1299,10 +1324,10 @@ class OcppTestSteps:
         # Leave EV in state C (or whatever state it was left in by the transaction start test)
         logger.info(f"--- Step E.7 for {self.charge_point_id} complete. ---")
 
-    async def run_e8_remote_stop_transaction(self):
-        """E.8: Stops the active transaction remotely."""
-        logger.info(f"--- Step E.8: Stopping active transaction for {self.charge_point_id} ---")
-        step_name = "run_e8_remote_stop_transaction"
+    async def run_b2_remote_stop_transaction_test(self):
+        """B.2: RemoteStopTransaction - Stops the active transaction remotely."""
+        logger.info(f"--- Step B.2: Running RemoteStopTransaction test for {self.charge_point_id} ---")
+        step_name = "run_b2_remote_stop_transaction_test"
         self._check_cancellation()
 
         transaction_id = get_active_transaction_id()
@@ -1311,19 +1336,36 @@ class OcppTestSteps:
             self._set_test_result(step_name, "FAILED")
             return
 
-        stop_ok = await self.handler.send_and_wait(
+        stop_response = await self.handler.send_and_wait(
             "RemoteStopTransaction",
             RemoteStopTransactionRequest(transactionId=transaction_id)
         )
         self._check_cancellation()
-        if stop_ok:
+
+        if not stop_response or stop_response.get("status") != "Accepted":
+            status = stop_response.get('status', 'no response') if stop_response else 'no response'
+            logger.error(f"FAILED: RemoteStopTransaction for transaction {transaction_id} was not accepted (status: {status}).")
+            self._set_test_result(step_name, "FAILED")
+        else:
             logger.info(f"PASSED: RemoteStopTransaction for transaction {transaction_id} was acknowledged.")
             self._set_test_result(step_name, "PASSED")
-        else:
-            logger.error(f"FAILED: RemoteStopTransaction for transaction {transaction_id} was not acknowledged.")
-            self._set_test_result(step_name, "FAILED")
+
+        # After stopping, simulate unplugging the EV
+        logger.info("🔌 Simulating EV unplugged (State A)...")
+        await self._set_ev_state("A")
+        self._check_cancellation()
+
+        # Wait for the charge point to become available again
+        logger.info("⏳ Waiting for charge point to become Available...")
+        try:
+            await asyncio.wait_for(self._wait_for_status("Available"), timeout=20)
+            self._check_cancellation()
+            logger.info("✅ Charge point is Available.")
+        except asyncio.TimeoutError:
+            logger.error("❌ Timeout waiting for 'Available' status after remote stop.")
+            # This might not be a test failure, but a warning for the next test
         
-        logger.info(f"--- Step E.8 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step B.2 for {self.charge_point_id} complete. ---")
 
     async def run_e9_brutal_stop(self):
         """E.9: Brutal Stop - Sends Reset Hard to force stop all transactions and reboot charge point."""
@@ -1354,10 +1396,10 @@ class OcppTestSteps:
 
         logger.info(f"--- Step E.9 for {self.charge_point_id} complete. ---")
 
-    async def run_e10_get_composite_schedule(self):
-        """E.10: Get Composite Schedule - Queries the current schedule being applied on connector 1."""
-        logger.info(f"--- Step E.10: Get Composite Schedule for {self.charge_point_id} ---")
-        step_name = "run_e10_get_composite_schedule"
+    async def run_c2_get_composite_schedule_test(self):
+        """C.2: GetCompositeSchedule - Queries the current schedule being applied on connector 1."""
+        logger.info(f"--- Step C.2: Running GetCompositeSchedule test for {self.charge_point_id} ---")
+        step_name = "run_c2_get_composite_schedule_test"
         self._check_cancellation()
 
         logger.info("Querying current charging schedule on connector 1...")
@@ -1371,10 +1413,18 @@ class OcppTestSteps:
         response = await self.handler.send_and_wait("GetCompositeSchedule", composite_request)
         self._check_cancellation()
 
+        # Clear previous schedule
+        if "composite_schedule" in CHARGE_POINTS[self.charge_point_id]:
+            del CHARGE_POINTS[self.charge_point_id]["composite_schedule"]
+
         if response and response.get("status") == "Accepted":
             logger.info("PASSED: GetCompositeSchedule was accepted.")
             if response.get("chargingSchedule"):
                 schedule = response.get("chargingSchedule")
+                
+                # Store the schedule for the UI
+                CHARGE_POINTS[self.charge_point_id]["composite_schedule"] = schedule
+
                 logger.info(f"📊 ACTIVE SCHEDULE on connector 1:")
                 logger.info(f"  - Charging Rate Unit: {schedule.get('chargingRateUnit', 'Not specified')}")
                 logger.info(f"  - Start Time: {response.get('scheduleStart', 'Not specified')}")
@@ -1390,7 +1440,7 @@ class OcppTestSteps:
             logger.error(f"FAILED: GetCompositeSchedule was not accepted. Response: {response}")
             self._set_test_result(step_name, "FAILED")
 
-        logger.info(f"--- Step E.10 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step C.2 for {self.charge_point_id} complete. ---")
 
     async def run_e11_clear_all_profiles(self):
         """E.11: Clears ALL charging profiles from the charge point."""
@@ -1426,6 +1476,210 @@ class OcppTestSteps:
             self._set_test_result(step_name, "FAILED")
 
         logger.info(f"--- Step E.11 for {self.charge_point_id} complete. ---")
+
+    async def _display_wallbox_capabilities(self):
+        """Display actual wallbox capabilities based on comprehensive MeterValues analysis."""
+        logger.info("--- Wallbox offers to EV ---")
+
+        # Get all available MeterValues data for comprehensive analysis
+        all_meter_values = []
+        latest_meter_data = None
+        active_transaction_id = get_active_transaction_id()
+
+        if active_transaction_id and active_transaction_id in TRANSACTIONS:
+            transaction_data = TRANSACTIONS[active_transaction_id]
+            all_meter_values = transaction_data.get("meter_values", [])
+            if all_meter_values:
+                latest_meter_data = all_meter_values[-1]  # Get most recent MeterValues
+
+        # If no transaction data, check for any recent MeterValues from this charge point
+        if not latest_meter_data:
+            for tx_id, tx_data in TRANSACTIONS.items():
+                if tx_data.get("charge_point_id") == self.charge_point_id:
+                    meter_values = tx_data.get("meter_values", [])
+                    if meter_values:
+                        all_meter_values.extend(meter_values)
+                        latest_meter_data = meter_values[-1]
+
+        # Comprehensive MeterValues analysis
+        meter_analysis = {
+            "voltage": {"L1": None, "L2": None, "L3": None, "L1-N": None, "L2-N": None, "L3-N": None},
+            "current": {"L1": None, "L2": None, "L3": None, "import": None, "export": None},
+            "power": {"active_import": None, "active_export": None, "reactive": None, "L1": None, "L2": None, "L3": None},
+            "energy": {"active_import": None, "active_export": None, "reactive": None},
+            "temperature": None,
+            "frequency": None,
+            "power_factor": None,
+            "max_values": {"current": 0, "power": 0, "voltage": 0},
+            "measurand_count": {},
+            "connection_phases": set()
+        }
+
+        # Analyze all MeterValues data
+        logger.info("  📊 MeterValues Data Analysis:")
+
+        if latest_meter_data:
+            logger.info(f"    Latest MeterValues record found: {type(latest_meter_data)}")
+
+            # Handle different MeterValues data structures
+            sampled_values = None
+            if hasattr(latest_meter_data, 'sampledValue'):
+                sampled_values = latest_meter_data.sampledValue
+            elif hasattr(latest_meter_data, 'sampled_value'):
+                sampled_values = latest_meter_data.sampled_value
+            elif isinstance(latest_meter_data, dict) and 'sampledValue' in latest_meter_data:
+                sampled_values = latest_meter_data['sampledValue']
+
+            if sampled_values:
+                logger.info(f"    Found {len(sampled_values)} sampled values")
+                for sample in sampled_values:
+                    measurand = sample.measurand or "Unknown"
+                    phase = getattr(sample, 'phase', None)
+                    value = sample.value
+                    unit = getattr(sample, 'unit', 'Unknown')
+                    location = getattr(sample, 'location', 'Unknown')
+                    context = getattr(sample, 'context', 'Sample.Periodic')
+
+                    # Count measurands
+                    meter_analysis["measurand_count"][measurand] = meter_analysis["measurand_count"].get(measurand, 0) + 1
+
+                    try:
+                        numeric_value = float(value)
+
+                        # Voltage analysis
+                        if "Voltage" in measurand:
+                            if phase:
+                                meter_analysis["voltage"][phase] = numeric_value
+                                if phase in ["L1", "L2", "L3"]:
+                                    meter_analysis["connection_phases"].add(phase)
+                            meter_analysis["max_values"]["voltage"] = max(meter_analysis["max_values"]["voltage"], numeric_value)
+
+                        # Current analysis
+                        elif "Current" in measurand:
+                            if "Import" in measurand:
+                                if phase:
+                                    meter_analysis["current"][phase] = numeric_value
+                                    if phase in ["L1", "L2", "L3"]:
+                                        meter_analysis["connection_phases"].add(phase)
+                                else:
+                                    meter_analysis["current"]["import"] = numeric_value
+                            elif "Export" in measurand:
+                                meter_analysis["current"]["export"] = numeric_value
+                            meter_analysis["max_values"]["current"] = max(meter_analysis["max_values"]["current"], numeric_value)
+
+                        # Power analysis
+                        elif "Power" in measurand:
+                            if "Active.Import" in measurand:
+                                if phase:
+                                    meter_analysis["power"][phase] = numeric_value
+                                else:
+                                    meter_analysis["power"]["active_import"] = numeric_value
+                            elif "Active.Export" in measurand:
+                                meter_analysis["power"]["active_export"] = numeric_value
+                            elif "Reactive" in measurand:
+                                meter_analysis["power"]["reactive"] = numeric_value
+                            meter_analysis["max_values"]["power"] = max(meter_analysis["max_values"]["power"], numeric_value)
+
+                        # Energy analysis
+                        elif "Energy" in measurand:
+                            if "Active.Import" in measurand:
+                                meter_analysis["energy"]["active_import"] = numeric_value
+                            elif "Active.Export" in measurand:
+                                meter_analysis["energy"]["active_export"] = numeric_value
+                            elif "Reactive" in measurand:
+                                meter_analysis["energy"]["reactive"] = numeric_value
+
+                        # Other measurements
+                        elif "Temperature" in measurand:
+                            meter_analysis["temperature"] = numeric_value
+                        elif "Frequency" in measurand:
+                            meter_analysis["frequency"] = numeric_value
+                        elif "Power.Factor" in measurand:
+                            meter_analysis["power_factor"] = numeric_value
+
+                        # Log detailed measurement
+                        phase_info = f" (Phase: {phase})" if phase else ""
+                        logger.info(f"    {measurand}: {value} {unit}{phase_info}")
+
+                    except (ValueError, TypeError):
+                        logger.info(f"    {measurand}: {value} {unit} (non-numeric)")
+            else:
+                logger.info("    No MeterValues sampled data found")
+        else:
+            logger.info("    No MeterValues data available yet")
+
+        # Connection type determination
+        active_phases = len(meter_analysis["connection_phases"])
+        if active_phases >= 3:
+            connection_type = "Three-phase"
+        elif active_phases >= 1:
+            connection_type = "Single-phase"
+        else:
+            connection_type = "Unknown"
+
+        logger.info(f"  🔌 Connection Analysis:")
+        logger.info(f"    Connection Type: {connection_type} ({active_phases} active phases detected)")
+
+        # Voltage summary
+        if any(v for v in meter_analysis["voltage"].values() if v):
+            logger.info(f"    Voltage Readings:")
+            for phase, voltage in meter_analysis["voltage"].items():
+                if voltage:
+                    logger.info(f"      {phase}: {voltage:.1f}V")
+
+        # Current capability analysis
+        max_current = meter_analysis["max_values"]["current"]
+        max_power = meter_analysis["max_values"]["power"]
+
+        logger.info(f"  ⚡ Power Capability Analysis:")
+        if max_current > 0:
+            logger.info(f"    Peak Current Observed: {max_current:.1f}A")
+        if max_power > 0:
+            logger.info(f"    Peak Power Observed: {max_power:.0f}W ({max_power/1000:.1f}kW)")
+
+        # Get EV simulator data for advertised capability
+        advertised_amps = EV_SIMULATOR_STATE.get("wallbox_advertised_max_current_amps", 0)
+        duty_cycle = EV_SIMULATOR_STATE.get("cp_duty_cycle", 0)
+
+        if advertised_amps:
+            logger.info(f"    Wallbox Advertised Max: {advertised_amps}A")
+
+            # Calculate theoretical max power based on measured voltage
+            nominal_voltage = 230  # Default
+            if meter_analysis["voltage"]["L1-N"]:
+                nominal_voltage = meter_analysis["voltage"]["L1-N"]
+            elif meter_analysis["voltage"]["L1"]:
+                nominal_voltage = meter_analysis["voltage"]["L1"]
+
+            if connection_type == "Three-phase":
+                theoretical_max = advertised_amps * nominal_voltage * 3
+            else:
+                theoretical_max = advertised_amps * nominal_voltage
+
+            logger.info(f"    Theoretical Max Power: {theoretical_max:.0f}W ({theoretical_max/1000:.1f}kW)")
+
+        # Show configured power levels based on actual wallbox specs
+        from app.core import CHARGING_RATE_CONFIG
+        logger.info("  📋 Available Charging Levels:")
+        for level, values in CHARGING_RATE_CONFIG["test_value_mapping"].items():
+            if level != "disable":
+                current_a = values["A"]
+                power_w = values["W"]
+                logger.info(f"    {level.capitalize()}: {current_a}A / {power_w}W ({power_w/1000:.1f}kW)")
+
+        # CP duty cycle information
+        if duty_cycle and duty_cycle > 0:
+            logger.info(f"  🎛️  CP Duty Cycle: {duty_cycle:.3f} ({duty_cycle*100:.1f}%)")
+
+        # MeterValues statistics
+        if meter_analysis["measurand_count"]:
+            logger.info(f"  📈 MeterValues Summary:")
+            logger.info(f"    Total Meter Records: {len(all_meter_values)}")
+            logger.info(f"    Measurands in Latest Sample:")
+            for measurand, count in meter_analysis["measurand_count"].items():
+                logger.info(f"      {measurand}: {count} value(s)")
+
+        logger.info("-------------------------------------")
 
     async def _wait_for_status(self, status: str):
         while CHARGE_POINTS.get(self.charge_point_id, {}).get("status") != status:

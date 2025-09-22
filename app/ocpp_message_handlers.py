@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import random
+import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict
 from dataclasses import asdict
@@ -42,20 +44,20 @@ class OcppMessageHandlers:
         self.initial_status_received = ocpp_server_logic.initial_status_received
 
     async def handle_boot_notification(self, charge_point_id: str, payload: BootNotificationRequest) -> BootNotificationResponse:
-        logger.info(f"🥾 BOOT NOTIFICATION HANDLER called for {charge_point_id}")
+        logger.debug(f"🥾 BOOT NOTIFICATION HANDLER called for {charge_point_id}")
 
         if "BootNotification" in self.pending_triggered_message_events:
-            logger.info("📍 Detected a triggered BootNotification message, setting event.")
+            logger.debug("📍 Detected a triggered BootNotification message, setting event.")
             self.pending_triggered_message_events["BootNotification"].set()
 
         logger.info(f"🔌 Received BootNotification from {charge_point_id}: {payload}")
-        logger.info(f"🔍 Vendor: {payload.chargePointVendor}, Model: {payload.chargePointModel}")
+        logger.debug(f"🔍 Vendor: {payload.chargePointVendor}, Model: {payload.chargePointModel}")
 
         if charge_point_id not in CHARGE_POINTS:
-            logger.info(f"📋 Creating new entry for charge point {charge_point_id}")
+            logger.debug(f"📋 Creating new entry for charge point {charge_point_id}")
             CHARGE_POINTS[charge_point_id] = {}
         else:
-            logger.info(f"📋 Updating existing entry for charge point {charge_point_id}")
+            logger.debug(f"📋 Updating existing entry for charge point {charge_point_id}")
         boot_time = datetime.now(timezone.utc).isoformat()
         CHARGE_POINTS[charge_point_id].update({
             "model": payload.chargePointModel,
@@ -76,22 +78,23 @@ class OcppMessageHandlers:
         )
 
     async def handle_authorize(self, charge_point_id: str, payload: AuthorizeRequest) -> AuthorizeResponse:
-        logger.info(f"Received Authorize request from {charge_point_id} for idTag: {payload.idTag}")
+        logger.info(f"📡 OCPP: Authorize request from {charge_point_id} for idTag: {payload.idTag}")
         status = "Accepted" if payload.idTag in VALID_ID_TAGS else "Invalid"
+        logger.info(f"    ✅ Authorization {status} for idTag: {payload.idTag}")
         return AuthorizeResponse(idTagInfo=IdTagInfo(status=status))
 
     async def handle_data_transfer(self, charge_point_id: str, payload: DataTransferRequest) -> DataTransferResponse:
-        logger.info(f"Received DataTransfer from {charge_point_id}: {payload}")
+        logger.debug(f"Received DataTransfer from {charge_point_id}: {payload}")
         return DataTransferResponse(status="Accepted")
 
     async def handle_status_notification(self, charge_point_id: str, payload: StatusNotificationRequest) -> StatusNotificationResponse:
         if "StatusNotification" in self.pending_triggered_message_events:
-            logger.info("Detected a triggered StatusNotification message, setting event.")
+            logger.debug("Detected a triggered StatusNotification message, setting event.")
             self.pending_triggered_message_events["StatusNotification"].set()
 
-        logger.debug(f"Handling StatusNotification from {charge_point_id}: {payload.status}")
+        logger.debug(f"📡 OCPP: StatusNotification from {charge_point_id}: {payload.status}")
         cp_state_log_message = f" (equivalent to {CP_STATE_MAP.get(payload.status, 'Unknown')})"
-        logger.info(f"Received StatusNotification from {charge_point_id}: Connector {payload.connectorId} is {payload.status}{cp_state_log_message}")
+        logger.debug(f"Received StatusNotification from {charge_point_id}: Connector {payload.connectorId} is {payload.status}{cp_state_log_message}")
         if charge_point_id in CHARGE_POINTS:
             CHARGE_POINTS[charge_point_id]["status"] = payload.status
 
@@ -124,26 +127,26 @@ class OcppMessageHandlers:
 
     async def handle_firmware_status_notification(self, charge_point_id: str, payload: FirmwareStatusNotificationRequest) -> FirmwareStatusNotificationResponse:
         if "FirmwareStatusNotification" in self.pending_triggered_message_events:
-            logger.info("Detected a triggered FirmwareStatusNotification message, setting event.")
+            logger.debug("Detected a triggered FirmwareStatusNotification message, setting event.")
             self.pending_triggered_message_events["FirmwareStatusNotification"].set()
 
-        logger.info(f"Received FirmwareStatusNotification from {charge_point_id}: {payload.status}")
+        logger.debug(f"Received FirmwareStatusNotification from {charge_point_id}: {payload.status}")
         return FirmwareStatusNotificationResponse()
 
     async def handle_diagnostics_status_notification(self, charge_point_id: str, payload: DiagnosticsStatusNotificationRequest) -> DiagnosticsStatusNotificationResponse:
         if "DiagnosticsStatusNotification" in self.pending_triggered_message_events:
-            logger.info("Detected a triggered DiagnosticsStatusNotification message, setting event.")
+            logger.debug("Detected a triggered DiagnosticsStatusNotification message, setting event.")
             self.pending_triggered_message_events["DiagnosticsStatusNotification"].set()
 
-        logger.info(f"Received DiagnosticsStatusNotification from {charge_point_id}: {payload.status}")
+        logger.debug(f"Received DiagnosticsStatusNotification from {charge_point_id}: {payload.status}")
         return DiagnosticsStatusNotificationResponse()
 
     async def handle_heartbeat(self, charge_point_id: str, payload: HeartbeatRequest) -> HeartbeatResponse:
         if "Heartbeat" in self.pending_triggered_message_events:
-            logger.info("Detected a triggered Heartbeat message, setting event.")
+            logger.debug("Detected a triggered Heartbeat message, setting event.")
             self.pending_triggered_message_events["Heartbeat"].set()
 
-        logger.info(f"Received Heartbeat from {charge_point_id}")
+        logger.debug(f"Received Heartbeat from {charge_point_id}")
         if charge_point_id in CHARGE_POINTS:
             CHARGE_POINTS[charge_point_id]["last_heartbeat"] = datetime.now(timezone.utc).isoformat()
 
@@ -151,14 +154,14 @@ class OcppMessageHandlers:
         return HeartbeatResponse(currentTime=datetime.now(timezone.utc).isoformat())
 
     async def handle_start_transaction(self, charge_point_id: str, payload: StartTransactionRequest) -> StartTransactionResponse:
-        logger.info(f"Received StartTransaction from {charge_point_id}: {payload}. CP Transaction ID: {payload.transactionId}")
+        logger.info(f"📡 OCPP: StartTransaction from {charge_point_id}: {payload}")
 
-        # The wallbox's transactionId is now available in the payload.
-        cp_transaction_id = payload.transactionId
-
-        # Generate a new internal transaction ID for the StartTransactionResponse.
-        # This is the ID the Central System will use to refer to this transaction.
-        cs_internal_transaction_id = 555 + len(TRANSACTIONS) # Use a new internal ID for the response
+        # In OCPP 1.6, the Central System assigns the transaction ID in StartTransaction.conf
+        # The charge point will use this ID in subsequent MeterValues and StopTransaction messages
+        # Generate a realistic transaction ID using timestamp + random component for uniqueness
+        base_id = int(time.time() * 1000) % 1000000  # Last 6 digits of timestamp in ms
+        random_component = random.randint(1000, 9999)  # 4-digit random number
+        transaction_id = base_id * 10000 + random_component  # Combine for unique ID
 
         # Check if this is a confirmation of a remotely started transaction.
         # We look for a pending remote start based on charge_point_id and connectorId.
@@ -169,28 +172,27 @@ class OcppMessageHandlers:
                t_data.get("remote_started") is True and \
                t_data.get("status") == "Ongoing":
                 existing_transaction_data = t_data
-                # Update the key in TRANSACTIONS to use the CP's transactionId
+                # Update the key in TRANSACTIONS to use the assigned transaction ID
                 # This is important for subsequent MeterValues/StopTransaction messages
-                # that will use the CP's transactionId as the key.
-                TRANSACTIONS[cp_transaction_id] = TRANSACTIONS.pop(key)
+                # that will use this transaction ID as the key.
+                TRANSACTIONS[transaction_id] = TRANSACTIONS.pop(key)
                 break
 
         if existing_transaction_data:
             # This is a confirmation of a remotely started transaction.
-            # Update the existing transaction record with the CP's transactionId.
+            # Update the existing transaction record with the assigned transaction ID.
             existing_transaction_data.update({
                 "start_time": payload.timestamp,
                 "meter_start": payload.meterStart,
                 "remote_started": False, # Mark it as confirmed by StartTransaction
-                "cp_transaction_id": cp_transaction_id, # Store the CP's transaction ID
-                "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
+                "transaction_id": transaction_id # Store the assigned transaction ID
             })
-            logger.info(f"Updated existing remotely started transaction (CP ID: {cp_transaction_id}) with StartTransaction data.")
-            transaction_id_to_return = cs_internal_transaction_id
+            logger.info(f"✅ OCPP: Confirmed remote transaction (CS assigned ID: {transaction_id}) with StartTransaction data.")
+            transaction_id_to_return = transaction_id
         else:
             # This is a new transaction initiated by the Charge Point.
-            # Store it directly with the CP's transactionId as the key.
-            TRANSACTIONS[cp_transaction_id] = {
+            # Store it with the assigned transaction ID as the key.
+            TRANSACTIONS[transaction_id] = {
                 "charge_point_id": charge_point_id,
                 "id_tag": payload.idTag,
                 "start_time": payload.timestamp,
@@ -198,13 +200,12 @@ class OcppMessageHandlers:
                 "connector_id": payload.connectorId,
                 "status": "Ongoing",
                 "remote_started": False, # This transaction was initiated by CP, not remotely by us
-                "cp_transaction_id": cp_transaction_id, # Store the CP's transaction ID
-                "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
+                "transaction_id": transaction_id # Store the assigned transaction ID
             }
-            logger.info(f"Created new transaction (CP ID: {cp_transaction_id}) initiated by CP.")
-            transaction_id_to_return = cs_internal_transaction_id
+            logger.info(f"💫 OCPP: Created new transaction (ID: {transaction_id}) initiated by CP.")
+            transaction_id_to_return = transaction_id
 
-        set_active_transaction_id(cp_transaction_id) # Update the global active transaction ID with CP's ID
+        set_active_transaction_id(transaction_id) # Update the global active transaction ID
         return StartTransactionResponse(
             transactionId=transaction_id_to_return,
             idTagInfo=IdTagInfo(status="Accepted")
@@ -253,16 +254,16 @@ class OcppMessageHandlers:
                 sv.context == "Trigger" for mv in payload.meterValue for sv in mv.sampledValue
             )
             if is_triggered:
-                logger.info("Detected a triggered MeterValues message, setting event.")
+                logger.debug("Detected a triggered MeterValues message, setting event.")
                 self.pending_triggered_message_events["MeterValues"].set()
 
-        logger.info(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId}. Entire Payload: {asdict(payload)}")
+        logger.debug(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId}")
         
         # Auto-detection will be handled by unsolicited GetConfiguration response processing
         # to avoid blocking the message processing loop
 
         if payload.transactionId is not None:
-            logger.info(f"Extracting transaction ID from MeterValues.req: {payload.transactionId}")
+            logger.debug(f"Extracting transaction ID from MeterValues.req: {payload.transactionId}")
             # Find the transaction using the CP's transactionId as the key
             transaction_data = TRANSACTIONS.get(payload.transactionId)
 
@@ -280,8 +281,19 @@ class OcppMessageHandlers:
                 set_active_transaction_id(payload.transactionId)
 
             else:
-                # Transaction not found, create a new entry based on MeterValues.
-                logger.info(f"Information: MeterValues received a new transaction id {payload.transactionId}. It started a new transaction.")
+                # Transaction not found by our assigned ID, wallbox is using its own transaction ID
+                # This is a protocol deviation but some wallboxes do this
+                logger.warning(f"⚠️  OCPP PROTOCOL VIOLATION: Wallbox using its own transaction ID {payload.transactionId}")
+                logger.warning(f"    Expected: Wallbox should use Central System assigned transaction ID")
+                logger.warning(f"    Actual: Wallbox ignoring assigned ID and using {payload.transactionId}")
+
+                # Check if we should enforce strict OCPP compliance
+                strict_compliance = SERVER_SETTINGS.get("enforce_ocpp_compliance", False)
+                if strict_compliance:
+                    logger.error(f"❌ REJECTING: MeterValues with non-assigned transaction ID due to strict compliance mode")
+                    return MeterValuesResponse()  # Reject by not processing
+
+                logger.info(f"🔧 ADAPTING: Processing MeterValues despite protocol violation (pragmatic mode)")
                 TRANSACTIONS[payload.transactionId] = {
                     "charge_point_id": charge_point_id,
                     "id_tag": "unknown", # idTag is not available in MeterValues.req
@@ -313,7 +325,7 @@ class OcppMessageHandlers:
                 details = f" ({', '.join(details_parts)})" if details_parts else ""
 
                 log_message = f"    - {measurand}: {sv.value}{unit}{details}"
-                logger.info(log_message)
+                logger.debug(log_message)
             
         return MeterValuesResponse()
 
@@ -331,6 +343,6 @@ class OcppMessageHandlers:
             request_payload = GetConfigurationRequest(key=[])
             message = create_ocpp_message(2, unique_id, request_payload, "GetConfiguration", self.charge_point_id)
             await self.handler.websocket.send(message)
-            logger.info(f"🔍 Sent GetConfiguration (fire-and-forget) for auto-detection from {self.charge_point_id}")
+            logger.debug(f"🔍 Sent GetConfiguration (fire-and-forget) for auto-detection from {self.charge_point_id}")
         except Exception as e:
             logger.warning(f"⚠️ Failed to send GetConfiguration for auto-detection: {e}")

@@ -12,7 +12,7 @@ from flask import Flask, jsonify, request, render_template
 
 from app.ocpp_server_logic import OcppServerLogic
 from app.ocpp_test_steps import OcppTestSteps
-from app.core import CHARGE_POINTS, EV_SIMULATOR_STATE, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id, get_active_transaction_id, get_shutdown_event, set_shutdown_event, EV_SIMULATOR_BASE_URL, OCPP_PORT, get_current_charging_values
+from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id, get_active_transaction_id, get_shutdown_event, set_shutdown_event, EV_SIMULATOR_BASE_URL, OCPP_PORT, get_current_charging_values
 from app.streamers import EVStatusStreamer
 
 app = Flask(__name__)
@@ -52,8 +52,23 @@ def list_charge_points():
             "use_simulator": data.get("use_simulator", False),
             "current_power_w": current_power_w,
             "current_current_a": current_current_a,
+            "composite_schedule": data.get("composite_schedule")
         }
     return jsonify({"charge_points": cp_details, "active_charge_point_id": get_active_charge_point_id(), "active_transaction_id": get_active_transaction_id()})
+
+@app.route("/api/transactions", methods=["GET"])
+def list_transactions():
+    """API endpoint to serve transaction data including MeterValues for the UI."""
+    try:
+        # Convert transaction keys to strings to avoid JSON serialization issues
+        transactions_serializable = {}
+        for tx_id, tx_data in TRANSACTIONS.items():
+            # Convert all keys to strings for consistent JSON handling
+            transactions_serializable[str(tx_id)] = tx_data
+        return jsonify({"transactions": transactions_serializable})
+    except Exception as e:
+        app.logger.error(f"Error serializing transactions: {e}")
+        return jsonify({"transactions": {}, "error": str(e)})
 
 @app.route("/api/set_active_charge_point", methods=["POST"])
 def set_active_charge_point():
@@ -100,6 +115,60 @@ def list_test_steps():
 def get_server_settings():
     """Returns server-wide runtime settings, like the EV simulator mode."""
     return jsonify(SERVER_SETTINGS)
+
+@app.route("/api/discovered_charge_points", methods=["GET"])
+def get_discovered_charge_points():
+    """Returns all discovered charge points with their status."""
+    from app.core import get_discovered_charge_points, get_active_charge_point_id, is_autodiscovery_enabled
+
+    discovered = get_discovered_charge_points()
+    active_cp_id = get_active_charge_point_id()
+
+    return jsonify({
+        "discovered_charge_points": discovered,
+        "active_charge_point_id": active_cp_id,
+        "autodiscovery_enabled": is_autodiscovery_enabled()
+    })
+
+@app.route("/api/autodiscovery", methods=["POST"])
+def toggle_autodiscovery():
+    """Enable or disable autodiscovery."""
+    from app.core import set_autodiscovery_enabled, is_autodiscovery_enabled
+
+    data = request.get_json(force=True, silent=True) or {}
+    enabled = data.get("enabled", True)
+
+    set_autodiscovery_enabled(enabled)
+
+    return jsonify({
+        "autodiscovery_enabled": is_autodiscovery_enabled(),
+        "message": f"Autodiscovery {'enabled' if enabled else 'disabled'}"
+    })
+
+@app.route("/api/select_charge_point", methods=["POST"])
+def select_charge_point():
+    """Manually select a charge point as active."""
+    from app.core import set_active_charge_point_id, get_discovered_charge_points
+
+    data = request.get_json(force=True, silent=True) or {}
+    charge_point_id = data.get("charge_point_id")
+
+    if not charge_point_id:
+        return jsonify({"error": "charge_point_id not provided"}), 400
+
+    discovered = get_discovered_charge_points()
+    if charge_point_id not in discovered:
+        return jsonify({"error": f"Charge point '{charge_point_id}' not found in discovered list"}), 404
+
+    if discovered[charge_point_id]["status"] != "connected":
+        return jsonify({"error": f"Charge point '{charge_point_id}' is not currently connected"}), 400
+
+    set_active_charge_point_id(charge_point_id)
+
+    return jsonify({
+        "message": f"Selected charge point '{charge_point_id}' as active",
+        "active_charge_point_id": charge_point_id
+    })
 
 
 
@@ -235,7 +304,9 @@ def run_test_step(step_name):
         return jsonify({"error": "A test is already running for this charge point."}), 429
 
     ocpp_logic = ocpp_handler.ocpp_logic
-    method = getattr(ocpp_logic, step_name, None)
+    method = getattr(ocpp_logic.test_steps, step_name, None)
+    if not method:
+        method = getattr(ocpp_logic, step_name, None)
 
     if not (method and asyncio.iscoroutinefunction(method) and step_name.startswith("run_")):
         return jsonify({"error": f"Invalid or disallowed test step name: {step_name}"}), 400
@@ -243,9 +314,17 @@ def run_test_step(step_name):
     if not app.loop or not app.loop.is_running():
         return jsonify({"error": "Server loop not available"}), 500
 
+    # Get params from request body
+    params = request.get_json(silent=True) or {}
+
     async def run_test_with_lock():
         async with ocpp_handler.test_lock:
-            await method()
+            # Pass params to the test method if it accepts them
+            sig = inspect.signature(method)
+            if 'params' in sig.parameters:
+                await method(params=params)
+            else:
+                await method()
 
     try:
         future = asyncio.run_coroutine_threadsafe(run_test_with_lock(), app.loop)

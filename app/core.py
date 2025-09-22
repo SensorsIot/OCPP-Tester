@@ -3,8 +3,11 @@ Centralized configuration and global, mutable state for the OCPP server app.
 Configuration values can be overridden via environment variables.
 """
 import os
+import logging
 from typing import Dict, Any, Optional
 import asyncio
+
+logger = logging.getLogger(__name__)
 
 # --- Helper for environment variables ---
 def _env(name: str, default: str) -> str:
@@ -45,12 +48,57 @@ TRANSACTIONS: Dict[int, Dict[str, Any]] = {}
 _active_charge_point_id: Optional[str] = None
 _active_transaction_id: Optional[int] = None
 
+# Autodiscovery system for wallboxes
+_discovered_charge_points: Dict[str, Dict[str, Any]] = {}
+_autodiscovery_enabled: bool = True
+
 def get_active_charge_point_id() -> Optional[str]:
     return _active_charge_point_id
 
 def set_active_charge_point_id(cp_id: Optional[str]):
     global _active_charge_point_id
     _active_charge_point_id = cp_id
+
+def get_discovered_charge_points() -> Dict[str, Dict[str, Any]]:
+    """Return all discovered charge points with their connection status."""
+    return _discovered_charge_points.copy()
+
+def register_discovered_charge_point(cp_id: str, connection_info: Dict[str, Any]):
+    """Register a newly discovered charge point."""
+    global _active_charge_point_id
+
+    # Add to discovered list
+    _discovered_charge_points[cp_id] = {
+        "status": "connected",
+        "first_seen": connection_info.get("timestamp"),
+        "remote_address": connection_info.get("remote_address"),
+        "connection_count": _discovered_charge_points.get(cp_id, {}).get("connection_count", 0) + 1
+    }
+
+    # Auto-select first charge point if autodiscovery is enabled and no active one is set
+    if _autodiscovery_enabled and _active_charge_point_id is None:
+        _active_charge_point_id = cp_id
+        logger.info(f"🔍 AUTODISCOVERY: Automatically selected first charge point: {cp_id}")
+        return True  # Indicates this was auto-selected
+
+    return False
+
+def unregister_charge_point(cp_id: str):
+    """Mark a charge point as disconnected."""
+    if cp_id in _discovered_charge_points:
+        _discovered_charge_points[cp_id]["status"] = "disconnected"
+
+        # If this was the active charge point, clear it
+        if _active_charge_point_id == cp_id:
+            set_active_charge_point_id(None)
+            logger.info(f"🔍 AUTODISCOVERY: Active charge point {cp_id} disconnected, cleared selection")
+
+def is_autodiscovery_enabled() -> bool:
+    return _autodiscovery_enabled
+
+def set_autodiscovery_enabled(enabled: bool):
+    global _autodiscovery_enabled
+    _autodiscovery_enabled = enabled
 
 def get_active_transaction_id() -> Optional[int]:
     return _active_transaction_id
@@ -79,17 +127,20 @@ SERVER_SETTINGS = {
     "charging_rate_unit": "W",  # "W" for Watts or "A" for Amperes - default setting
     "charging_rate_unit_auto_detected": False,  # True if unit was auto-detected from charge point
     "auto_detection_completed": False,  # True when auto-detection attempt has finished (success or failure) - start as False to enable auto-detection
+    "enforce_ocpp_compliance": False,  # Set to True to reject protocol violations (strict mode)
 }
 
 # Predefined charging power/current values for tests
+# Based on actual Actec wallbox capabilities: 130A max @ 230V = ~30kW max
 CHARGING_RATE_CONFIG = {
-    "power_values_w": [4000, 6000, 8000, 11000],  # Watts
-    "current_values_a": [6, 8, 10, 16],           # Amperes
+    "power_values_w": [6900, 13800, 23000, 29900],  # Watts (30A, 60A, 100A, 130A @ 230V)
+    "current_values_a": [30, 60, 100, 130],         # Amperes (actual wallbox current levels)
     "test_value_mapping": {
-        "disable": {"W": 0, "A": 0},         # 0W or 0A (disable charging)
-        "low": {"W": 4000, "A": 6},          # Low power: 4000W or 6A
-        "medium": {"W": 8000, "A": 11},      # Medium power: 8000W or 11A
-        "high": {"W": 11000, "A": 16}        # High power: 11000W or 16A
+        "disable": {"W": 0, "A": 0},           # 0W or 0A (disable charging)
+        "low": {"W": 6900, "A": 30},           # Low power: 6900W or 30A (230V × 30A)
+        "medium": {"W": 13800, "A": 60},       # Medium power: 13800W or 60A (230V × 60A)
+        "high": {"W": 23000, "A": 100},        # High power: 23000W or 100A (230V × 100A)
+        "max": {"W": 29900, "A": 130}          # Max power: 29900W or 130A (wallbox maximum)
     }
 }
 

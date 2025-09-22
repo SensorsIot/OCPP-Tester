@@ -82,9 +82,9 @@ def create_ocpp_message(message_type_id: int, unique_id: str, payload: Any, acti
         message = [message_type_id, unique_id, action, payload_to_send]
     else:
         message = [message_type_id, unique_id, payload_to_send]
-    logger.debug(f"\n\n------------OCPP Call ({charge_point_id})----------")
+    # logger.debug(f"\n\n------------OCPP Call ({charge_point_id})----------")
     json_message = json.dumps(message)
-    logger.debug(f"RAW ({charge_point_id}) >> {json_message}")
+    # logger.debug(f"RAW ({charge_point_id}) >> {json_message}")
     return json_message
 
 def _filter_payload(payload_cls: Type, data: Dict) -> Dict:
@@ -141,7 +141,7 @@ class OCPPHandler:
         try:
             logger.info(f"📡 Starting message loop for {self.charge_point_id}. Waiting for messages...")
             async for message in self.websocket:
-                logger.info(f"📨 Received WebSocket message from {self.charge_point_id}: {message}")
+                # logger.debug(f"📨 Received message from {self.charge_point_id}")
                 await self.process_message(message)
         except ConnectionClosedOK:
             logger.info(f"Connection with {self.charge_point_id} closed gracefully.")
@@ -179,9 +179,9 @@ class OCPPHandler:
         self.pending_requests[unique_id] = pending_request
         message = create_ocpp_message(2, unique_id, request_payload, action, self.charge_point_id)
         active_cp_id = get_active_charge_point_id() # Ensure we get the latest global value
-        logger.debug(f"Sent {action} from {self.charge_point_id}. Payload: {request_payload}")
+        # logger.debug(f"Sent {action} from {self.charge_point_id}. Payload: {request_payload}")
         await self.websocket.send(message)
-        logger.info(f"Sent {action} (id={unique_id}). Waiting...")
+        # logger.debug(f"Sent {action} (id={unique_id[:8]}...). Waiting...")
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
             return pending_request.get("response_payload")
@@ -193,23 +193,23 @@ class OCPPHandler:
 
     async def process_message(self, raw: str):
         active_cp_id = get_active_charge_point_id() # Ensure we get the latest global value
-        logger.info(f"🔍 Processing message from {self.charge_point_id}. Active CP: {active_cp_id}")
+        # logger.debug(f"🔍 Processing message from {self.charge_point_id}")
 
         try:
             msg = json.loads(raw)
             message_type_id, unique_id = msg[0], msg[1]
-            logger.info(f"✅ Successfully parsed OCPP message. Type: {message_type_id}, ID: {unique_id}")
+            # logger.debug(f"✅ Parsed OCPP message type {message_type_id}")
         except (json.JSONDecodeError, IndexError) as e:
             logger.error(f"❌ Failed to parse OCPP message: {raw}, error: {e}")
             return
 
         if message_type_id == 2:  # CALL
             action, payload_dict = msg[2], msg[3]
-            logger.info(f"📞 Received CALL '{action}' for {self.charge_point_id}. Payload: {payload_dict}")
+            # logger.debug(f"📞 Received CALL '{action}' from {self.charge_point_id}")
             await self.handle_call(unique_id, action, payload_dict)
         elif message_type_id == 3:  # CALLRESULT
             payload = msg[2]
-            logger.info(f"✅ Received CALLRESULT for {self.charge_point_id}. Payload: {payload}")
+            # logger.debug(f"✅ Received CALLRESULT for {self.charge_point_id}")
             await self.handle_call_result(unique_id, payload)
         elif message_type_id == 4:  # CALLERROR
             errorCode, errorDescription, details = msg[2], msg[3], msg[4] if len(msg) > 4 else {}
@@ -219,9 +219,9 @@ class OCPPHandler:
             logger.warning(f"❓ Unknown OCPP message type {message_type_id} from {self.charge_point_id}")
 
     async def handle_call(self, unique_id: str, action: str, payload_dict: Dict):
-        logger.debug(f"Received CALL '{action}' from {self.charge_point_id}")
+        # logger.debug(f"Received CALL '{action}' from {self.charge_point_id}")
         active_cp_id = get_active_charge_point_id() # Ensure we get the latest global value
-        logger.info(f"handle_call for {self.charge_point_id}. Active CP: {active_cp_id}")
+        # logger.info(f"handle_call for {self.charge_point_id}. Active CP: {active_cp_id}")
         
         # Only process messages from the active charge point
         if self.charge_point_id != active_cp_id:
@@ -245,7 +245,7 @@ class OCPPHandler:
             if response_payload is not None:
                 response_message = create_ocpp_message(3, unique_id, response_payload, charge_point_id=self.charge_point_id)
                 await self.websocket.send(response_message)
-                logger.info(f"Sent response for '{action}' to {self.charge_point_id}.")
+                # logger.info(f"Sent response for '{action}' to {self.charge_point_id}.")
         except TypeError as e:
             logger.error(f"Payload validation failed for '{action}': {e}")
             error = [4, unique_id, "FormationViolation", str(e), {}]
@@ -260,7 +260,7 @@ class OCPPHandler:
         if unique_id in self.pending_requests:
             request_info = self.pending_requests[unique_id]
             action = request_info.get("action", "unknown action")
-            logger.debug(f"Received CALLRESULT for '{action}' (id={unique_id}) from {self.charge_point_id}. Payload: {payload}")
+            # logger.debug(f"Received CALLRESULT for '{action}' from {self.charge_point_id}")
             if action == "GetConfiguration":
                 logger.debug(f"GetConfiguration response: {payload}")
             request_info["response_payload"] = payload

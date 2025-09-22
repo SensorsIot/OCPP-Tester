@@ -26,23 +26,19 @@ class TestSequence:
     async def run_full_sequence(self):
         logger.info(f"========================STARTING FULL TEST SEQUENCE FOR {self.charge_point_id}==========================")
 
-        # A: Basic Functionality
-        await self.step_a1_initial_registration()
-        await self.step_a2_configuration_exchange()
-        await self.step_a3_change_configuration_test()
+        # A: Core Communication & Status
+        await self.ocpp_logic.test_steps.run_a1_change_configuration_test()
+        await self.ocpp_logic.test_steps.run_a2_get_configuration_test()
 
-        # B: Status and Meter Values
-        await self.step_b1_status_and_meter_value_acquisition()
+        # B: Authorization & Transaction Management
+        await self.ocpp_logic.test_steps.run_b1_remote_start_transaction_test()
+        await self.ocpp_logic.test_steps.run_b2_remote_stop_transaction_test()
 
-        # C: Core Transaction Management
-        await self.step_c1_remote_transaction_test()
-        await self.step_c2_user_initiated_transaction_test()
-
-        # D: Smart Charging
-        await self.step_d1_set_live_charging_power()
-        await self.step_d2_set_default_charging_profile()
-        await self.step_d3_smart_charging_capability_test()
-        await self.step_d4_clear_default_charging_profile()
+        # C: Smart Charging Profile
+        await self.ocpp_logic.test_steps.run_c1_set_charging_profile_test()
+        await self.ocpp_logic.test_steps.run_c2_get_composite_schedule_test()
+        await self.ocpp_logic.test_steps.run_c3_clear_charging_profile_test()
+        await self.ocpp_logic.test_steps.run_c4_tx_default_profile_test()
 
         logger.info(f"Full test sequence for {self.charge_point_id} complete.")
         logger.info("========================END OF TEST SEQUENCE===============================")
