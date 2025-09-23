@@ -161,8 +161,20 @@ class OcppServerLogic:
     async def run_b2_remote_stop_transaction_test(self):
         return await self.test_steps.run_b2_remote_stop_transaction_test()
 
-    async def run_b1_status_and_meter_value_acquisition(self):
-        return await self.test_steps.run_b1_status_and_meter_value_acquisition()
+    async def run_b3_rfid_authorization_test(self):
+        return await self.test_steps.run_b3_rfid_authorization_test()
+
+    async def run_b4_clear_rfid_cache(self):
+        return await self.test_steps.run_b4_clear_rfid_cache()
+
+    async def run_b5_send_rfid_list(self):
+        return await self.test_steps.run_b5_send_rfid_list()
+
+    async def run_b6_get_rfid_list_version(self):
+        return await self.test_steps.run_b6_get_rfid_list_version()
+
+    async def run_a6_status_and_meter_value_acquisition(self):
+        return await self.test_steps.run_a6_status_and_meter_value_acquisition()
 
     async def run_c1_remote_transaction_test(self):
         return await self.test_steps.run_c1_remote_transaction_test()
@@ -215,8 +227,8 @@ class OcppServerLogic:
     async def run_e8_remote_stop_transaction(self):
         return await self.test_steps.run_e8_remote_stop_transaction()
 
-    async def run_e9_brutal_stop(self):
-        return await self.test_steps.run_e9_brutal_stop()
+    async def run_x1_reboot_wallbox(self):
+        return await self.test_steps.run_x1_reboot_wallbox()
 
     async def run_e10_get_composite_schedule(self):
         return await self.test_steps.run_e10_get_composite_schedule()

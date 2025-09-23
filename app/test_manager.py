@@ -39,10 +39,10 @@ class TestManager:
         logger.info(f"API triggered: Running Step C.2 for {self.handler.charge_point_id}")
         await self.test_sequence.step_c2_user_initiated_transaction_test()
 
-    async def run_b1_status_and_meter_value_acquisition(self):
-        """Runs Step B.1: Status and Meter Value Acquisition."""
-        logger.info(f"API triggered: Running Step B.1 for {self.handler.charge_point_id}")
-        await self.test_sequence.step_b1_status_and_meter_value_acquisition()
+    async def run_a6_status_and_meter_value_acquisition(self):
+        """Runs Step A.6: Status and Meter Value Acquisition."""
+        logger.info(f"API triggered: Running Step A.6 for {self.handler.charge_point_id}")
+        await self.test_sequence.step_a6_status_and_meter_value_acquisition()
 
     async def run_e1_real_world_transaction_test(self):
         """Runs Step E.1: Real-World Transaction Test."""

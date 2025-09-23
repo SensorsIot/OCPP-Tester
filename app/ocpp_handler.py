@@ -268,7 +268,8 @@ class OCPPHandler:
             if event:
                 event.set()
         else:
-            logger.warning(f"Received unsolicited CALLRESULT with id {unique_id} from {self.charge_point_id}")
+            # Handle unsolicited responses (normal for auto-detection)
+            logger.debug(f"Received unsolicited CALLRESULT with id {unique_id} from {self.charge_point_id}")
 
             # Try to process GetConfiguration responses for auto-detection
             from app.core import process_configuration_response, SERVER_SETTINGS, CHARGE_POINTS
@@ -276,7 +277,7 @@ class OCPPHandler:
                 isinstance(payload, dict) and payload.get("configurationKey") and
                 self.charge_point_id in CHARGE_POINTS and
                 CHARGE_POINTS[self.charge_point_id].get("auto_detection_triggered", False)):
-                logger.info("🔍 Processing unsolicited GetConfiguration response for auto-detection...")
+                logger.debug("🔍 Processing unsolicited GetConfiguration response for auto-detection...")
                 process_configuration_response(payload)
 
     async def handle_call_error(self, unique_id: str, error_code: str, error_description: str, details: Dict):

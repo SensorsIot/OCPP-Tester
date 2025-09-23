@@ -9,46 +9,33 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-# --- Helper for environment variables ---
 def _env(name: str, default: str) -> str:
     return os.getenv(name, default)
 
-# --- OCPP / WebSockets Configuration ---
 OCPP_HOST = _env("OCPP_HOST", "0.0.0.0")
 OCPP_PORT = int(_env("OCPP_PORT", "8887"))
 
-# Paths on the same OCPP_PORT (one server with a path router).
 LOG_WS_PATH = _env("LOG_WS_PATH", "/logs")
 EV_STATUS_WS_PATH = _env("EV_STATUS_WS_PATH", "/ev-status")
 
-# --- HTTP (Flask via uvicorn) Configuration ---
 HTTP_HOST = _env("HTTP_HOST", "0.0.0.0")
 HTTP_PORT = int(_env("HTTP_PORT", "5000"))
 
-# Where to find the UI index.html (absolute or relative)
 UI_INDEX_PATH = _env("UI_INDEX_PATH", "app/templates/index.html")
 
-# --- EV Simulator Configuration ---
 EV_SIMULATOR_BASE_URL = _env("EV_SIMULATOR_BASE_URL", "http://192.168.0.151")
 EV_SIMULATOR_CHARGE_POINT_ID = _env("EV_SIMULATOR_CHARGE_POINT_ID", "Wallbox001")
-EV_STATUS_POLL_INTERVAL = int(_env("EV_STATUS_POLL_INTERVAL", "5"))  # seconds
-EV_WAIT_MAX_BACKOFF = int(_env("EV_WAIT_MAX_BACKOFF", "30"))         # seconds
+EV_STATUS_POLL_INTERVAL = int(_env("EV_STATUS_POLL_INTERVAL", "5"))
+EV_WAIT_MAX_BACKOFF = int(_env("EV_WAIT_MAX_BACKOFF", "30"))
 
-# --- Global, mutable state for the OCPP server ---
 
-# A dictionary to store data about connected charge points.
-# Format: { "charge_point_id": {"model": "...", "vendor": "...", ...} }
 CHARGE_POINTS: Dict[str, Dict[str, Any]] = {}
 
-# A dictionary to store data about ongoing and completed transactions.
-# Format: { "transaction_id": {"charge_point_id": "...", "id_tag": "...", ...} }
 TRANSACTIONS: Dict[int, Dict[str, Any]] = {}
 
-# A string to store the ID of the currently active charge point selected in the UI.
 _active_charge_point_id: Optional[str] = None
 _active_transaction_id: Optional[int] = None
 
-# Autodiscovery system for wallboxes
 _discovered_charge_points: Dict[str, Dict[str, Any]] = {}
 _autodiscovery_enabled: bool = True
 
@@ -67,7 +54,6 @@ def register_discovered_charge_point(cp_id: str, connection_info: Dict[str, Any]
     """Register a newly discovered charge point."""
     global _active_charge_point_id
 
-    # Add to discovered list
     _discovered_charge_points[cp_id] = {
         "status": "connected",
         "first_seen": connection_info.get("timestamp"),
@@ -75,11 +61,10 @@ def register_discovered_charge_point(cp_id: str, connection_info: Dict[str, Any]
         "connection_count": _discovered_charge_points.get(cp_id, {}).get("connection_count", 0) + 1
     }
 
-    # Auto-select first charge point if autodiscovery is enabled and no active one is set
     if _autodiscovery_enabled and _active_charge_point_id is None:
         _active_charge_point_id = cp_id
         logger.info(f"🔍 AUTODISCOVERY: Automatically selected first charge point: {cp_id}")
-        return True  # Indicates this was auto-selected
+        return True
 
     return False
 

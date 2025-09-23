@@ -28,6 +28,16 @@ class LogStreamer:
         self.clients.discard(websocket)
         logger.info(f"Log stream client disconnected: {websocket.remote_address}")
 
+    async def close_all_clients(self):
+        """Closes all connected clients during shutdown."""
+        clients_to_close = list(self.clients)
+        for client in clients_to_close:
+            try:
+                await client.close()
+            except Exception as e:
+                logger.debug(f"Error closing log stream client: {e}")
+        self.clients.clear()
+
     async def broadcast(self, message: str):
         """Broadcasts a log message to all connected clients."""
         if not self.clients:
@@ -54,15 +64,27 @@ class WebSocketLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord):
         """Formats and sends a log record to the streamer."""
         try:
-            if self.loop.is_closed():
+            if self.loop.is_closed() or not self.streamer.clients:
                 return
             msg = {
                 "levelname": record.levelname,
                 "message": self.format(record)
             }
-            self.loop.call_soon_threadsafe(self.loop.create_task, self.streamer.broadcast(json.dumps(msg)))
+            # Only create task if loop is running and not shutting down
+            if self.loop.is_running():
+                self.loop.call_soon_threadsafe(self._safe_broadcast, json.dumps(msg))
         except Exception:
-            self.handleError(record)
+            # Silently ignore errors during shutdown
+            pass
+
+    def _safe_broadcast(self, message: str):
+        """Safely creates a broadcast task if the loop is still running."""
+        try:
+            if not self.loop.is_closed() and self.loop.is_running():
+                self.loop.create_task(self.streamer.broadcast(message))
+        except Exception:
+            # Ignore errors during shutdown
+            pass
 
 
 class EVStatusStreamer:
@@ -80,6 +102,16 @@ class EVStatusStreamer:
         """Removes a client from the set."""
         self.clients.discard(websocket)
         logger.info(f"EV status stream client disconnected: {websocket.remote_address}")
+
+    async def close_all_clients(self):
+        """Closes all connected clients during shutdown."""
+        clients_to_close = list(self.clients)
+        for client in clients_to_close:
+            try:
+                await client.close()
+            except Exception as e:
+                logger.debug(f"Error closing EV status stream client: {e}")
+        self.clients.clear()
 
     async def broadcast_status(self, status: Dict[str, Any]):
         """Broadcasts the EV status as a JSON string to all connected clients."""

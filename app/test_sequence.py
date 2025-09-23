@@ -129,8 +129,8 @@ class TestSequence:
         await asyncio.sleep(5)
         await self.ocpp_logic._set_ev_state("A")
 
-    async def step_b1_status_and_meter_value_acquisition(self):
-        logger.info("\n\n\n\n\n--- Step B.1: Status and Meter Value Acquisition ---")
+    async def step_a6_status_and_meter_value_acquisition(self):
+        logger.info("\n\n\n\n\n--- Step A.6: Status and Meter Value Acquisition ---")
         await self.ocpp_logic.send_and_wait("TriggerMessage", TriggerMessageRequest(requestedMessage="StatusNotification", connectorId=1))
         await self.ocpp_logic.send_and_wait("TriggerMessage", TriggerMessageRequest(requestedMessage="MeterValues", connectorId=1))
 

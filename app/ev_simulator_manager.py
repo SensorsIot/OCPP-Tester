@@ -160,3 +160,15 @@ class EVSimulatorManager:
         done, pending = await asyncio.wait({sleep_task, trigger_task}, return_when=asyncio.FIRST_COMPLETED)
         if trigger_task in done: self._refresh_trigger.clear()
         for task in pending: task.cancel()
+
+    async def stop(self):
+        """Stop the EV simulator manager gracefully."""
+        logger.info("EV Simulator Manager stopping...")
+        # Clear the state and broadcast empty status
+        if EV_SIMULATOR_STATE:
+            EV_SIMULATOR_STATE.clear()
+            try:
+                await self._status_streamer.broadcast_status({})
+            except Exception as e:
+                logger.debug(f"Error broadcasting empty status during stop: {e}")
+        logger.info("EV Simulator Manager stopped.")

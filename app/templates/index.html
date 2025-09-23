@@ -49,8 +49,9 @@
         .capability-action h4 { color:#1976d2; margin-bottom:10px; }
         .quick-action { margin-top:15px; }
         .analysis-btn { background:#1976d2; color:white; border:none; padding:12px 24px; border-radius:6px; cursor:pointer; font-size:14px; font-weight:bold; }
-        .analysis-btn:hover { background:#1565c0; }
-        .analysis-btn:active { transform:translateY(1px); }
+        .analysis-btn:hover:not(:disabled) { background:#1565c0; }
+        .analysis-btn:active:not(:disabled) { transform:translateY(1px); }
+        .analysis-btn:disabled { background:#6c757d !important; cursor:not-allowed !important; opacity:0.6 !important; }
         .discovery-controls { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px; }
         .autodiscovery-toggle label { display:flex; align-items:center; gap:8px; font-weight:bold; color:#2e7d32; }
         .active-wallbox { color:#1976d2; font-size:14px; }
@@ -151,79 +152,106 @@
     <h2>Discovered Wallboxes</h2>
     <div class="wallbox-discovery-section">
         <div class="discovery-controls">
-            <div class="autodiscovery-toggle">
-                <label>
-                    <input type="checkbox" id="autodiscovery-enabled" checked>
-                    Auto-select first wallbox
-                </label>
-            </div>
             <div class="active-wallbox">
-                <strong>Active Wallbox:</strong> <span id="active-wallbox-name">None selected</span>
+                <strong>Active Wallbox:</strong> <span id="active-wallbox-name">No wallboxes discovered yet. Connect a wallbox to ws://192.168.0.150:8887/YourWallboxID</span>
             </div>
         </div>
 
         <div class="discovered-wallboxes-list">
-            <h4>Discovered Wallboxes:</h4>
             <div id="wallboxes-container">
-                <div class="no-wallboxes">No wallboxes discovered yet. Connect a wallbox to ws://192.168.0.150:8887/YourWallboxID</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #c8e6c9; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <div>
+                    <strong>Mode:</strong>
+                    <span id="current-mode" style="font-weight: bold; color: #2e7d32;">{{ initial_mode }}</span>
+                </div>
+                <div>
+                    <strong>Transaction ID:</strong>
+                    <span id="active-transaction-id-display" style="font-weight: bold; color: #1976d2;">N/A</span>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button id="reboot-wallbox-button" class="button" style="background-color: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;" onclick="rebootWallbox()">Reboot Wallbox</button>
+                <button id="shutdown-server-button" class="button" style="background-color: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;">Shutdown Server</button>
             </div>
         </div>
     </div>
 
     <h2>Charger Information</h2>
-    <div id="charger-info">
-        <p><strong>Vendor:</strong> <span id="vendor">N/A</span></p>
-        <p><strong>Model:</strong> <span id="model">N/A</span></p>
-        <p><strong>First Contact:</strong> <span id="first-status-time">N/A</span></p>
-        <p><strong>Server Boot Time:</strong> <span id="boot-time">N/A</span></p>
-        <p><strong>Status:</strong> <span id="charging-status">N/A</span></p>
-        <p><strong>Current Charging:</strong> <span id="current-charging">0 W / 0 A</span></p>
-        <p><strong>Last Heartbeat:</strong> <span id="last-heartbeat">N/A</span></p>
-    </div>
-
-    <h2>Mode Selection</h2>
-    <div class="status-item" style="text-align: left; flex: none; margin: 0 0 20px 0;">
-        <span style="font-weight: bold; font-size: 1.1em; margin-right: 10px;">Current Mode:</span>
-        <span id="current-mode" style="font-weight: bold; font-size: 1.1em;">{{ initial_mode }}</span>
-        <span style="font-weight: bold; font-size: 1.1em; margin-left: 20px; margin-right: 10px;">Active Transaction ID:</span>
-        <span id="active-transaction-id-display" style="font-weight: bold; font-size: 1.1em;">N/A</span>
-        <button id="shutdown-server-button" class="button shutdown-button" style="margin-left: 20px; background-color: #dc3545;">Shutdown Server</button>
-    </div>
-
-    
-    <h2 id="ev-simulator-heading">EV Simulator Status</h2>
-    <div id="ev-info" style="display:none; gap:20px;">
-        <div id="ev-status-details" style="flex:1;">
-            <p><strong>EV State:</strong> <span id="ev-state">N/A</span></p>
-            <p><strong>Wallbox Advertised Current:</strong> <span id="ev-wallbox-current">N/A</span></p>
-            <p><strong>CP Voltage:</strong> <span id="ev-voltage">N/A</span></p>
-            <p><strong>CP Duty Cycle:</strong> <span id="ev-duty-cycle">N/A</span></p>
-            <p><strong>PP Voltage:</strong> <span id="ev-pp-voltage">N/A</span></p>
-            <p><strong>Error Status:</strong> <span id="ev-error">N/A</span></p>
+    <div class="charger-information-section wallbox-capabilities-section" style="display: flex; flex-direction: row; gap: 20px; flex-wrap: wrap; min-width: 600px;">
+                    <div class="capability-info" style="flex: 1; width: 100%;">
+                        <h3>Charger Info Data</h3>
+                        <div style="font-size: 15px; line-height: 1.3;">
+                            <div style="margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid #f0f0f0;">
+                                <span style="font-weight: bold; color: #333; display: inline-block; width: 160px; font-size: 15px;">Vendor:</span>
+                                <span style="color: #666; font-size: 15px;" id="vendor">N/A</span>
+                            </div>
+                            <div style="margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid #f0f0f0;">
+                                <span style="font-weight: bold; color: #333; display: inline-block; width: 160px; font-size: 15px;">Model:</span>
+                                <span style="color: #666; font-size: 15px;" id="model">N/A</span>
+                            </div>
+                            <div style="margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid #f0f0f0;">
+                                <span style="font-weight: bold; color: #333; display: inline-block; width: 160px; font-size: 15px;">First Contact:</span>
+                                <span style="color: #666; font-size: 15px;" id="first-status-time">N/A</span>
+                            </div>
+                            <div style="margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid #f0f0f0;">
+                                <span style="font-weight: bold; color: #333; display: inline-block; width: 160px; font-size: 15px;">Server Boot Time:</span>
+                                <span style="color: #666; font-size: 15px;" id="boot-time">N/A</span>
+                            </div>
+                            <div style="margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid #f0f0f0;">
+                                <span style="font-weight: bold; color: #333; display: inline-block; width: 160px; font-size: 15px;">Status:</span>
+                                <span style="color: #666; font-size: 15px;" id="charging-status">N/A</span>
+                            </div>
+                            <div style="margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid #f0f0f0;">
+                                <span style="font-weight: bold; color: #333; display: inline-block; width: 160px; font-size: 15px;">Current Charging:</span>
+                                <span style="color: #666; font-size: 15px;" id="current-charging">0 W / 0 A</span>
+                            </div>
+                            <div style="margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid #f0f0f0;">
+                                <span style="font-weight: bold; color: #333; display: inline-block; width: 160px; font-size: 15px;">Last Heartbeat:</span>
+                                <span style="color: #666; font-size: 15px;" id="last-heartbeat">N/A</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="capability-info" style="flex: 1; width: 100%;">
+                        <h3>Parameter Info</h3>
+                        <div id="a3-test-results-content">No A.3 test results available.</div>
+                    </div>    </div>
+    <div class="quick-actions-container" style="display: flex; justify-content: space-around; margin-top: 15px;">
+        <div class="quick-action">
+            <button onclick="runTestWithParams('run_b1_remote_start_transaction_test', {})" class="analysis-btn">
+                ⚡ Start B.1 Transaction
+            </button>
         </div>
-        <div class="button-group" style="flex:2; align-self:center;">
-            <button id="btn-state-a" onclick="setEvState('A')">Set State A (Disconnected)</button>
-            <button id="btn-state-b" onclick="setEvState('B')">Set State B (Connected)</button>
-            <button id="btn-state-c" onclick="setEvState('C')">Set State C (Charging)</button>
-            <button id="btn-state-e" onclick="setEvState('E')">Set State E (Error)</button>
+        <div class="quick-action">
+            <button onclick="runTestWithParams('run_a3_change_configuration_test', {})" class="analysis-btn">
+                A.3: Get All Configuration
+            </button>
         </div>
     </div>
 
     <h2>Wallbox offers to EV</h2>
     <div class="wallbox-capabilities-section">
         <div class="capability-info">
-            <h3>📊 Live MeterValues Data</h3>
-            <p>Current electrical measurements from OCPP MeterValues messages:</p>
-
             <div id="meter-values-display" style="display: flex; font-family: monospace; background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 6px; margin: 15px 0;">
                 <div id="meter-values-content" style="flex: 1;">Waiting for MeterValues data...</div>
-                <div id="composite-schedule-display" style="flex: 1; padding-left: 15px; border-left: 1px solid #ddd;"></div>
+                <div id="composite-schedule-display" style="flex: 1; padding-left: 15px; border-left: 1px solid #ddd;">
+                    <h4>Composite Schedule</h4>
+                    <div id="composite-schedule-content"></div>
+                </div>
             </div>
-
-
-            <div class="quick-action" style="text-align: center; margin-top: 15px;">
-                <button onclick="runTest('run_b1_remote_start_transaction_test')" class="analysis-btn">
+        </div>
+        <div class="quick-actions-container" style="display: flex; justify-content: space-around; margin-top: 15px;">
+            <div class="quick-action">
+                <button onclick="runTestWithParams('run_b1_remote_start_transaction_test', {})" class="analysis-btn">
                     ⚡ Start B.1 Transaction
+                </button>
+            </div>
+            <div class="quick-action">
+                <button onclick="runTestWithParams('run_c2_get_composite_schedule_test', {})" class="analysis-btn">
+                    C.2: GetCompositeSchedule
                 </button>
             </div>
         </div>
@@ -257,6 +285,24 @@
     </div>
     <div id="status-message" class="status-message" style="display:none;"></div>
 
+    <h2 id="ev-simulator-heading">EV Simulator Status</h2>
+    <div id="ev-info" style="display:none; gap:20px;">
+        <div id="ev-status-details" style="flex:1;">
+            <p><strong>EV State:</strong> <span id="ev-state">N/A</span></p>
+            <p><strong>Wallbox Advertised Current:</strong> <span id="ev-wallbox-current">N/A</span></p>
+            <p><strong>CP Voltage:</strong> <span id="ev-voltage">N/A</span></p>
+            <p><strong>CP Duty Cycle:</strong> <span id="ev-duty-cycle">N/A</span></p>
+            <p><strong>PP Voltage:</strong> <span id="ev-pp-voltage">N/A</span></p>
+            <p><strong>Error Status:</strong> <span id="ev-error">N/A</span></p>
+        </div>
+        <div class="button-group" style="flex:2; align-self:center;">
+            <button id="btn-state-a" onclick="setEvState('A')">Set State A (Disconnected)</button>
+            <button id="btn-state-b" onclick="setEvState('B')">Set State B (Connected)</button>
+            <button id="btn-state-c" onclick="setEvState('C')">Set State C (Charging)</button>
+            <button id="btn-state-e" onclick="setEvState('E')">Set State E (Error)</button>
+        </div>
+    </div>
+
     <h2>Logs</h2>
     <div class="log-container" id="log-output"></div>
 </div>
@@ -272,7 +318,7 @@
             <label for="stackLevel">Stack Level</label>
             <input type="number" id="stackLevel" name="stackLevel" value="0">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="purpose-form-group">
             <label for="chargingProfilePurpose">Profile Purpose</label>
             <select id="chargingProfilePurpose" name="chargingProfilePurpose">
                 <option value="ChargePointMaxProfile">ChargePointMaxProfile</option>
@@ -280,7 +326,7 @@
                 <option value="TxProfile">TxProfile</option>
             </select>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="kind-form-group">
             <label for="chargingProfileKind">Profile Kind</label>
             <select id="chargingProfileKind" name="chargingProfileKind">
                 <option value="Absolute">Absolute</option>
@@ -288,11 +334,18 @@
                 <option value="Relative">Relative</option>
             </select>
         </div>
-        <div class="form-group">
-            <label for="limit">Limit (Amps or Watts)</label>
-            <input type="number" id="limit" name="limit" value="0">
+        <div class="form-group" id="unit-form-group">
+            <label for="chargingRateUnit">Charging Rate Unit</label>
+            <select id="chargingRateUnit" name="chargingRateUnit">
+                <option value="A">A (Amperes)</option>
+                <option value="W">W (Watts)</option>
+            </select>
         </div>
         <div class="form-group">
+            <label for="limit">Limit</label>
+            <input type="number" id="limit" name="limit" value="0">
+        </div>
+        <div class="form-group" id="duration-form-group">
             <label for="duration">Duration (seconds)</label>
             <input type="number" id="duration" name="duration" value="3600">
         </div>
@@ -300,6 +353,42 @@
     </form>
   </div>
 </div>
+
+<!-- RFID Authorization Modal -->
+<div id="rfidModal" class="modal">
+  <div class="modal-content">
+    <span class="close" id="rfid-modal-close">&times;</span>
+    <h3>🎫 RFID Authorization Test</h3>
+    <div id="rfid-status">
+        <p><strong>Instructions:</strong></p>
+        <ol>
+            <li>📘 Present the <strong>FIRST</strong> RFID card to the wallbox reader (will be <span style="color: #28a745;">ACCEPTED</span>)</li>
+            <li>📘 Then present a <strong>DIFFERENT</strong> RFID card to the wallbox reader (will be <span style="color: #dc3545;">INVALID</span>)</li>
+            <li>💡 <strong>Important:</strong> Use different cards - the wallbox may not re-read the same card immediately</li>
+        </ol>
+        <div id="rfid-progress" style="margin: 20px 0;">
+            <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 15px;">
+                <div id="rfid-timer" style="font-weight: bold; color: #007bff;">⏳ Waiting for test to start...</div>
+                <div id="rfid-cards-status" style="margin-top: 10px;">
+                    <div id="card1-status" style="margin: 5px 0; padding: 8px; border-radius: 4px; background-color: #e9ecef;">
+                        📇 Card 1: <span id="card1-result">Waiting...</span>
+                    </div>
+                    <div id="card2-status" style="margin: 5px 0; padding: 8px; border-radius: 4px; background-color: #e9ecef;">
+                        📇 Card 2: <span id="card2-result">Waiting...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="rfid-log" style="max-height: 200px; overflow-y: auto; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; font-family: monospace; font-size: 12px;">
+            <div>📝 Authorization log will appear here...</div>
+        </div>
+    </div>
+    <div style="margin-top: 20px;">
+        <button id="rfid-close-btn" class="button" style="background-color: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 4px;">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
     const chargingStatusEl = document.getElementById("charging-status");
     const currentChargingEl = document.getElementById("current-charging");
@@ -336,6 +425,7 @@
 
     function updateChargePointDetails(cpId) {
         const cp = chargePointsData[cpId];
+        console.log('updateChargePointDetails - cp:', cp); // Added for debugging
         if (cp) {
             vendorEl.textContent = cp.vendor || 'N/A';
             modelEl.textContent = cp.model || 'N/A';
@@ -346,8 +436,15 @@
             const currentA = cp.current_current_a || 0;
             currentChargingEl.textContent = `${powerW.toFixed(0)} W / ${currentA.toFixed(1)} A`;
             lastHeartbeatEl.textContent = cp.last_heartbeat ? new Date(cp.last_heartbeat).toLocaleString() : 'N/A';
+
+            // Enable all test buttons when wallbox is connected
             document.querySelectorAll('.test-category .button-group button').forEach(btn => {
                 btn.classList.remove('disabled');
+            });
+
+            // Enable all analysis buttons (quick action buttons)
+            document.querySelectorAll('.analysis-btn').forEach(btn => {
+                btn.disabled = false;
             });
             const testResults = cp.test_results || {};
             document.querySelectorAll('[data-step-key]').forEach(btn => {
@@ -361,25 +458,107 @@
                 }
             });
 
-            const scheduleContainer = document.getElementById('composite-schedule-display');
+            // Restore composite schedule update logic
+            const scheduleContainer = document.getElementById('composite-schedule-content');
             if (cp.composite_schedule && cp.composite_schedule.chargingSchedulePeriod) {
-                let scheduleHtml = '<h4>Composite Schedule</h4>';
-                scheduleHtml += `<ul>`;
+                let scheduleHtml = `<ul>`;
                 cp.composite_schedule.chargingSchedulePeriod.forEach((period, index) => {
                     scheduleHtml += `<li>Period ${index + 1}: Start ${period.startPeriod}s, Limit ${period.limit}${cp.composite_schedule.chargingRateUnit}, Phases ${period.numberPhases || 'N/A'}</li>`;
                 });
                 scheduleHtml += `</ul>`;
                 scheduleContainer.innerHTML = scheduleHtml;
             } else {
-                scheduleContainer.innerHTML = '';
+                scheduleContainer.innerHTML = 'No schedule data available.';
+            }
+
+            // Update A.3 Configuration Details - Show all configuration parameters
+            const a3TestResultsContent = document.getElementById('a3-test-results-content');
+
+            // Use configuration_details instead of test_results for parameter values
+            const a3Results = cp.configuration_details;
+            console.log('Configuration details:', a3Results);
+
+            if (a3Results && typeof a3Results === 'object') {
+                console.log('A3 Results found:', Object.keys(a3Results).length, 'parameters');
+                console.log('First 5 keys:', Object.keys(a3Results).slice(0, 5));
+                console.log('First 5 values:', Object.values(a3Results).slice(0, 5));
+
+                let resultsHtml = '<div style="max-height: 400px; overflow-y: auto; font-size: 15px; line-height: 1.3;">';
+
+                // Sort parameters alphabetically for better readability
+                const sortedKeys = Object.keys(a3Results).sort();
+                let hasContent = false;
+
+                for (const key of sortedKeys) {
+                    const value = a3Results[key];
+
+                    // Convert to string to ensure we can check content
+                    const valueStr = String(value);
+
+                    // Skip N/A and unsupported parameters - only show available ones
+                    if (valueStr === 'N/A' || valueStr === 'N/A (Not Supported)' || valueStr === 'NO_RESPONSE') {
+                        continue;
+                    }
+
+                    hasContent = true;
+                    let displayValue = valueStr;
+                    let isReadOnly = valueStr.includes('(RO)');
+
+                    resultsHtml += '<div style="margin-bottom: 4px; padding: 2px 0; border-bottom: 1px solid #f0f0f0;">';
+
+                    // Parameter name and value on same line for compactness
+                    resultsHtml += '<div>';
+
+                    // Parameter name
+                    resultsHtml += '<span style="font-weight: bold; color: #333; display: inline-block; width: 340px; font-size: 15px;">';
+                    resultsHtml += String(key) + ':';
+                    resultsHtml += '</span>';
+
+                    // Parameter value
+                    resultsHtml += '<span style="color: #666; font-size: 15px;">';
+                    resultsHtml += displayValue;
+                    resultsHtml += '</span>';
+
+                    resultsHtml += '</div>';
+                    resultsHtml += '</div>';
+                }
+
+                if (!hasContent) {
+                    // If no content after filtering, show all parameters including N/A for debugging
+                    resultsHtml += '<div style="padding: 10px; color: #666;">Showing all parameters (including unsupported):</div>';
+
+                    for (const key of sortedKeys) {
+                        const value = a3Results[key];
+                        const valueStr = String(value);
+
+                        resultsHtml += '<div style="margin-bottom: 4px; padding: 2px 0; font-size: 12px;">';
+                        resultsHtml += '<span style="font-weight: bold; color: #555; display: inline-block; min-width: 300px;">' + String(key) + ':</span>';
+                        resultsHtml += '<span style="color: #888;">' + valueStr + '</span>';
+                        resultsHtml += '</div>';
+                    }
+                } else {
+                    console.log('Displayed parameters with values');
+                }
+
+                resultsHtml += '</div>';
+                a3TestResultsContent.innerHTML = resultsHtml;
+            } else {
+                a3TestResultsContent.innerHTML = 'No configuration data available. Run A.3 test to retrieve all parameters.';
             }
 
         } else {
             ['vendor', 'model', 'first-status-time', 'boot-time', 'charging-status', 'last-heartbeat'].forEach(id => document.getElementById(id).textContent = 'N/A');
             currentChargingEl.textContent = '0 W / 0.0 A';
+
+            // Disable all test buttons when no wallbox is connected
             document.querySelectorAll('.test-category .button-group button').forEach(btn => {
                 btn.classList.add('disabled');
                 btn.classList.remove('btn-success', 'btn-failure');
+            });
+
+            // Also disable all analysis buttons (quick action buttons)
+            document.querySelectorAll('.analysis-btn').forEach(btn => {
+                btn.disabled = true;
             });
         }
     }
@@ -393,9 +572,12 @@
             const activeCpId = responseData.active_charge_point_id;
             const activeTxId = responseData.active_transaction_id;
             const ids = Object.keys(chargePointsData);
-            if (ids.length > 0) {
+            if (ids.length > 0 && activeCpId) {
                 updateChargePointDetails(activeCpId);
                 activeTransactionIdDisplay.textContent = activeTxId !== null ? activeTxId : 'N/A';
+            } else {
+                // No active wallbox - disable all buttons
+                updateChargePointDetails(null);
             }
         } catch (e) {
             console.error(e);
@@ -423,7 +605,9 @@
 
         stepKeyInput.value = stepKey;
 
-        // Show all options first
+        // Show all fields and options by default
+        document.getElementById('purpose-form-group').style.display = 'block';
+        document.getElementById('duration-form-group').style.display = 'block';
         for (let i = 0; i < purposeSelect.options.length; i++) {
             purposeSelect.options[i].style.display = "";
         }
@@ -434,10 +618,10 @@
             form.stackLevel.value = 0;
             form.chargingProfilePurpose.value = 'TxProfile';
             form.chargingProfileKind.value = 'Absolute';
-            form.limit.value = 0; // 'disable' value
+            form.chargingRateUnit.value = 'W';
+            form.limit.value = 0;
             form.duration.value = 3600;
 
-            // Hide TxDefaultProfile for C.1
             for (let i = 0; i < purposeSelect.options.length; i++) {
                 if (purposeSelect.options[i].value === 'TxDefaultProfile') {
                     purposeSelect.options[i].style.display = "none";
@@ -449,8 +633,11 @@
             form.stackLevel.value = 0;
             form.chargingProfilePurpose.value = 'TxDefaultProfile';
             form.chargingProfileKind.value = 'Absolute';
-            form.limit.value = 5000; // 'medium' value
-            form.duration.value = 3600;
+            form.chargingRateUnit.value = 'W';
+            form.limit.value = 5000;
+
+            document.getElementById('purpose-form-group').style.display = 'none';
+            document.getElementById('duration-form-group').style.display = 'none';
         }
 
         modal.style.display = 'block';
@@ -489,10 +676,19 @@
 
     async function fetchAndRenderTestSteps() {
         const testDefinitions = {
-            'run_a1_change_configuration_test': { name: 'A.1: ChangeConfiguration', category: 'category-a-buttons' },
+            'run_a1_initial_registration': { name: 'A.1: Initial Registration', category: 'category-a-buttons' },
             'run_a2_get_configuration_test': { name: 'A.2: GetConfiguration', category: 'category-a-buttons' },
+            'run_a3_change_configuration_test': { name: 'A.3: Get All Configuration', category: 'category-a-buttons' },
+            'run_a4_check_initial_state': { name: 'A.4: Check Initial State', category: 'category-a-buttons' },
+            'run_a5_trigger_all_messages_test': { name: 'A.5: Trigger All Messages', category: 'category-a-buttons' },
+            'run_a6_status_and_meter_value_acquisition': { name: 'A.6: Meter Values', category: 'category-a-buttons' },
             'run_b1_remote_start_transaction_test': { name: 'B.1: RemoteStartTransaction', category: 'category-b-buttons' },
             'run_b2_remote_stop_transaction_test': { name: 'B.2: RemoteStopTransaction', category: 'category-b-buttons' },
+            'run_b3_rfid_authorization_test': { name: 'B.3: RFID Authorization', category: 'category-b-buttons' },
+            'run_b4_clear_rfid_cache': { name: 'B.4: Clear RFID Cache', category: 'category-b-buttons' },
+            'run_b5_send_rfid_list': { name: 'B.5: Send RFID List', category: 'category-b-buttons' },
+            'run_b6_get_rfid_list_version': { name: 'B.6: Get RFID List Version', category: 'category-b-buttons' },
+            'run_x1_reboot_wallbox': { name: 'X.1: Reboot Wallbox', category: 'category-x-buttons' },
             'run_c1_set_charging_profile_test': { name: 'C.1: SetChargingProfile', category: 'category-c-buttons' },
             'run_c2_get_composite_schedule_test': { name: 'C.2: GetCompositeSchedule', category: 'category-c-buttons' },
             'run_c3_clear_charging_profile_test': { name: 'C.3: ClearChargingProfile', category: 'category-c-buttons' },
@@ -517,6 +713,10 @@
                 if (key === 'run_c1_set_charging_profile_test' || key === 'run_c4_tx_default_profile_test') {
                     btn.onclick = () => {
                         openChargingProfileModal(key);
+                    };
+                } else if (key === 'run_b3_rfid_authorization_test') {
+                    btn.onclick = () => {
+                        openRfidModal();
                     };
                 } else {
                     btn.onclick = async () => {
@@ -745,101 +945,118 @@
         }
     };
 
+    async function rebootWallbox() {
+        // Check if a wallbox is connected first
+        try {
+            const r = await fetch('/api/discovered_charge_points');
+            const responseData = await r.json();
+            const backendActiveCpId = responseData.active_charge_point_id;
+
+            if (!backendActiveCpId) {
+                showStatusMessage("Please connect a wallbox first. No active wallbox detected.", true);
+                return;
+            }
+
+            if (confirm("Are you sure you want to reboot the wallbox? This will perform a hard reset.")) {
+                const rebootBtn = document.getElementById('reboot-wallbox-button');
+                rebootBtn.disabled = true;
+
+                try {
+                    const r = await fetch('/api/test/run_x1_reboot_wallbox', { method: 'POST' });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error(j.error || 'Unknown error');
+                    showStatusMessage(j.status || 'Wallbox reboot initiated.');
+                } catch (e) {
+                    showStatusMessage(`Failed to reboot wallbox: ${e.message}`, true);
+                } finally {
+                    rebootBtn.disabled = false;
+                }
+            }
+        } catch (e) {
+            showStatusMessage(`Failed to check wallbox connection: ${e.message}`, true);
+        }
+    }
+
     function updateWallboxCapabilityStatus() {
         const meterValuesContent = document.getElementById('meter-values-content');
 
-        if (!window.transactionsData) {
-            meterValuesContent.textContent = 'Loading transaction data...';
-            return;
-        }
+        // Define default labels and values
+        let voltageText = '🔌 Voltage: N/A';
+        let currentText = '⚡ Current: N/A';
+        let powerText = '🔋 Power: N/A';
+        let energyText = '📊 Energy: N/A';
 
-        let meterValuesFound = false;
-        for (const [txId, txData] of Object.entries(window.transactionsData)) {
-            if (txData.meter_values && txData.meter_values.length > 0) {
-                meterValuesFound = true;
-                const latestMeter = txData.meter_values[txData.meter_values.length - 1];
-                meterValuesContent.innerHTML = '';
+        if (window.transactionsData) {
+            let meterValuesFound = false;
+            for (const [txId, txData] of Object.entries(window.transactionsData)) {
+                if (txData.meter_values && txData.meter_values.length > 0) {
+                    meterValuesFound = true;
+                    const latestMeter = txData.meter_values[txData.meter_values.length - 1];
 
-                const header = document.createElement('div');
-                header.style.marginBottom = '10px';
-                header.style.fontWeight = 'bold';
-                header.textContent = `Transaction ${txId} (${txData.status || 'Unknown'}) - ${txData.meter_values.length} readings`;
-                meterValuesContent.appendChild(header);
+                    if (latestMeter && latestMeter.sampledValue) {
+                        const voltage = [];
+                        const current = [];
+                        const power = [];
+                        const energy = [];
 
-                if (latestMeter && latestMeter.sampledValue) {
-                    const voltage = [];
-                    const current = [];
-                    const power = [];
-                    const energy = [];
+                        for (const sample of latestMeter.sampledValue) {
+                            const measurand = sample.measurand || 'Unknown';
+                            const value = parseFloat(sample.value || '0');
+                            const unit = sample.unit || '';
+                            const phase = sample.phase || '';
+                            const item = { measurand, value, unit, phase };
 
-                    for (const sample of latestMeter.sampledValue) {
-                        const measurand = sample.measurand || 'Unknown';
-                        const value = parseFloat(sample.value || '0');
-                        const unit = sample.unit || '';
-                        const phase = sample.phase || '';
-                        const item = { measurand, value, unit, phase };
+                            if (measurand.includes('Voltage')) voltage.push(item);
+                            else if (measurand.includes('Current')) current.push(item);
+                            else if (measurand.includes('Power')) power.push(item);
+                            else if (measurand.includes('Energy')) energy.push(item);
+                        }
 
-                        if (measurand.includes('Voltage')) voltage.push(item);
-                        else if (measurand.includes('Current')) current.push(item);
-                        else if (measurand.includes('Power')) power.push(item);
-                        else if (measurand.includes('Energy')) energy.push(item);
+                        if (voltage.length > 0) {
+                            voltageText = '🔌 Voltage: ';
+                            voltage.forEach((v, i) => {
+                                if (i > 0) voltageText += ', ';
+                                voltageText += `${v.phase || 'L' + (i+1)}: ${v.value}${v.unit}`;
+                            });
+                        }
+
+                        if (current.length > 0) {
+                            currentText = '⚡ Current: ';
+                            current.forEach((c, i) => {
+                                if (i > 0) currentText += ', ';
+                                currentText += `${c.phase || 'L' + (i+1)}: ${c.value}${c.unit}`;
+                            });
+                        }
+
+                        if (power.length > 0) {
+                            powerText = '🔋 Power: ';
+                            power.forEach((p, i) => {
+                                if (i > 0) powerText += ', ';
+                                powerText += `${p.phase || 'L' + (i+1)}: ${p.value}${p.unit}`;
+                            });
+                        }
+
+                        if (energy.length > 0) {
+                            energyText = '📊 Energy: ';
+                            energy.forEach((e, i) => {
+                                if (i > 0) energyText += ', ';
+                                energyText += `${e.value}${e.unit}`;
+                            });
+                        }
                     }
-
-                    if (voltage.length > 0) {
-                        const voltageDiv = document.createElement('div');
-                        voltageDiv.style.marginBottom = '8px';
-                        let voltageText = '🔌 Voltage: ';
-                        voltage.forEach((v, i) => {
-                            if (i > 0) voltageText += ', ';
-                            voltageText += `${v.phase || 'L' + (i+1)}: ${v.value}${v.unit}`;
-                        });
-                        voltageDiv.textContent = voltageText;
-                        meterValuesContent.appendChild(voltageDiv);
-                    }
-
-                    if (current.length > 0) {
-                        const currentDiv = document.createElement('div');
-                        currentDiv.style.marginBottom = '8px';
-                        let currentText = '⚡ Current: ';
-                        current.forEach((c, i) => {
-                            if (i > 0) currentText += ', ';
-                            currentText += `${c.phase || 'L' + (i+1)}: ${c.value}${c.unit}`;
-                        });
-                        currentDiv.textContent = currentText;
-                        meterValuesContent.appendChild(currentDiv);
-                    }
-
-                    if (power.length > 0) {
-                        const powerDiv = document.createElement('div');
-                        powerDiv.style.marginBottom = '8px';
-                        let powerText = '🔋 Power: ';
-                        power.forEach((p, i) => {
-                            if (i > 0) powerText += ', ';
-                            powerText += `${p.phase || 'L' + (i+1)}: ${p.value}${p.unit}`;
-                        });
-                        powerDiv.textContent = powerText;
-                        meterValuesContent.appendChild(powerDiv);
-                    }
-
-                    if (energy.length > 0) {
-                        const energyDiv = document.createElement('div');
-                        energyDiv.style.marginBottom = '8px';
-                        let energyText = '📊 Energy: ';
-                        energy.forEach((e, i) => {
-                            if (i > 0) energyText += ', ';
-                            energyText += `${e.value}${e.unit}`;
-                        });
-                        energyDiv.textContent = energyText;
-                        meterValuesContent.appendChild(energyDiv);
-                    }
+                    break; // Only process the first transaction with meter values
                 }
-                break;
             }
         }
 
-        if (!meterValuesFound) {
-            meterValuesContent.textContent = 'No MeterValues data available. Start a charging transaction to see live measurements.';
-        }
+        // Render the content with persistent labels
+        meterValuesContent.innerHTML = `
+            <div style="margin-bottom: 10px; font-weight: bold;">Live Measurements</div>
+            <div style="margin-bottom: 8px;">${voltageText}</div>
+            <div style="margin-bottom: 8px;">${currentText}</div>
+            <div style="margin-bottom: 8px;">${powerText}</div>
+            <div style="margin-bottom: 8px;">${energyText}</div>
+        `;
     }
 
     async function fetchDiscoveredWallboxes() {
@@ -856,15 +1073,32 @@
     function updateWallboxDiscoveryUI(data) {
         const container = document.getElementById('wallboxes-container');
         const activeWallboxName = document.getElementById('active-wallbox-name');
-        const autodiscoveryCheckbox = document.getElementById('autodiscovery-enabled');
 
-        autodiscoveryCheckbox.checked = data.autodiscovery_enabled;
-        activeWallboxName.textContent = data.active_charge_point_id || 'None selected';
+        // Update active wallbox name or show connection message
+        if (data.active_charge_point_id) {
+            activeWallboxName.textContent = data.active_charge_point_id;
+            // Enable buttons when wallbox is connected
+            document.querySelectorAll('.test-category .button-group button').forEach(btn => {
+                btn.classList.remove('disabled');
+            });
+            document.querySelectorAll('.analysis-btn').forEach(btn => {
+                btn.disabled = false;
+            });
+        } else {
+            activeWallboxName.textContent = 'No wallboxes discovered yet. Connect a wallbox to ws://192.168.0.150:8887/YourWallboxID';
+            // Disable buttons when no wallbox is connected
+            document.querySelectorAll('.test-category .button-group button').forEach(btn => {
+                btn.classList.add('disabled');
+            });
+            document.querySelectorAll('.analysis-btn').forEach(btn => {
+                btn.disabled = true;
+            });
+        }
 
         const discovered = data.discovered_charge_points;
 
         if (Object.keys(discovered).length === 0) {
-            container.innerHTML = '<div class="no-wallboxes">No wallboxes discovered yet. Connect a wallbox to ws://192.168.0.150:8887/YourWallboxID</div>';
+            container.innerHTML = '';
         } else {
             container.innerHTML = '';
             Object.entries(discovered).forEach(([cpId, info]) => {
@@ -920,26 +1154,6 @@
         }
     }
 
-    async function toggleAutodiscovery() {
-        const enabled = document.getElementById('autodiscovery-enabled').checked;
-
-        try {
-            const response = await fetch('/api/autodiscovery', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled: enabled })
-            });
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const result = await response.json();
-        } catch (e) {
-            console.error('Failed to toggle autodiscovery:', e);
-            document.getElementById('autodiscovery-enabled').checked = !enabled;
-        }
-    }
-
-    document.getElementById('autodiscovery-enabled').addEventListener('change', toggleAutodiscovery);
 
     setInterval(() => {
         fetchChargePoints();
@@ -962,6 +1176,14 @@
     fetchChargePoints();
 
     document.addEventListener('DOMContentLoaded', (event) => {
+        // Initially disable all buttons until we know if a wallbox is connected
+        document.querySelectorAll('.analysis-btn').forEach(btn => {
+            btn.disabled = true;
+        });
+        document.querySelectorAll('.test-category .button-group button').forEach(btn => {
+            btn.classList.add('disabled');
+        });
+
         const modal = document.getElementById('chargingProfileModal');
         const closeButton = document.getElementById('modal-close-button');
         const form = document.getElementById('chargingProfileForm');
@@ -983,6 +1205,7 @@
                 stackLevel: parseInt(form.stackLevel.value),
                 chargingProfilePurpose: form.chargingProfilePurpose.value,
                 chargingProfileKind: form.chargingProfileKind.value,
+                chargingRateUnit: form.chargingRateUnit.value,
                 limit: parseFloat(form.limit.value),
                 duration: parseInt(form.duration.value)
             };
@@ -990,6 +1213,195 @@
             modal.style.display = "none";
         }
     });
+
+    // RFID Modal Functions
+    let rfidTestInterval = null;
+    let rfidStatusInterval = null;
+    let rfidTestTimeRemaining = 60;
+    let cardsDetected = { card1: null, card2: null };
+    let lastKnownCards = [];
+
+    function openRfidModal() {
+        // Check if wallbox is connected
+        fetch('/api/discovered_charge_points')
+            .then(r => r.json())
+            .then(responseData => {
+                if (!responseData.active_charge_point_id) {
+                    showStatusMessage("Please connect a wallbox first. No active wallbox detected.", true);
+                    return;
+                }
+
+                const modal = document.getElementById('rfidModal');
+
+                // Reset modal state
+                resetRfidModal();
+
+                modal.style.display = 'block';
+
+                // Start the test automatically
+                startRfidTest();
+            })
+            .catch(e => {
+                showStatusMessage(`Failed to check wallbox connection: ${e.message}`, true);
+            });
+    }
+
+    function resetRfidModal() {
+        rfidTestTimeRemaining = 60;
+        cardsDetected = { card1: null, card2: null };
+        lastKnownCards = [];
+
+        document.getElementById('rfid-timer').textContent = '⏳ Test starting...';
+        document.getElementById('card1-result').textContent = 'Waiting...';
+        document.getElementById('card2-result').textContent = 'Waiting...';
+        document.getElementById('card1-status').style.backgroundColor = '#e9ecef';
+        document.getElementById('card2-status').style.backgroundColor = '#e9ecef';
+        document.getElementById('rfid-log').innerHTML = '<div>📝 Starting RFID authorization test...</div>';
+
+        if (rfidTestInterval) {
+            clearInterval(rfidTestInterval);
+            rfidTestInterval = null;
+        }
+
+        if (rfidStatusInterval) {
+            clearInterval(rfidStatusInterval);
+            rfidStatusInterval = null;
+        }
+    }
+
+    async function startRfidTest() {
+        // Start polling for RFID status updates
+        startRfidStatusPolling();
+
+        // Start the backend test (async)
+        setTimeout(async () => {
+            try {
+                addRfidLog('🚀 Starting RFID authorization test...');
+
+                const response = await fetch('/api/test/run_b3_rfid_authorization_test', { method: 'POST' });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Test failed');
+                }
+
+                addRfidLog('✅ Test completed successfully');
+                document.getElementById('rfid-timer').textContent = '✅ Test completed';
+
+            } catch (e) {
+                addRfidLog(`❌ Test failed: ${e.message}`);
+                document.getElementById('rfid-timer').textContent = '❌ Test failed';
+            }
+        }, 100);
+
+        // Start countdown timer
+        rfidTestInterval = setInterval(() => {
+            rfidTestTimeRemaining--;
+            document.getElementById('rfid-timer').textContent = `⏳ Time remaining: ${rfidTestTimeRemaining}s`;
+
+            if (rfidTestTimeRemaining <= 0) {
+                clearInterval(rfidTestInterval);
+                document.getElementById('rfid-timer').textContent = '⏰ Test time expired';
+                addRfidLog('⏰ 60 second test period completed');
+            }
+        }, 1000);
+    }
+
+    function startRfidStatusPolling() {
+        rfidStatusInterval = setInterval(async () => {
+            try {
+                const response = await fetch('/api/rfid_status');
+                const status = await response.json();
+
+                if (response.ok && status.active) {
+                    // Check for new cards
+                    const currentCards = status.cards_presented || [];
+
+                    for (let i = 0; i < currentCards.length; i++) {
+                        const cardId = currentCards[i];
+
+                        // If this is a new card we haven't seen
+                        if (!lastKnownCards.includes(cardId)) {
+                            const cardNumber = i + 1;
+                            const cardStatus = i === 0 ? 'Accepted' : 'Invalid';
+
+                            updateCardStatus(cardNumber, cardId, cardStatus);
+                            lastKnownCards.push(cardId);
+                        }
+                    }
+                } else if (!status.active) {
+                    // Test is no longer active, stop polling
+                    if (rfidStatusInterval) {
+                        clearInterval(rfidStatusInterval);
+                        rfidStatusInterval = null;
+                    }
+                }
+            } catch (e) {
+                console.error('Error polling RFID status:', e);
+            }
+        }, 1000); // Poll every second
+    }
+
+    function addRfidLog(message) {
+        const logDiv = document.getElementById('rfid-log');
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement('div');
+        logEntry.innerHTML = `${timestamp}: ${message}`;
+        logDiv.appendChild(logEntry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function updateCardStatus(cardNumber, idTag, status) {
+        const cardId = cardNumber === 1 ? 'card1' : 'card2';
+        const resultEl = document.getElementById(`${cardId}-result`);
+        const statusEl = document.getElementById(`${cardId}-status`);
+
+        cardsDetected[cardId] = { idTag, status };
+
+        resultEl.textContent = `${idTag} → ${status}`;
+
+        if (status === 'Accepted') {
+            statusEl.style.backgroundColor = '#d4edda';
+            statusEl.style.color = '#155724';
+        } else {
+            statusEl.style.backgroundColor = '#f8d7da';
+            statusEl.style.color = '#721c24';
+        }
+
+        addRfidLog(`🎫 Card ${cardNumber}: ${idTag} → ${status}`);
+    }
+
+    // Close modal handlers
+    document.getElementById('rfid-modal-close').onclick = function() {
+        closeRfidModal();
+    }
+
+    document.getElementById('rfid-close-btn').onclick = function() {
+        closeRfidModal();
+    }
+
+    function closeRfidModal() {
+        const modal = document.getElementById('rfidModal');
+        modal.style.display = 'none';
+
+        if (rfidTestInterval) {
+            clearInterval(rfidTestInterval);
+            rfidTestInterval = null;
+        }
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        const rfidModal = document.getElementById('rfidModal');
+        const chargingModal = document.getElementById('chargingProfileModal');
+
+        if (event.target == rfidModal) {
+            closeRfidModal();
+        } else if (event.target == chargingModal) {
+            chargingModal.style.display = "none";
+        }
+    }
+
 </script>
 </body>
 </html>

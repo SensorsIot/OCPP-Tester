@@ -20,33 +20,86 @@ The WallboxTester is a Python-based OCPP server that provides:
 - **Web Interface**: Real-time monitoring and control
 - **Transaction Management**: Complete transaction lifecycle handling
 
-## Initial connection to wallbox
-
-
-
-2. ## Test Categories and Test Cases
+## Test Categories and Test Cases
 
 ### **A. Core Communication & Status**
 
-#### A.1: `ChangeConfiguration`
+#### A.1: Initial Registration
+Tests that the charge point has registered itself with the server by triggering a BootNotification.
 
-####  A.2: `GetConfiguration`
+#### A.2: Get Configuration
+Retrieves and analyzes all OCPP configuration keys from the charge point, categorizing them as Core, Optional, or Vendor-specific.
 
-### **B. Authorization & Transaction Management**
+#### A.3: Change Configuration
+Tests the ability to modify charge point configuration by changing the HeartbeatInterval to 30 seconds.
 
-#### B.1: `RemoteStartTransaction` 
+#### A.4: Check Initial State
+Verifies charge point status detection and EV state transitions (A→B→C→A) with transaction handling.
 
-#### B.2: `RemoteStopTransaction`
+#### A.5: Trigger All Messages
+Tests TriggerMessage functionality for StatusNotification, MeterValues, BootNotification, and other OCPP messages.
+
+#### A.6: Meter Values
+Triggers StatusNotification and MeterValues messages to test data acquisition capabilities.
+
+### **B. Transaction Management & Control**
+
+#### B.1: Remote Start Transaction
+Tests remote initiation of charging transactions with proper EV state simulation.
+
+#### B.2: Remote Stop Transaction
+Tests remote termination of active charging transactions.
+
+#### B.3: Reboot Wallbox
+Performs emergency wallbox reboot using OCPP Reset Hard command.
 
 ### **C. Smart Charging Profile**
 
-#### C.1: `SetChargingProfile` 
+#### C.1: SetChargingProfile (TxProfile)
+Sets transaction-specific charging profiles with configurable power/current limits, units (W/A), duration, and profile parameters.
 
-#### C.2: `GetCompositeSchedule`
+#### C.2: Get Composite Schedule
+Retrieves the current composite charging schedule from the charge point to verify profile application.
 
-####  C.3: `ClearChargingProfile` 
+#### C.3: Clear Charging Profile
+Removes specific charging profiles from the charge point.
 
-#### C.4: `TxDefaultProfile`
+#### C.4: TxDefaultProfile
+Sets default charging profiles that apply to future transactions at both charge point and connector levels.
+
+### **D. Advanced Charging Control**
+
+#### D.1: Set Live Charging Power
+Sets charging profiles for active transactions to control power dynamically during charging.
+
+#### D.2: Set Default Charging Profile
+Establishes default charging profiles for future transactions.
+
+#### D.3: Smart Charging Capability Test
+Comprehensive test that sets a temporary profile and immediately requests the composite schedule to verify smart charging functionality.
+
+#### D.4: Clear Default Charging Profile
+Removes default charging profiles from the charge point.
+
+#### D.5: Set Profile 5000W
+Sets a specific 5000W charging profile for testing high-power scenarios.
+
+#### D.6: Set High Charging Profile
+Sets maximum power charging profiles for testing wallbox limits.
+
+### **E. Extended Transaction Tests**
+
+#### E.1: Real-World Transaction Test
+Comprehensive real-world transaction simulation with multiple charging states and profile changes.
+
+#### E.2-E.8: Extended Charging Profile Tests
+Various charging profile tests with different amperage settings (6A, 10A, 16A) and transaction management.
+
+#### E.10: Get Composite Schedule
+Extended composite schedule testing for complex charging scenarios.
+
+#### E.11: Clear All Profiles
+Comprehensive clearing of all charging profiles from the charge point.
 
 ## Automated Reactions 🤖
 
@@ -58,36 +111,48 @@ These messages can be handled automatically by a test script. The central system
 - **StatusNotification:** Automatically updates the wallbox's status within the central system. The central system updates its internal state to reflect the status change (e.g., `Charging`, `Faulted`).
 - **MeterValues:** This message automatically updates the meter values in the central system's database for the ongoing transaction.
 - **StopTransaction:** Can be handled automatically. The central system finalizes the transaction record and sends a `StopTransaction.conf` in response.
-
-### Human-in-the-Loop Reactions 👤
-
-This message requires a human operator to review the request content and make a decision, which is crucial for testing various authorization scenarios.
-
-- **Authorize:** A popup must present the request content (e.g., the `idTag`) and offer the test operator possible answers, such as `Accepted`, `Invalid`, or `Blocked`. The central system's response is based on the operator's decision.
-
-
+- **Authorize:** Automatically handled using predefined valid ID tags (`test_id_1`, `test_id_2`). Returns `Accepted` for valid tags, `Invalid` for others.
 
 ## V2 Implementation Details
 
 This section details the recent feature implementations and bug fixes for the Wallbox Tester.
 
-### 1. Robustness of Test Suite
+### 1. Expanded Test Suite
 
-- **`RemoteStartTransaction` Test Fix**: The test suite has been made more robust by adding a wait for the charge point to become "Available" after a `RemoteStopTransaction` test. This prevents race conditions where a new transaction is started before the charge point is ready, which previously caused the `RemoteStartTransaction` test to fail.
+- **A.4 and A.5 Test Integration**: Added comprehensive A.4 (Check Initial State) and A.5 (Trigger All Messages) tests to the frontend control panel.
+- **A.6 Meter Values Test**: Renamed and integrated the former B.1 test as A.6 for better categorization.
+- **B.3 Reboot Wallbox**: Added emergency wallbox reboot functionality (formerly "Brutal Stop") with proper UI placement and styling.
+- **Transaction ID Handling Fix**: Fixed A.4 test to properly handle wallbox-assigned transaction IDs per OCPP 1.6 specification.
 
-### 2. Interactive Charging Profile Tests
+### 2. Enhanced Charging Profile Management
 
-- **UI for `SetChargingProfile`**: A user-friendly pop-up modal has been added to the web UI for the `SetChargingProfile` (C.1) and `TxDefaultProfile` (C.4) tests.
-- **Dynamic Parameters**: This modal allows the user to dynamically enter parameters such as `stackLevel`, `chargingProfilePurpose`, `chargingProfileKind`, and `limit` before running the test.
-- **Backend Support**: The backend has been updated to receive these parameters and apply them to the `SetChargingProfile` command.
+- **OCPP-Compliant UI**: Updated charging profile modal to hide irrelevant fields for TxDefaultProfile (C.4) per OCPP standard:
+  - Profile Purpose field hidden (fixed as TxDefaultProfile)
+  - Duration field hidden (TxDefaultProfile should not have duration)
+- **Charging Rate Unit Selection**: Added support for both W (Watts) and A (Amperes) in the charging profile modal:
+  - User-selectable charging rate unit dropdown
+  - Backend integration for unit-specific profile creation
+  - Smart defaults with fallback to server configuration
+- **Dynamic Parameters**: Enhanced modal allows configuration of `stackLevel`, `chargingProfilePurpose`, `chargingProfileKind`, `chargingRateUnit`, `limit`, and `duration`.
 
-### 3. `SetChargingProfile` Bug Fixes
+### 3. Transaction Management Improvements
 
-- **`TxDefaultProfile` Fix**: The `run_c4_tx_default_profile_test` has been fixed to align with the behavior of the tested charge point. The `startSchedule` parameter has been removed, and the default `stackLevel` has been adjusted to `0`, which resolved rejections of the command.
-- **Enum Handling**: A bug was fixed where string values for enums were incorrectly being used with subscripting, causing a `TypeError`. The code now correctly uses the string values directly.
+- **Robust Transaction Detection**: Improved transaction lifecycle handling with proper OCPP flow management:
+  - RemoteStartTransaction → Authorize → StartTransaction sequence
+  - Proper handling of wallbox-assigned transaction IDs
+  - Enhanced state transition monitoring (A→B→C→A)
+- **EV State Integration**: Better coordination with EV simulator for realistic testing scenarios.
 
-### 4. Enhanced UI for Smart Charging
+### 4. UI/UX Enhancements
 
-- **`GetCompositeSchedule` Display**: The result of the `GetCompositeSchedule` test is now displayed in the "Live MeterValues Data" window in the UI.
-- **Two-Column Layout**: The "Live MeterValues Data" window has been updated to a two-column layout, with `MeterValues` on the left and the `CompositeSchedule` on the right, providing a clearer and more organized view of the charging data.
-- **Contextual Dropdown**: The "Profile Purpose" dropdown in the `SetChargingProfile` modal is now context-aware. For the C.1 test, the `TxDefaultProfile` option is hidden, as it is not applicable.
+- **Test Organization**: Reorganized tests into logical categories (A: Communication, B: Transactions, C: Smart Charging).
+- **Server Controls**: Added dedicated server control area with properly styled Reboot Wallbox and Shutdown Server buttons.
+- **Real-time Feedback**: Enhanced status messages and progress tracking for all test operations.
+- **OCPP-Compliant Interface**: Modal interfaces now respect OCPP 1.6 standard requirements and constraints.
+
+### 5. Code Quality and Maintenance
+
+- **Logging Cleanup**: Reduced excessive auto-detection and protocol warnings to appropriate debug levels.
+- **Comment Cleanup**: Removed redundant and obvious comments while preserving essential OCPP protocol documentation.
+- **Error Handling**: Improved graceful shutdown and error recovery mechanisms.
+- **OCPP Compliance**: Ensured all implementations follow OCPP 1.6-J specification requirements.

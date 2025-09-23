@@ -549,3 +549,77 @@ class ResetType:
     """Enum for Reset types."""
     Hard = "Hard"
     Soft = "Soft"
+
+# === RFID Authorization List Management ===
+
+class UpdateType:
+    """Enum for UpdateType in SendLocalList."""
+    Differential = "Differential"
+    Full = "Full"
+
+class UpdateStatus:
+    """Enum for UpdateStatus in SendLocalList response."""
+    Accepted = "Accepted"
+    Failed = "Failed"
+    NotSupported = "NotSupported"
+    VersionMismatch = "VersionMismatch"
+
+@dataclass
+class AuthorizationData:
+    """
+    A nested object in SendLocalList.req payload representing an RFID tag.
+    """
+    idTag: str
+    idTagInfo: Optional[IdTagInfo] = None
+
+    def __post_init__(self):
+        if self.idTagInfo and isinstance(self.idTagInfo, dict):
+            self.idTagInfo = IdTagInfo(**self.idTagInfo)
+
+@dataclass
+class ClearCacheRequest:
+    """
+    Represents the payload for a ClearCache.req message.
+    """
+    # ClearCache has no payload
+
+@dataclass
+class ClearCacheResponse:
+    """
+    Represents the payload for a ClearCache.conf message.
+    """
+    status: str # "Accepted" or "Rejected"
+
+@dataclass
+class SendLocalListRequest:
+    """
+    Represents the payload for a SendLocalList.req message.
+    """
+    listVersion: int
+    updateType: str  # "Differential" or "Full"
+    localAuthorizationList: Optional[List[AuthorizationData]] = None
+
+    def __post_init__(self):
+        if self.localAuthorizationList and self.localAuthorizationList and isinstance(self.localAuthorizationList[0], dict):
+            self.localAuthorizationList = [AuthorizationData(**auth) for auth in self.localAuthorizationList]
+
+@dataclass
+class SendLocalListResponse:
+    """
+    Represents the payload for a SendLocalList.conf message.
+    """
+    status: str # "Accepted", "Failed", "NotSupported", "VersionMismatch"
+
+@dataclass
+class GetLocalListVersionRequest:
+    """
+    Represents the payload for a GetLocalListVersion.req message.
+    """
+    # GetLocalListVersion has no payload
+
+@dataclass
+class GetLocalListVersionResponse:
+    """
+    Represents the payload for a GetLocalListVersion.conf message.
+    """
+    listVersion: int

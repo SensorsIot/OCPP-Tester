@@ -23,6 +23,7 @@ import argparse
 import asyncio
 import logging
 import signal
+import warnings
 from logging import StreamHandler
 
 import uvicorn
@@ -195,8 +196,31 @@ async def start_http_server():
         interface="wsgi",
     )
     server = uvicorn.Server(config)
+
+    # Store server instance globally for shutdown
+    global http_server_instance
+    http_server_instance = server
+
     logger.info(f"Web server listening on {HTTP_HOST}:{HTTP_PORT}")
-    await server.serve()
+
+    try:
+        await server.serve()
+    except asyncio.CancelledError:
+        logger.info("HTTP server task cancelled, shutting down...")
+        # More graceful shutdown
+        if hasattr(server, 'should_exit'):
+            server.should_exit = True
+        if hasattr(server, 'force_exit'):
+            server.force_exit = True
+        # Don't re-raise to avoid error messages
+        return
+    except Exception as e:
+        # During shutdown, ASGI applications may throw various cancellation errors
+        if "CancelledError" in str(e) or "cancelled" in str(e).lower():
+            logger.info("HTTP server cancelled during shutdown")
+        else:
+            logger.error(f"HTTP server error: {e}")
+        return
 
 # ---------- Main ----------
 async def main():
@@ -270,14 +294,88 @@ async def main():
 
     logger.info("Shutdown event received. Closing servers...")
 
+    # Signal HTTP server to shutdown gracefully
+    if 'http_server_instance' in globals():
+        try:
+            http_server_instance.should_exit = True
+            if hasattr(http_server_instance, 'force_exit'):
+                http_server_instance.force_exit = True
+            logger.info("HTTP server shutdown signal sent")
+            # Give HTTP server a moment to start shutting down
+            await asyncio.sleep(0.5)
+        except Exception as e:
+            logger.warning(f"Error signaling HTTP server shutdown: {e}")
+
     # Close WebSocket server
     ws_server.close()
-    await ws_server.wait_closed()
 
-    # Cancel all running tasks
-    for task in tasks:
-        task.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True) # Gather to ensure tasks are cancelled
+    # Wait for WebSocket server to close with timeout
+    try:
+        await asyncio.wait_for(ws_server.wait_closed(), timeout=5.0)
+        logger.info("WebSocket server closed successfully")
+    except asyncio.TimeoutError:
+        logger.warning("WebSocket server close timed out after 5 seconds")
+
+    # Cancel all running tasks (both tracked and untracked)
+    all_tasks = [t for t in asyncio.all_tasks() if not t.done()]
+    logger.info(f"Cancelling {len(all_tasks)} pending tasks...")
+
+    for task in all_tasks:
+        if not task.done():
+            task.cancel()
+
+    # Wait for all tasks to complete with shorter timeout to avoid hanging
+    if all_tasks:
+        try:
+            # Suppress CancelledError and other expected exceptions during shutdown
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                warnings.simplefilter("ignore", asyncio.CancelledError)
+                # Use wait() instead of wait_for() to avoid timeout cancellation issues
+                done, pending = await asyncio.wait(
+                    all_tasks,
+                    timeout=2.0,
+                    return_when=asyncio.ALL_COMPLETED
+                )
+                if pending:
+                    logger.info(f"Task cancellation completed ({len(pending)} tasks still pending, this is normal)")
+                else:
+                    logger.info("All tasks cancelled successfully")
+        except (asyncio.CancelledError, Exception):
+            # Ignore all exceptions during shutdown - they're expected
+            logger.info("Task cancellation completed")
+    else:
+        logger.info("No pending tasks to cancel")
+
+    # Close EV simulator manager if it exists
+    try:
+        await ev_sim_manager.stop()
+    except Exception as e:
+        logger.warning(f"Error stopping EV simulator manager: {e}")
+
+    # Close all streamer clients
+    try:
+        await log_streamer.close_all_clients()
+        await ev_status_streamer.close_all_clients()
+        logger.info("All streamer clients closed")
+    except Exception as e:
+        logger.warning(f"Error closing streamers: {e}")
+
+    # Final cleanup - ensure no tasks are left
+    final_tasks = [t for t in asyncio.all_tasks() if not t.done()]
+    if final_tasks:
+        logger.info(f"Force cancelling {len(final_tasks)} remaining tasks")
+        for task in final_tasks:
+            task.cancel()
+        # Give them a moment to cancel, but don't wait if we're one of the tasks being cancelled
+        try:
+            # Only wait if we're not being cancelled ourselves
+            current_task = asyncio.current_task()
+            if current_task not in final_tasks:
+                await asyncio.wait(final_tasks, timeout=1.0)
+        except Exception:
+            # Ignore any exceptions during final cleanup
+            pass
 
     logger.info("Server shut down gracefully.")
 
@@ -305,10 +403,25 @@ if __name__ == "__main__":
     shutdown_event = asyncio.Event()
     set_shutdown_event(shutdown_event)
 
+    # Track if shutdown has been initiated using a class to avoid nonlocal issues
+    class ShutdownState:
+        initiated = False
+        count = 0
+
     # Set up signal handler for graceful shutdown
     def handle_sigint(sig, frame):
-        logger.info("Ctrl-C (SIGINT) received. Initiating graceful shutdown...")
-        shutdown_event.set()
+        ShutdownState.count += 1
+
+        if not ShutdownState.initiated:
+            ShutdownState.initiated = True
+            logger.info("Ctrl-C (SIGINT) received. Initiating graceful shutdown...")
+            shutdown_event.set()
+        elif ShutdownState.count == 2:
+            logger.info("Second Ctrl-C received. Please wait for graceful shutdown...")
+        elif ShutdownState.count >= 3:
+            logger.warning("Multiple interrupts received. Forcing immediate exit...")
+            import os
+            os._exit(1)
 
     signal.signal(signal.SIGINT, handle_sigint)
 

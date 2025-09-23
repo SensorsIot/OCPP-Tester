@@ -49,6 +49,7 @@ def list_charge_points():
             "first_status_time": data.get("first_status_time"),
             "last_heartbeat": data.get("last_heartbeat"),
             "test_results": data.get("test_results", {}),
+            "configuration_details": data.get("configuration_details", {}),
             "use_simulator": data.get("use_simulator", False),
             "current_power_w": current_power_w,
             "current_current_a": current_current_a,
@@ -336,3 +337,17 @@ def run_test_step(step_name):
     except Exception as e:
         logging.exception("Error running test step")
         return jsonify({"error": f"Failed to run step '{step_name}': {e}"}), 500
+
+@app.route("/api/rfid_status")
+def get_rfid_status():
+    """Get current RFID test status for real-time updates in the UI."""
+    try:
+        from app.ocpp_message_handlers import rfid_test_state
+        return jsonify({
+            "active": rfid_test_state["active"],
+            "cards_presented": rfid_test_state["cards_presented"],
+            "test_start_time": rfid_test_state["test_start_time"].isoformat() if rfid_test_state["test_start_time"] else None
+        })
+    except Exception as e:
+        logging.exception("Error getting RFID status")
+        return jsonify({"error": f"Failed to get RFID status: {e}"}), 500

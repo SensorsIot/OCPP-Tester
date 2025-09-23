@@ -26,7 +26,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-VALID_ID_TAGS = ["test_id_1", "test_id_2"]
+# RFID card detection system
+RFID_CARDS = {
+    "first_card": "Accepted",   # Always accepted
+    "second_card": "Invalid"    # Always invalid
+}
+VALID_ID_TAGS = ["test_id_1", "test_id_2"]  # Keep for backward compatibility
+
+# Track card presentation order during testing
+rfid_test_state = {
+    "active": False,
+    "cards_presented": [],
+    "test_start_time": None
+}
 CP_STATE_MAP = {
     "Available": "CP State A",
     "Preparing": "CP State B",
@@ -69,7 +81,6 @@ class OcppMessageHandlers:
         if self.initial_status_received and not self.initial_status_received.is_set():
             self.initial_status_received.set()
 
-        # Auto-detection will be handled by StatusNotification only
 
         return BootNotificationResponse(
             status="Accepted",
@@ -79,7 +90,42 @@ class OcppMessageHandlers:
 
     async def handle_authorize(self, charge_point_id: str, payload: AuthorizeRequest) -> AuthorizeResponse:
         logger.info(f"📡 OCPP: Authorize request from {charge_point_id} for idTag: {payload.idTag}")
-        status = "Accepted" if payload.idTag in VALID_ID_TAGS else "Invalid"
+
+        # Check if RFID test is active
+        if rfid_test_state["active"]:
+            # During RFID test: First card = Accepted, subsequent cards = Invalid
+            card_count = len(rfid_test_state["cards_presented"])
+
+            # Add this card to the presented list if not already there
+            if payload.idTag not in rfid_test_state["cards_presented"]:
+                rfid_test_state["cards_presented"].append(payload.idTag)
+                card_count = len(rfid_test_state["cards_presented"])
+
+                if card_count == 1:
+                    status = "Accepted"
+                    logger.info(f"    🎫 RFID Test - Card #{card_count} (FIRST): {payload.idTag} → Status: {status}")
+                    logger.info("    💡 TIP: Present a DIFFERENT card for the second test (wallbox may not re-read same card)")
+                else:
+                    status = "Invalid"
+                    logger.info(f"    🎫 RFID Test - Card #{card_count} (SUBSEQUENT): {payload.idTag} → Status: {status}")
+            else:
+                # Card already presented, maintain same status
+                card_index = rfid_test_state["cards_presented"].index(payload.idTag) + 1
+                status = "Accepted" if card_index == 1 else "Invalid"
+                logger.info(f"    🎫 RFID Test - Repeat Card #{card_index}: {payload.idTag} → Status: {status}")
+
+        # Check predefined RFID cards
+        elif payload.idTag in RFID_CARDS:
+            status = RFID_CARDS[payload.idTag]
+            logger.info(f"    🎫 RFID Card: {payload.idTag} → Status: {status}")
+        # Fallback to old system for backward compatibility
+        elif payload.idTag in VALID_ID_TAGS:
+            status = "Accepted"
+            logger.info(f"    ✅ Legacy ID Tag: {payload.idTag} → Status: {status}")
+        else:
+            status = "Invalid"
+            logger.info(f"    ❌ Unknown ID Tag: {payload.idTag} → Status: {status}")
+
         logger.info(f"    ✅ Authorization {status} for idTag: {payload.idTag}")
         return AuthorizeResponse(idTagInfo=IdTagInfo(status=status))
 
@@ -98,29 +144,22 @@ class OcppMessageHandlers:
         if charge_point_id in CHARGE_POINTS:
             CHARGE_POINTS[charge_point_id]["status"] = payload.status
 
-            # Capture the first StatusNotification timestamp from the charge point
-            # This is more accurate than server-side boot time as it comes from the device itself
             if payload.timestamp and "first_status_time" not in CHARGE_POINTS[charge_point_id]:
                 CHARGE_POINTS[charge_point_id]["first_status_time"] = payload.timestamp
                 logger.info(f"📅 Captured first StatusNotification timestamp from {charge_point_id}: {payload.timestamp}")
 
-        # Trigger auto-detection ONCE on first StatusNotification only
         is_first_status = self.initial_status_received and not self.initial_status_received.is_set()
         if (is_first_status and
             not SERVER_SETTINGS.get("auto_detection_completed", False) and
             "auto_detection_triggered" not in CHARGE_POINTS[charge_point_id]):
             logger.info("🔍 Triggering GetConfiguration for auto-detection (fire-and-forget) on FIRST StatusNotification...")
-            # Mark that we've triggered auto-detection for this charge point
             CHARGE_POINTS[charge_point_id]["auto_detection_triggered"] = True
             asyncio.create_task(self._trigger_get_configuration())
 
         if self.initial_status_received and not self.initial_status_received.is_set():
             self.initial_status_received.set()
 
-        # Only trigger a refresh of the EV simulator panel if it's in use.
         if self.ocpp_server_logic.refresh_trigger and SERVER_SETTINGS.get("ev_simulator_available"):
-            # The UI polls the EV simulator status. If the CP status changes,
-            # it might be useful to trigger a faster refresh of the simulator state for the UI.
             logger.debug("CP status changed, setting EV refresh trigger for UI.")
             self.ocpp_server_logic.refresh_trigger.set()
         return StatusNotificationResponse()
@@ -156,15 +195,10 @@ class OcppMessageHandlers:
     async def handle_start_transaction(self, charge_point_id: str, payload: StartTransactionRequest) -> StartTransactionResponse:
         logger.info(f"📡 OCPP: StartTransaction from {charge_point_id}: {payload}")
 
-        # In OCPP 1.6, the Central System assigns the transaction ID in StartTransaction.conf
-        # The charge point will use this ID in subsequent MeterValues and StopTransaction messages
-        # Generate a realistic transaction ID using timestamp + random component for uniqueness
-        base_id = int(time.time() * 1000) % 1000000  # Last 6 digits of timestamp in ms
-        random_component = random.randint(1000, 9999)  # 4-digit random number
-        transaction_id = base_id * 10000 + random_component  # Combine for unique ID
+        base_id = int(time.time() * 1000) % 1000000
+        random_component = random.randint(1000, 9999)
+        transaction_id = base_id * 10000 + random_component
 
-        # Check if this is a confirmation of a remotely started transaction.
-        # We look for a pending remote start based on charge_point_id and connectorId.
         existing_transaction_data = None
         for key, t_data in TRANSACTIONS.items():
             if t_data.get("charge_point_id") == charge_point_id and \
@@ -172,26 +206,19 @@ class OcppMessageHandlers:
                t_data.get("remote_started") is True and \
                t_data.get("status") == "Ongoing":
                 existing_transaction_data = t_data
-                # Update the key in TRANSACTIONS to use the assigned transaction ID
-                # This is important for subsequent MeterValues/StopTransaction messages
-                # that will use this transaction ID as the key.
                 TRANSACTIONS[transaction_id] = TRANSACTIONS.pop(key)
                 break
 
         if existing_transaction_data:
-            # This is a confirmation of a remotely started transaction.
-            # Update the existing transaction record with the assigned transaction ID.
             existing_transaction_data.update({
                 "start_time": payload.timestamp,
                 "meter_start": payload.meterStart,
-                "remote_started": False, # Mark it as confirmed by StartTransaction
-                "transaction_id": transaction_id # Store the assigned transaction ID
+                "remote_started": False,
+                "transaction_id": transaction_id
             })
             logger.info(f"✅ OCPP: Confirmed remote transaction (CS assigned ID: {transaction_id}) with StartTransaction data.")
             transaction_id_to_return = transaction_id
         else:
-            # This is a new transaction initiated by the Charge Point.
-            # Store it with the assigned transaction ID as the key.
             TRANSACTIONS[transaction_id] = {
                 "charge_point_id": charge_point_id,
                 "id_tag": payload.idTag,
@@ -199,13 +226,13 @@ class OcppMessageHandlers:
                 "meter_start": payload.meterStart,
                 "connector_id": payload.connectorId,
                 "status": "Ongoing",
-                "remote_started": False, # This transaction was initiated by CP, not remotely by us
-                "transaction_id": transaction_id # Store the assigned transaction ID
+                "remote_started": False,
+                "transaction_id": transaction_id
             }
             logger.info(f"💫 OCPP: Created new transaction (ID: {transaction_id}) initiated by CP.")
             transaction_id_to_return = transaction_id
 
-        set_active_transaction_id(transaction_id) # Update the global active transaction ID
+        set_active_transaction_id(transaction_id)
         return StartTransactionResponse(
             transactionId=transaction_id_to_return,
             idTagInfo=IdTagInfo(status="Accepted")
@@ -301,7 +328,7 @@ class OcppMessageHandlers:
                     "meter_start": payload.meterValue[0].sampledValue[0].value if payload.meterValue and payload.meterValue[0].sampledValue else 0,
                     "connector_id": payload.connectorId,
                     "status": "Ongoing",
-                    "remote_started": False, # This transaction was initiated by CP, not remotely by us
+                    "remote_started": False,
                     "cp_transaction_id": payload.transactionId, # Store the CP's transaction ID
                     "cs_internal_transaction_id": None # CS internal ID not known from MeterValues
                 }
