@@ -473,7 +473,11 @@
                 console.log('First 5 keys:', Object.keys(a3Results).slice(0, 5));
                 console.log('First 5 values:', Object.values(a3Results).slice(0, 5));
 
-                let resultsHtml = '<div style="max-height: 400px; overflow-y: auto; font-size: 15px; line-height: 1.3;">';
+                // Preserve scroll position
+                const currentScrollableDiv = a3TestResultsContent.querySelector('div[style*="overflow-y: auto"]');
+                const currentScrollTop = currentScrollableDiv ? currentScrollableDiv.scrollTop : 0;
+
+                let resultsHtml = '<div id="config-scrollable-container" style="max-height: 400px; overflow-y: auto; font-size: 15px; line-height: 1.3;">';
 
                 // Sort parameters alphabetically for better readability
                 const sortedKeys = Object.keys(a3Results).sort();
@@ -532,6 +536,12 @@
 
                 resultsHtml += '</div>';
                 a3TestResultsContent.innerHTML = resultsHtml;
+
+                // Restore scroll position after updating content
+                const newScrollableDiv = document.getElementById('config-scrollable-container');
+                if (newScrollableDiv && currentScrollTop > 0) {
+                    newScrollableDiv.scrollTop = currentScrollTop;
+                }
             } else {
                 a3TestResultsContent.innerHTML = 'No configuration data available. Run A.3 test to retrieve all parameters.';
             }
