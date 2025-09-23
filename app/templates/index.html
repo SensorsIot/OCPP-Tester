@@ -353,7 +353,8 @@
     <form id="compositeScheduleForm">
         <div class="form-group">
             <label for="composite-connectorId">Connector ID</label>
-            <input type="number" id="composite-connectorId" name="connectorId" value="1" min="1">
+            <input type="number" id="composite-connectorId" name="connectorId" value="1" min="0">
+            <small>0 = Charge Point, 1+ = Specific Connector</small>
         </div>
         <div class="form-group">
             <label for="composite-duration">Duration (seconds)</label>
