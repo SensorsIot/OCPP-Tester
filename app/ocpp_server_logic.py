@@ -188,8 +188,8 @@ class OcppServerLogic:
     async def run_c1_set_charging_profile_test(self, params=None):
         return await self.test_steps.run_c1_set_charging_profile_test(params)
 
-    async def run_c2_get_composite_schedule_test(self):
-        return await self.test_steps.run_c2_get_composite_schedule_test()
+    async def run_c2_get_composite_schedule_test(self, params=None):
+        return await self.test_steps.run_c2_get_composite_schedule_test(params)
 
     async def run_c3_clear_charging_profile_test(self):
         return await self.test_steps.run_c3_clear_charging_profile_test()

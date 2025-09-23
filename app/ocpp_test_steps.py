@@ -1824,17 +1824,26 @@ class OcppTestSteps:
 
         logger.info(f"--- Step X.1 for {self.charge_point_id} complete. ---")
 
-    async def run_c2_get_composite_schedule_test(self):
+    async def run_c2_get_composite_schedule_test(self, params: Dict[str, Any] = None):
         """C.2: GetCompositeSchedule - Queries the current schedule being applied on connector 1."""
+        if params is None:
+            params = {}
+
         logger.info(f"--- Step C.2: Running GetCompositeSchedule test for {self.charge_point_id} ---")
         step_name = "run_c2_get_composite_schedule_test"
         self._check_cancellation()
 
-        logger.info("Querying current charging schedule on connector 1...")
+        # Extract parameters with defaults
+        connector_id = params.get("connectorId", 1)
+        duration = params.get("duration", 3600)
+        charging_rate_unit = params.get("chargingRateUnit")
+
+        logger.info(f"Querying charging schedule on connector {connector_id} for {duration} seconds...")
 
         composite_request = GetCompositeScheduleRequest(
-            connectorId=1,
-            duration=3600  # Query for next 1 hour
+            connectorId=connector_id,
+            duration=duration,
+            chargingRateUnit=charging_rate_unit
         )
         logger.info(f"Sending GetCompositeSchedule: {asdict(composite_request)}")
 

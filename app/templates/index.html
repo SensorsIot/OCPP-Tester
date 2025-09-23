@@ -345,6 +345,35 @@
   </div>
 </div>
 
+<!-- GetCompositeSchedule Modal -->
+<div id="compositeScheduleModal" class="modal">
+  <div class="modal-content">
+    <span class="close" id="composite-modal-close-button">&times;</span>
+    <h3>C.2: GetCompositeSchedule</h3>
+    <form id="compositeScheduleForm">
+        <div class="form-group">
+            <label for="composite-connectorId">Connector ID</label>
+            <input type="number" id="composite-connectorId" name="connectorId" value="1" min="1">
+        </div>
+        <div class="form-group">
+            <label for="composite-duration">Duration (seconds)</label>
+            <input type="number" id="composite-duration" name="duration" value="3600" min="1">
+            <small>Default: 3600 (1 hour). Use 86400 for full day schedule.</small>
+        </div>
+        <div class="form-group">
+            <label for="composite-chargingRateUnit">Charging Rate Unit</label>
+            <select id="composite-chargingRateUnit" name="chargingRateUnit">
+                <option value="">Auto-detect from wallbox</option>
+                <option value="A">A (Amperes)</option>
+                <option value="W">W (Watts)</option>
+            </select>
+            <small>Leave empty to auto-detect from wallbox configuration.</small>
+        </div>
+        <button type="submit">Get Composite Schedule</button>
+    </form>
+  </div>
+</div>
+
 <!-- RFID Authorization Modal -->
 <div id="rfidModal" class="modal">
   <div class="modal-content">
@@ -644,6 +673,11 @@
         modal.style.display = 'block';
     }
 
+    function openCompositeScheduleModal() {
+        const modal = document.getElementById('compositeScheduleModal');
+        modal.style.display = 'block';
+    }
+
     async function runTestWithParams(stepKey, params) {
         const btn = document.querySelector(`[data-step-key='${stepKey}']`);
         btn.classList.add('disabled');
@@ -714,6 +748,10 @@
                 if (key === 'run_c1_set_charging_profile_test' || key === 'run_c4_tx_default_profile_test') {
                     btn.onclick = () => {
                         openChargingProfileModal(key);
+                    };
+                } else if (key === 'run_c2_get_composite_schedule_test') {
+                    btn.onclick = () => {
+                        openCompositeScheduleModal();
                     };
                 } else if (key === 'run_b3_rfid_authorization_test') {
                     btn.onclick = () => {
@@ -1212,6 +1250,32 @@
             };
             runTestWithParams(stepKey, params);
             modal.style.display = "none";
+        }
+
+        // Composite Schedule Modal Setup
+        const compositeModal = document.getElementById('compositeScheduleModal');
+        const compositeCloseButton = document.getElementById('composite-modal-close-button');
+        const compositeForm = document.getElementById('compositeScheduleForm');
+
+        compositeCloseButton.onclick = function() {
+            compositeModal.style.display = "none";
+        }
+
+        window.onclick = function(event) {
+            if (event.target == compositeModal) {
+                compositeModal.style.display = "none";
+            }
+        }
+
+        compositeForm.onsubmit = function(event) {
+            event.preventDefault();
+            const params = {
+                connectorId: parseInt(compositeForm.connectorId.value),
+                duration: parseInt(compositeForm.duration.value),
+                chargingRateUnit: compositeForm.chargingRateUnit.value || null
+            };
+            runTestWithParams('run_c2_get_composite_schedule_test', params);
+            compositeModal.style.display = "none";
         }
     });
 
