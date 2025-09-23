@@ -221,6 +221,11 @@
                     </div>    </div>
     <div class="quick-actions-container" style="display: flex; justify-content: space-around; margin-top: 15px;">
         <div class="quick-action">
+            <button onclick="runTestWithParams('run_b1_remote_start_transaction_test', {})" class="analysis-btn">
+                ⚡ Start B.1 Transaction
+            </button>
+        </div>
+        <div class="quick-action">
             <button onclick="runTestWithParams('run_a3_change_configuration_test', {})" class="analysis-btn">
                 A.3: Get All Configuration
             </button>
@@ -239,6 +244,11 @@
             </div>
         </div>
         <div class="quick-actions-container" style="display: flex; justify-content: space-around; margin-top: 15px;">
+            <div class="quick-action">
+                <button onclick="runTestWithParams('run_b1_remote_start_transaction_test', {})" class="analysis-btn">
+                    ⚡ Start B.1 Transaction
+                </button>
+            </div>
             <div class="quick-action">
                 <button onclick="runTestWithParams('run_c2_get_composite_schedule_test', {})" class="analysis-btn">
                     C.2: GetCompositeSchedule
@@ -259,6 +269,7 @@
         <div class="test-category">
             <h3>B. Authorization & Transaction Management</h3>
             <div class="button-group" id="category-b-buttons">
+                <button data-step-key="run_b1_remote_start_transaction_test">B.1: RemoteStartTransaction</button>
                 <button data-step-key="run_b2_remote_stop_transaction_test">B.2: RemoteStopTransaction</button>
             </div>
         </div>
@@ -671,6 +682,7 @@
             'run_a4_check_initial_state': { name: 'A.4: Check Initial State', category: 'category-a-buttons' },
             'run_a5_trigger_all_messages_test': { name: 'A.5: Trigger All Messages', category: 'category-a-buttons' },
             'run_a6_status_and_meter_value_acquisition': { name: 'A.6: Meter Values', category: 'category-a-buttons' },
+            'run_b1_remote_start_transaction_test': { name: 'B.1: RemoteStartTransaction', category: 'category-b-buttons' },
             'run_b2_remote_stop_transaction_test': { name: 'B.2: RemoteStopTransaction', category: 'category-b-buttons' },
             'run_b3_rfid_authorization_test': { name: 'B.3: RFID Authorization', category: 'category-b-buttons' },
             'run_b4_clear_rfid_cache': { name: 'B.4: Clear RFID Cache', category: 'category-b-buttons' },
