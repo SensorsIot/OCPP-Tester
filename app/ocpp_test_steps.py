@@ -198,10 +198,8 @@ class OcppTestSteps:
                     if value:
                         display_value = value if len(value) <= 100 else f"{value[:97]}..."
                         results[key] = f"{display_value} (RO)" if readonly else display_value
-                        logger.info(f"    ✅ {key}: {display_value} {'(Read-Only)' if readonly else ''}")
                     else:
                         results[key] = "No value" + (" (RO)" if readonly else "")
-                        logger.info(f"    ⚠️ {key}: No value {'(Read-Only)' if readonly else ''}")
 
             if response.get("unknownKey"):
                 for key in response["unknownKey"]:
