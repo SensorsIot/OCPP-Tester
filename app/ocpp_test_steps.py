@@ -1085,14 +1085,54 @@ class OcppTestSteps:
         logger.info(f"--- Step C.1: Running SetChargingProfile test for {self.charge_point_id} ---")
         step_name = "run_c1_set_charging_profile_test"
         self._check_cancellation()
-        await self._set_ev_state("C")
-        self._check_cancellation()
+
+        # Check if transaction exists, if not, start one
         transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
                                tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
+
         if not transaction_id:
-            logger.error("FAILURE: No ongoing transaction found. Please start a transaction before running this step.")
-            self._set_test_result(step_name, "FAILED")
-            return
+            logger.info("⚠️ No active transaction found. Starting transaction first...")
+
+            # Send RemoteStartTransaction
+            id_tag = "SetChargingProfileTest"
+            start_response = await self.handler.send_and_wait(
+                "RemoteStartTransaction",
+                RemoteStartTransactionRequest(idTag=id_tag, connectorId=1),
+                timeout=10
+            )
+            self._check_cancellation()
+
+            if not start_response or start_response.get("status") != "Accepted":
+                logger.error(f"FAILURE: RemoteStartTransaction was not accepted. Response: {start_response}")
+                self._set_test_result(step_name, "FAILED")
+                return
+
+            logger.info("✓ RemoteStartTransaction accepted")
+
+            # Set EV state to C (charging)
+            await self._set_ev_state("C")
+            self._check_cancellation()
+
+            # Wait for transaction to start (max 15 seconds)
+            logger.info("⏳ Waiting for transaction to start...")
+            for _ in range(30):
+                await asyncio.sleep(0.5)
+                self._check_cancellation()
+                transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
+                                       tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
+                if transaction_id:
+                    logger.info(f"✓ Transaction {transaction_id} started successfully")
+                    break
+
+            if not transaction_id:
+                logger.error("FAILURE: Transaction did not start within 15 seconds")
+                self._set_test_result(step_name, "FAILED")
+                return
+        else:
+            logger.info(f"✓ Using existing transaction {transaction_id}")
+            # Ensure EV is in state C
+            await self._set_ev_state("C")
+            self._check_cancellation()
         # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
         clear_response = await self.handler.send_and_wait(
             "ClearChargingProfile",
@@ -1244,6 +1284,89 @@ class OcppTestSteps:
             logger.error("FAILURE: ClearChargingProfile was not acknowledged.")
             self._set_test_result(step_name, "FAILED")
         logger.info(f"--- Step C.4 for {self.charge_point_id} complete. ---")
+
+    async def run_c5_cleanup_test(self):
+        """C.5: Cleanup - Stops active transactions, clears charging profiles, and resets EV state."""
+        logger.info(f"--- Step C.5: Running Cleanup test for {self.charge_point_id} ---")
+        step_name = "run_c5_cleanup_test"
+        self._check_cancellation()
+
+        cleanup_failed = False
+
+        # 1. Stop any active transactions
+        transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
+                               tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
+
+        if transaction_id:
+            logger.info(f"🛑 Stopping active transaction {transaction_id}...")
+            try:
+                stop_response = await self.handler.send_and_wait(
+                    "RemoteStopTransaction",
+                    RemoteStopTransactionRequest(transactionId=transaction_id),
+                    timeout=10
+                )
+                self._check_cancellation()
+
+                if stop_response and stop_response.get("status") == "Accepted":
+                    logger.info("✓ Transaction stop accepted")
+                    # Wait for transaction to actually stop
+                    for _ in range(20):
+                        await asyncio.sleep(0.5)
+                        self._check_cancellation()
+                        tx_data = TRANSACTIONS.get(transaction_id)
+                        if tx_data and tx_data.get("status") != "Ongoing":
+                            logger.info("✓ Transaction stopped successfully")
+                            break
+                else:
+                    logger.warning(f"⚠️ Transaction stop not accepted: {stop_response}")
+                    cleanup_failed = True
+
+            except Exception as e:
+                logger.error(f"❌ Failed to stop transaction: {e}")
+                cleanup_failed = True
+        else:
+            logger.info("✓ No active transaction to stop")
+
+        # 2. Clear all charging profiles
+        logger.info("🧹 Clearing all charging profiles...")
+        try:
+            clear_response = await self.handler.send_and_wait(
+                "ClearChargingProfile",
+                ClearChargingProfileRequest()
+            )
+            self._check_cancellation()
+
+            if clear_response and clear_response.get("status") == "Accepted":
+                logger.info("✓ Charging profiles cleared")
+            else:
+                logger.warning(f"⚠️ Clear profiles not fully accepted: {clear_response}")
+                # Don't fail the test if profiles couldn't be cleared (might not exist)
+
+        except Exception as e:
+            logger.error(f"❌ Failed to clear profiles: {e}")
+            cleanup_failed = True
+
+        # 3. Reset EV state to 'A' (unplugged)
+        logger.info("🔌 Resetting EV state to 'A' (unplugged)...")
+        try:
+            await self._set_ev_state("A")
+            self._check_cancellation()
+            logger.info("✓ EV state reset to 'A'")
+        except Exception as e:
+            logger.error(f"❌ Failed to reset EV state: {e}")
+            cleanup_failed = True
+
+        # Wait a moment for everything to settle
+        await asyncio.sleep(1)
+
+        if cleanup_failed:
+            logger.error("❌ Cleanup completed with errors")
+            self._set_test_result(step_name, "PARTIAL")
+        else:
+            logger.info("✅ Cleanup completed successfully")
+            self._set_test_result(step_name, "PASSED")
+
+        logger.info(f"--- Step C.5 for {self.charge_point_id} complete. ---")
 
     async def run_d5_set_profile_5000w(self):
         """D.5: Sets a charging profile to medium power/current."""

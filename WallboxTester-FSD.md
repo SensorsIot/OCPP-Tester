@@ -76,16 +76,19 @@ Performs emergency wallbox reboot using OCPP Reset Hard command. Forces terminat
 ### **C. Smart Charging Profile**
 
 #### C.1: SetChargingProfile (TxProfile)
-Sets transaction-specific charging profiles with configurable power/current limits, units (W/A), duration, and profile parameters.
+Sets transaction-specific charging profiles with configurable power/current limits, units (W/A), duration, and profile parameters. Automatically starts a transaction if none is active.
 
-#### C.2: Get Composite Schedule
-Retrieves the current composite charging schedule from the charge point to verify profile application.
+#### C.2: TxDefaultProfile
+Sets default charging profiles that apply to future transactions at both charge point and connector levels. Does not require an active transaction.
 
-#### C.3: Clear Charging Profile
-Removes specific charging profiles from the charge point.
+#### C.3: GetCompositeSchedule
+Retrieves and displays the current composite charging schedule from the charge point to verify active profile application. Shows charging rate unit, periods, limits, and phases.
 
-#### C.4: TxDefaultProfile
-Sets default charging profiles that apply to future transactions at both charge point and connector levels.
+#### C.4: ClearChargingProfile
+Removes specific charging profiles from the charge point (specifically TxDefaultProfile types).
+
+#### C.5: Cleanup
+Comprehensive cleanup test that stops any active transactions, clears all charging profiles, and resets EV simulator state to 'A' (unplugged). Returns PARTIAL status if any step fails.
 
 ### **D. Advanced Charging Control**
 
@@ -200,3 +203,18 @@ This section details the recent feature implementations and bug fixes for the Wa
 - **Consistent Handling**: Unified test result handling across B.6, B.7, and B.8 for "NotSupported" responses
 - **Real-time Updates**: Polling mechanism updates button colors every 3 seconds based on server-side test results
 - **User Experience**: Clear visual distinction between test failures (red) and unsupported features (grey)
+
+### 8. C Section Smart Charging Enhancements
+
+- **C.1 Automatic Transaction Management**: Enhanced SetChargingProfile test to automatically start transactions when none exist
+  - Sends RemoteStartTransaction if no active transaction detected
+  - Waits up to 15 seconds for transaction to start before proceeding
+  - Sets EV state to 'C' (charging) automatically
+  - Improves test usability by eliminating manual transaction setup requirement
+- **C.5 Cleanup Test**: New comprehensive cleanup test for resetting test environment
+  - Stops any active transactions using RemoteStopTransaction
+  - Clears all charging profiles from wallbox
+  - Resets EV simulator state to 'A' (unplugged)
+  - Returns PARTIAL status if any cleanup step fails (vs full FAILED)
+  - Provides clear status messages with emoji indicators for each step
+- **Test Sequence Improvement**: Corrected C section test ordering in documentation to match implementation (C.1: TxProfile, C.2: TxDefaultProfile, C.3: GetCompositeSchedule, C.4: Clear, C.5: Cleanup)
