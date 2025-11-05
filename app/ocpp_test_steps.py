@@ -1094,7 +1094,7 @@ class OcppTestSteps:
             logger.info("⚠️ No active transaction found. Starting transaction first...")
 
             # Send RemoteStartTransaction
-            id_tag = "SetChargingProfileTest"
+            id_tag = "SetChargingProfile"  # Max 20 chars per OCPP spec
             start_response = await self.handler.send_and_wait(
                 "RemoteStartTransaction",
                 RemoteStartTransactionRequest(idTag=id_tag, connectorId=1),
@@ -1155,11 +1155,11 @@ class OcppTestSteps:
 
         # If no unit or limit specified, use configured charging values
         if charging_unit is None or limit is None:
-            disable_value, default_unit = get_charging_value("disable")
+            medium_value, default_unit = get_charging_value("medium")
             if charging_unit is None:
                 charging_unit = default_unit
             if limit is None:
-                limit = disable_value
+                limit = medium_value
 
         profile = SetChargingProfileRequest(
             connectorId=1, 
@@ -1188,12 +1188,13 @@ class OcppTestSteps:
             test_passed = True
 
             # Verify profile was applied using GetCompositeSchedule
+            # Don't specify chargingRateUnit - let wallbox return its native unit
             logger.info("🔍 Verifying profile application with GetCompositeSchedule...")
             await asyncio.sleep(2)  # Small delay for wallbox to process
 
             verify_response = await self.handler.send_and_wait(
                 "GetCompositeSchedule",
-                GetCompositeScheduleRequest(connectorId=1, duration=3600, chargingRateUnit=charging_unit),
+                GetCompositeScheduleRequest(connectorId=1, duration=3600, chargingRateUnit=None),
                 timeout=10
             )
 
@@ -1203,12 +1204,25 @@ class OcppTestSteps:
                     actual_unit = schedule.get("chargingRateUnit", "N/A")
                     periods = schedule.get("chargingSchedulePeriod", [])
                     actual_limit = periods[0].get("limit") if periods else "N/A"
+                    actual_phases = periods[0].get("numberPhases") if periods else "N/A"
 
                     # Compare expected vs actual
                     unit_match = actual_unit == charging_unit
                     limit_match = abs(float(actual_limit) - limit) < 0.01 if actual_limit != "N/A" else False
 
                     verification_results = [
+                        {
+                            "parameter": "Stack Level",
+                            "expected": str(stack_level),
+                            "actual": "N/A",
+                            "status": "INFO"
+                        },
+                        {
+                            "parameter": "Number of Phases",
+                            "expected": str(number_phases),
+                            "actual": str(actual_phases) if actual_phases != "N/A" else "N/A",
+                            "status": "INFO"
+                        },
                         {
                             "parameter": "Charging Rate Unit",
                             "expected": str(charging_unit),
@@ -1244,12 +1258,14 @@ class OcppTestSteps:
                     "status": "NOT OK"
                 }]
 
-            # Store verification results
+            # Store verification results with test-specific key
             from app.core import VERIFICATION_RESULTS
-            VERIFICATION_RESULTS[self.charge_point_id] = {
+            logger.info(f"📊 Storing C.1 verification results: {len(verification_results)} items")
+            VERIFICATION_RESULTS[f"{self.charge_point_id}_C1"] = {
                 "test": "C.1: SetChargingProfile",
                 "results": verification_results
             }
+            logger.info(f"✅ C.1 verification data stored successfully")
         else:
             logger.error(f"FAILURE: SetChargingProfile was not acknowledged by the charge point. Response: {success}")
 
@@ -1313,7 +1329,7 @@ class OcppTestSteps:
 
         # If no unit or limit specified, use configured charging values
         if charging_unit is None or limit is None:
-            medium_value, default_unit = get_charging_value("medium")
+            medium_value, default_unit = get_charging_value("medium")  # C.2 defaults to 10A/10000W
             if charging_unit is None:
                 charging_unit = default_unit
             if limit is None:
@@ -1362,12 +1378,16 @@ class OcppTestSteps:
             test_passed = True
 
             # Verify profile was applied using GetCompositeSchedule
-            logger.info("🔍 Verifying profile application with GetCompositeSchedule...")
+            # Note: TxDefaultProfile is set at charge point level (connectorId=0), but we verify
+            # at connector level (connectorId=1) because some wallboxes don't support
+            # GetCompositeSchedule at the charge point level
+            # Don't specify chargingRateUnit in GetCompositeSchedule - let wallbox return its native unit
+            logger.info("🔍 Verifying profile application with GetCompositeSchedule on connector 1...")
             await asyncio.sleep(2)  # Small delay for wallbox to process
 
             verify_response = await self.handler.send_and_wait(
                 "GetCompositeSchedule",
-                GetCompositeScheduleRequest(connectorId=0, duration=3600, chargingRateUnit=charging_unit),
+                GetCompositeScheduleRequest(connectorId=1, duration=3600, chargingRateUnit=None),
                 timeout=10
             )
 
@@ -1377,12 +1397,25 @@ class OcppTestSteps:
                     actual_unit = schedule.get("chargingRateUnit", "N/A")
                     periods = schedule.get("chargingSchedulePeriod", [])
                     actual_limit = periods[0].get("limit") if periods else "N/A"
+                    actual_phases = periods[0].get("numberPhases") if periods else "N/A"
 
                     # Compare expected vs actual
                     unit_match = actual_unit == charging_unit
                     limit_match = abs(float(actual_limit) - limit) < 0.01 if actual_limit != "N/A" else False
 
                     verification_results = [
+                        {
+                            "parameter": "Stack Level",
+                            "expected": str(stack_level),
+                            "actual": "N/A",
+                            "status": "INFO"
+                        },
+                        {
+                            "parameter": "Number of Phases",
+                            "expected": str(number_phases),
+                            "actual": str(actual_phases) if actual_phases != "N/A" else "N/A",
+                            "status": "INFO"
+                        },
                         {
                             "parameter": "Charging Rate Unit",
                             "expected": str(charging_unit),
@@ -1418,12 +1451,14 @@ class OcppTestSteps:
                     "status": "NOT OK"
                 }]
 
-            # Store verification results
+            # Store verification results with test-specific key
             from app.core import VERIFICATION_RESULTS
-            VERIFICATION_RESULTS[self.charge_point_id] = {
+            logger.info(f"📊 Storing C.2 verification results: {len(verification_results)} items")
+            VERIFICATION_RESULTS[f"{self.charge_point_id}_C2"] = {
                 "test": "C.2: TxDefaultProfile",
                 "results": verification_results
             }
+            logger.info(f"✅ C.2 verification data stored successfully")
         else:
             logger.error(f"FAILED: SetChargingProfile to {limit}{charging_unit} was not acknowledged. Response: {success}")
 
