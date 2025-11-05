@@ -420,7 +420,9 @@ def run_c_all_tests():
         return response
 
     async def run_tests_with_logging():
-        """Run C.1 and C.2 tests sequentially with message logging."""
+        """Run C.1 and C.2 tests with all charging rate values."""
+        from app.core import get_charging_value
+
         async with ocpp_handler.test_lock:
             # Temporarily replace send_and_wait
             ocpp_handler.send_and_wait = wrapped_send_and_wait
@@ -429,30 +431,43 @@ def run_c_all_tests():
                 ocpp_logic = ocpp_handler.ocpp_logic
                 test_steps = ocpp_logic.test_steps
 
-                # Run C.1 test
-                logging.info("📋 Starting C.1 test...")
-                await test_steps.run_c1_set_charging_profile_test(params={})
+                # Test levels to iterate through
+                test_levels = ["disable", "low", "medium", "high"]
 
-                # Small delay between tests
-                await asyncio.sleep(2)
+                # Run C.1 test with all charging levels
+                for level in test_levels:
+                    value, unit = get_charging_value(level)
+                    logging.info(f"📋 Starting C.1 test with {level} ({value}{unit})...")
+                    await test_steps.run_c1_set_charging_profile_test(params={
+                        "chargingRateUnit": unit,
+                        "limit": value
+                    })
+                    await asyncio.sleep(2)
 
-                # Run C.2 test
-                logging.info("📋 Starting C.2 test...")
-                await test_steps.run_c2_tx_default_profile_test(params={})
+                # Run C.2 test with all charging levels
+                for level in test_levels:
+                    value, unit = get_charging_value(level)
+                    logging.info(f"📋 Starting C.2 test with {level} ({value}{unit})...")
+                    await test_steps.run_c2_tx_default_profile_test(params={
+                        "chargingRateUnit": unit,
+                        "limit": value
+                    })
+                    await asyncio.sleep(2)
 
             finally:
                 # Restore original send_and_wait
                 ocpp_handler.send_and_wait = original_send_and_wait
 
     try:
-        # Run tests
+        # Run tests (4 charging levels × 2 tests = 8 test runs)
         future = asyncio.run_coroutine_threadsafe(run_tests_with_logging(), app.loop)
-        future.result(timeout=180)  # 3 minutes timeout for both tests
+        future.result(timeout=480)  # 8 minutes timeout for all test iterations
 
         # Write comprehensive log file
         with open(log_file, "w") as f:
             f.write("=" * 80 + "\n")
             f.write("OCPP 1.6J - C.1 and C.2 Tests - Comprehensive Log\n")
+            f.write("All Charging Rate Values (disable, low, medium, high)\n")
             f.write("=" * 80 + "\n")
             f.write(f"Charge Point ID: {charge_point_id}\n")
             f.write(f"Test Start Time: {timestamp}\n")
@@ -466,8 +481,9 @@ def run_c_all_tests():
 
             f.write("TEST RESULTS SUMMARY\n")
             f.write("-" * 80 + "\n")
-            f.write(f"C.1 SetChargingProfile Test: {c1_result}\n")
-            f.write(f"C.2 TxDefaultProfile Test: {c2_result}\n")
+            f.write(f"C.1 SetChargingProfile Test (4 iterations): {c1_result}\n")
+            f.write(f"C.2 TxDefaultProfile Test (4 iterations): {c2_result}\n")
+            f.write(f"Charging levels tested: disable (0A), low (6A), medium (10A), high (16A)\n")
             f.write("-" * 80 + "\n\n")
 
             # Get verification results if available

@@ -1365,9 +1365,11 @@
                             const c2Result = result.test_results.c2 || 'NOT RUN';
 
                             let message = `C.1 and C.2 Tests Completed!\n\n`;
+                            message += `Tested all charging rates: disable (0A), low (6A), medium (10A), high (16A)\n\n`;
                             message += `Results:\n`;
-                            message += `  C.1 SetChargingProfile: ${c1Result}\n`;
-                            message += `  C.2 TxDefaultProfile: ${c2Result}\n\n`;
+                            message += `  C.1 SetChargingProfile (4 iterations): ${c1Result}\n`;
+                            message += `  C.2 TxDefaultProfile (4 iterations): ${c2Result}\n\n`;
+                            message += `Total: 8 test runs completed\n\n`;
                             message += `Log file: ${result.log_file}`;
 
                             alert(message);
