@@ -75,20 +75,20 @@ Performs emergency wallbox reboot using OCPP Reset Hard command. Forces terminat
 
 ### **C. Smart Charging Profile**
 
-#### C.1: SetChargingProfile (TxProfile)
-Sets transaction-specific charging profiles with configurable power/current limits, units (W/A), duration, and profile parameters. Automatically starts a transaction if none is active.
+#### C.1: SetChargingProfile (TxProfile) [AUTONOMOUS]
+Sets transaction-specific charging profiles with configurable power/current limits, units (W/A), duration, and profile parameters. **Fully autonomous**: Automatically starts transaction if needed, tests profile application, then cleans up (stops transaction, clears profile, resets EV to state A). Can run independently without manual setup.
 
-#### C.2: TxDefaultProfile
-Sets default charging profiles that apply to future transactions at both charge point and connector levels. Does not require an active transaction.
+#### C.2: TxDefaultProfile [AUTONOMOUS]
+Sets default charging profiles that apply to future transactions at both charge point and connector levels. **Fully autonomous**: Tests profile creation, then clears the TxDefaultProfile at completion. No transaction required, no manual cleanup needed.
 
-#### C.3: GetCompositeSchedule
-Retrieves and displays the current composite charging schedule from the charge point to verify active profile application. Shows charging rate unit, periods, limits, and phases.
+#### C.3: GetCompositeSchedule [AUTONOMOUS]
+Retrieves and displays the current composite charging schedule from the charge point to verify active profile application. Shows charging rate unit, periods, limits, and phases. **Read-only operation** - no side effects, no cleanup needed.
 
-#### C.4: ClearChargingProfile
-Removes specific charging profiles from the charge point (specifically TxDefaultProfile types).
+#### C.4: ClearChargingProfile [AUTONOMOUS]
+Removes specific charging profiles from the charge point (specifically TxDefaultProfile types). **Cleanup operation by nature** - already autonomous, no additional cleanup needed.
 
-#### C.5: Cleanup
-Comprehensive cleanup test that stops any active transactions, clears all charging profiles, and resets EV simulator state to 'A' (unplugged). Returns PARTIAL status if any step fails.
+#### C.5: Cleanup [AUTONOMOUS]
+Comprehensive cleanup test that stops any active transactions, clears all charging profiles, and resets EV simulator state to 'A' (unplugged). Returns PARTIAL status if any step fails. **Master cleanup** for full environment reset.
 
 ### **D. Advanced Charging Control**
 
@@ -210,11 +210,23 @@ This section details the recent feature implementations and bug fixes for the Wa
   - Sends RemoteStartTransaction if no active transaction detected
   - Waits up to 15 seconds for transaction to start before proceeding
   - Sets EV state to 'C' (charging) automatically
-  - Improves test usability by eliminating manual transaction setup requirement
-- **C.5 Cleanup Test**: New comprehensive cleanup test for resetting test environment
+  - **Autonomous cleanup**: Stops transaction, clears profile, and resets EV to state A after test
+  - Fully self-contained - no manual setup or cleanup required
+- **C.2 TxDefaultProfile Autonomy**: Enhanced to clean up after itself
+  - Sets default charging profile for future transactions
+  - **Autonomous cleanup**: Clears TxDefaultProfile at end of test
+  - Can run independently without affecting other tests
+- **C.3 & C.4 Already Autonomous**: GetCompositeSchedule and ClearChargingProfile are read-only/cleanup operations
+  - C.3 only queries current schedule (no side effects)
+  - C.4 clears profiles (cleanup operation by nature)
+- **C.5 Cleanup Test**: Comprehensive cleanup test for resetting entire test environment
   - Stops any active transactions using RemoteStopTransaction
   - Clears all charging profiles from wallbox
   - Resets EV simulator state to 'A' (unplugged)
   - Returns PARTIAL status if any cleanup step fails (vs full FAILED)
   - Provides clear status messages with emoji indicators for each step
+- **Full Test Autonomy**: All C section tests are now fully autonomous
+  - Each test can run independently without manual setup
+  - Tests clean up their own state after completion
+  - No dependencies between tests - can run in any order
 - **Test Sequence Improvement**: Corrected C section test ordering in documentation to match implementation (C.1: TxProfile, C.2: TxDefaultProfile, C.3: GetCompositeSchedule, C.4: Clear, C.5: Cleanup)
