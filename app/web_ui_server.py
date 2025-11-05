@@ -301,6 +301,10 @@ def set_ev_state():
 
 @app.route("/api/test/<step_name>", methods=["POST"])
 def run_test_step(step_name):
+    import os
+    from datetime import datetime
+    from dataclasses import asdict, is_dataclass
+
     active_charge_point_id = get_active_charge_point_id()
 
     if not active_charge_point_id:
@@ -333,19 +337,112 @@ def run_test_step(step_name):
     # Get params from request body
     params = request.get_json(silent=True) or {}
 
+    # Prepare log file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = "/home/ocpp/logs"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"{step_name}_{charge_point_id}_{timestamp}.log")
+
+    # Message log storage
+    message_log = []
+
+    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str):
+        """Helper to log OCPP messages."""
+        if is_dataclass(payload):
+            payload_dict = asdict(payload)
+        elif isinstance(payload, dict):
+            payload_dict = payload
+        else:
+            payload_dict = {"raw": str(payload)}
+
+        message_log.append({
+            "timestamp": timestamp_str,
+            "type": msg_type,
+            "action": action,
+            "payload": payload_dict
+        })
+
+    # Wrap send_and_wait to capture messages
+    original_send_and_wait = ocpp_handler.send_and_wait
+
+    async def wrapped_send_and_wait(action: str, payload: Any, timeout: int = 30):
+        """Wrapper to log all OCPP requests and responses."""
+        request_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        log_message("REQUEST", action, payload, request_timestamp)
+
+        response = await original_send_and_wait(action, payload, timeout)
+
+        response_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        log_message("RESPONSE", action, response, response_timestamp)
+
+        return response
+
     async def run_test_with_lock():
         async with ocpp_handler.test_lock:
-            # Pass params to the test method if it accepts them
-            sig = inspect.signature(method)
-            if 'params' in sig.parameters:
-                await method(params=params)
-            else:
-                await method()
+            # Temporarily replace send_and_wait
+            ocpp_handler.send_and_wait = wrapped_send_and_wait
+
+            try:
+                # Pass params to the test method if it accepts them
+                sig = inspect.signature(method)
+                if 'params' in sig.parameters:
+                    await method(params=params)
+                else:
+                    await method()
+            finally:
+                # Restore original send_and_wait
+                ocpp_handler.send_and_wait = original_send_and_wait
 
     try:
         future = asyncio.run_coroutine_threadsafe(run_test_with_lock(), app.loop)
         future.result(timeout=120)
-        return jsonify({"status": f"Test step '{step_name}' completed for {charge_point_id}."})
+
+        # Write comprehensive log file
+        with open(log_file, "w") as f:
+            f.write("=" * 80 + "\n")
+            f.write(f"OCPP 1.6J - {step_name} - Comprehensive Log\n")
+            f.write("=" * 80 + "\n")
+            f.write(f"Charge Point ID: {charge_point_id}\n")
+            f.write(f"Test Start Time: {timestamp}\n")
+            f.write(f"Server: OCPP Test Server\n")
+            f.write("=" * 80 + "\n\n")
+
+            # Get test results
+            test_results = CHARGE_POINTS[charge_point_id].get("test_results", {})
+            result = test_results.get(step_name, "NOT RUN")
+
+            f.write("TEST RESULT\n")
+            f.write("-" * 80 + "\n")
+            f.write(f"{step_name}: {result}\n")
+            f.write("-" * 80 + "\n\n")
+
+            # Write configuration details (from A.3) if available
+            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
+            if config_details:
+                f.write("CHARGE POINT CONFIGURATION (A.3 Result)\n")
+                f.write("-" * 80 + "\n")
+                import json
+                f.write(json.dumps(config_details, indent=2))
+                f.write("\n" + "-" * 80 + "\n\n")
+
+            # Write all OCPP messages
+            f.write("OCPP MESSAGE LOG\n")
+            f.write("=" * 80 + "\n\n")
+
+            import json
+            for msg in message_log:
+                f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                f.write("-" * 80 + "\n")
+                f.write(json.dumps(msg['payload'], indent=2))
+                f.write("\n" + "=" * 80 + "\n\n")
+
+        logging.info(f"✅ {step_name} completed. Log written to: {log_file}")
+
+        return jsonify({
+            "status": f"Test step '{step_name}' completed for {charge_point_id}.",
+            "log_file": log_file
+        })
+
     except concurrent.futures.TimeoutError:
         logging.error(f"API call for '{step_name}' on {charge_point_id} timed out.")
         return jsonify({"error": f"Test step '{step_name}' timed out."}), 504
