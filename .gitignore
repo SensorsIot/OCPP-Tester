@@ -37,6 +37,26 @@ __pycache__/
 .csm_setup_V2rSpds07
 .evcc/
 
+# Python history
+.python_history
+
+# wget cache
+.wget-hsts
+
+# Temporary files
+Timestamp:
+
+# WebSocket proxy development files (use OCPP-Proxy project instead)
+ws_proxy*.py
+
+# Home Assistant addon development directories
+ha-addon/
+ha-addon-*/
+
+# Go modules and project directories
+go/
+projects/
+
 # System and user configuration files
 .bashrc
 .profile
