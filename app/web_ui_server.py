@@ -233,6 +233,21 @@ def charging_rate_unit():
             "auto_detected": False
         })
 
+@app.route("/api/charging_profile_defaults", methods=["GET"])
+def get_charging_profile_defaults():
+    """Get default charging profile values based on current configuration."""
+    from app.core import get_charging_value
+
+    unit = SERVER_SETTINGS.get("charging_rate_unit", "A")
+
+    # C.1 and C.2 both use "medium" as default (10A or 8000W)
+    medium_value, _ = get_charging_value("medium")
+
+    return jsonify({
+        "current_unit": unit,
+        "c1": {"unit": unit, "limit": medium_value},
+        "c2": {"unit": unit, "limit": medium_value}
+    })
 
 async def _set_and_refresh_ev_state(state: str) -> Dict[str, Any]:
     """Async helper to set the EV state and then immediately poll and broadcast it."""
