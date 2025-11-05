@@ -191,6 +191,11 @@
             color: #721c24;
         }
 
+        .verification-status.info {
+            background-color: #e7f3ff;
+            color: #004085;
+        }
+
         .verification-icon {
             font-size: 18px;
         }
@@ -739,23 +744,39 @@
 
     // Verification Results Modal Functions
     function showVerificationResults(title, results) {
+        console.log(`🎯 DEBUG: showVerificationResults called with title="${title}", results=`, results);
         const modal = document.getElementById('verificationResultsModal');
         const modalTitle = document.getElementById('verification-modal-title');
         const tableBody = document.getElementById('verification-table-body');
 
+        console.log(`🎯 DEBUG: Modal element:`, modal);
+        console.log(`🎯 DEBUG: Modal title element:`, modalTitle);
+        console.log(`🎯 DEBUG: Table body element:`, tableBody);
+
         // Set title
         modalTitle.textContent = title;
+        console.log(`🎯 DEBUG: Set modal title to "${title}"`);
 
         // Clear existing rows
         tableBody.innerHTML = '';
+        console.log(`🎯 DEBUG: Cleared table body`);
 
         // Add rows for each result
+        console.log(`🎯 DEBUG: Processing ${results.length} results...`);
         results.forEach(result => {
             const row = document.createElement('tr');
 
-            const isOk = result.status === 'OK';
-            const statusClass = isOk ? 'ok' : 'not-ok';
-            const statusIcon = isOk ? '✓' : '✗';
+            let statusClass, statusIcon;
+            if (result.status === 'OK') {
+                statusClass = 'ok';
+                statusIcon = '✓';
+            } else if (result.status === 'INFO') {
+                statusClass = 'info';
+                statusIcon = 'ℹ';
+            } else {
+                statusClass = 'not-ok';
+                statusIcon = '✗';
+            }
 
             row.innerHTML = `
                 <td>${result.parameter}</td>
@@ -769,10 +790,13 @@
                 </td>
             `;
             tableBody.appendChild(row);
+            console.log(`🎯 DEBUG: Added row for ${result.parameter}`);
         });
 
         // Show modal
+        console.log(`🎯 DEBUG: Setting modal display to 'block'`);
         modal.style.display = 'block';
+        console.log(`🎯 DEBUG: Modal should now be visible!`);
     }
 
     function closeVerificationModal() {
@@ -984,7 +1008,7 @@
         }
     }
 
-    function openChargingProfileModal(stepKey) {
+    async function openChargingProfileModal(stepKey) {
         const modal = document.getElementById('chargingProfileModal');
         const modalTitle = document.getElementById('modal-title');
         const stepKeyInput = document.getElementById('modal-step-key');
@@ -1000,14 +1024,25 @@
             purposeSelect.options[i].style.display = "";
         }
 
+        // Fetch charging profile defaults from server
+        let defaults = null;
+        try {
+            const response = await fetch('/api/charging_profile_defaults');
+            if (response.ok) {
+                defaults = await response.json();
+            }
+        } catch (error) {
+            console.error('Failed to fetch charging profile defaults:', error);
+        }
+
         // Set defaults based on the test case
         if (stepKey === 'run_c1_set_charging_profile_test') {
             modalTitle.textContent = 'C.1: SetChargingProfile';
             form.stackLevel.value = 0;
             form.chargingProfilePurpose.value = 'TxProfile';
             form.chargingProfileKind.value = 'Absolute';
-            form.chargingRateUnit.value = 'W';
-            form.limit.value = 0;
+            form.chargingRateUnit.value = defaults ? defaults.c1.unit : 'A';
+            form.limit.value = defaults ? defaults.c1.limit : 0;
             form.numberPhases.value = 3;
             form.duration.value = 3600;
 
@@ -1022,8 +1057,8 @@
             form.stackLevel.value = 0;
             form.chargingProfilePurpose.value = 'TxDefaultProfile';
             form.chargingProfileKind.value = 'Absolute';
-            form.chargingRateUnit.value = 'W';
-            form.limit.value = 5000;
+            form.chargingRateUnit.value = defaults ? defaults.c2.unit : 'A';
+            form.limit.value = defaults ? defaults.c2.limit : 60;
             form.numberPhases.value = 3;
 
             document.getElementById('purpose-form-group').style.display = 'none';
@@ -1102,22 +1137,45 @@
             });
 
             // Show verification results popup for C.1 and C.2 tests if they passed
+            console.log(`🔍 DEBUG: Checking if test requires verification. stepKey=${stepKey}`);
             if ((stepKey === 'run_c1_set_charging_profile_test' || stepKey === 'run_c2_tx_default_profile_test')) {
+                console.log(`✅ DEBUG: Test ${stepKey} requires verification`);
                 const cpData = chargePointsData[Object.keys(chargePointsData)[0]];
+                console.log(`🔍 DEBUG: cpData =`, cpData);
                 if (cpData && cpData.test_results) {
                     const result = cpData.test_results[stepKey];
+                    console.log(`🔍 DEBUG: Test result for ${stepKey} = ${result}`);
                     // Only show verification if test passed
                     if (result === 'PASSED') {
+                        console.log(`✅ DEBUG: Test passed, fetching verification results...`);
                         try {
-                            const verifyResponse = await fetch('/api/verification_results');
+                            // Determine which test (C1 or C2)
+                            const testParam = stepKey === 'run_c1_set_charging_profile_test' ? 'C1' : 'C2';
+                            console.log(`Fetching verification results for test: ${testParam}`);
+
+                            const verifyResponse = await fetch(`/api/verification_results?test=${testParam}`);
                             if (verifyResponse.ok) {
                                 const verifyData = await verifyResponse.json();
-                                if (verifyData && verifyData.results && verifyData.results.length > 0) {
-                                    showVerificationResults(verifyData.test, verifyData.results);
+                                console.log('Verification data received:', verifyData);
+
+                                // Defensive checks
+                                if (verifyData && verifyData.results) {
+                                    if (Array.isArray(verifyData.results) && verifyData.results.length > 0) {
+                                        console.log(`✅ DEBUG: Calling showVerificationResults with:`, verifyData.test, verifyData.results);
+                                        showVerificationResults(verifyData.test, verifyData.results);
+                                        console.log(`✅ DEBUG: showVerificationResults called successfully`);
+                                    } else {
+                                        console.warn('⚠️ DEBUG: Verification results array is empty:', verifyData.results);
+                                    }
+                                } else {
+                                    console.warn('⚠️ DEBUG: Verification data missing results field:', verifyData);
                                 }
+                            } else {
+                                const errorText = await verifyResponse.text();
+                                console.error('Failed to fetch verification results:', errorText);
                             }
                         } catch (verifyError) {
-                            console.error('Failed to fetch verification results:', verifyError);
+                            console.error('Exception fetching verification results:', verifyError);
                         }
                     }
                 }
@@ -1146,8 +1204,7 @@
             'run_c1_set_charging_profile_test': { name: 'C.1: SetChargingProfile', category: 'category-c-buttons' },
             'run_c2_tx_default_profile_test': { name: 'C.2: TxDefaultProfile', category: 'category-c-buttons' },
             'run_c3_get_composite_schedule_test': { name: 'C.3: GetCompositeSchedule', category: 'category-c-buttons' },
-            'run_c4_clear_charging_profile_test': { name: 'C.4: ClearChargingProfile', category: 'category-c-buttons' },
-            'run_c5_cleanup_test': { name: 'C.5: Cleanup', category: 'category-c-buttons' }
+            'run_c4_clear_charging_profile_test': { name: 'C.4: ClearChargingProfile', category: 'category-c-buttons' }
         };
 
         try {
@@ -1261,6 +1318,89 @@
                     };
                 }
                 container.appendChild(btn);
+            }
+
+            // Add "C.1 and C.2 Tests" button to C section
+            const categoryCContainer = document.getElementById('category-c-buttons');
+            if (categoryCContainer) {
+                const allTestsBtn = document.createElement('button');
+                allTestsBtn.textContent = 'C.1 and C.2 Tests';
+                allTestsBtn.style.backgroundColor = '#28a745';
+                allTestsBtn.style.color = '#fff';
+                allTestsBtn.style.fontWeight = 'bold';
+                allTestsBtn.dataset.stepKey = 'c_all_tests';
+                allTestsBtn.onclick = async () => {
+                    const r = await fetch('/api/discovered_charge_points');
+                    const responseData = await r.json();
+                    const backendActiveCpId = responseData.active_charge_point_id;
+
+                    if (!backendActiveCpId) {
+                        showStatusMessage("Please connect a wallbox first. No active wallbox detected.", true);
+                        return;
+                    }
+
+                    // Show running state
+                    allTestsBtn.classList.remove('btn-success', 'btn-failure');
+                    allTestsBtn.classList.add('btn-running', 'disabled');
+
+                    // Disable other buttons during test
+                    document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
+                        if (otherBtn !== allTestsBtn) {
+                            otherBtn.classList.add('disabled');
+                        }
+                    });
+
+                    try {
+                        const response = await fetch('/api/test/c_all_tests', { method: 'POST' });
+                        const result = await response.json();
+
+                        if (!response.ok) throw new Error(result.error || 'Unknown error');
+
+                        // Show status message with log file location
+                        if (result.results && result.results.log_file) {
+                            showStatusMessage(`All tests completed! Log saved to: ${result.results.log_file}`);
+
+                            // Show detailed results popup
+                            const tests = result.results.tests || [];
+                            const passed = tests.filter(t => t.status === 'PASSED').length;
+                            const failed = tests.filter(t => t.status !== 'PASSED').length;
+
+                            let message = `C.1 and C.2 Tests Completed!\n\n`;
+                            message += `Results:\n`;
+                            tests.forEach(t => {
+                                message += `  ${t.test} (${t.name}): ${t.status}\n`;
+                            });
+                            message += `\nPassed: ${passed}/${tests.length}\n`;
+                            message += `Failed: ${failed}/${tests.length}\n\n`;
+                            message += `Log file: ${result.results.log_file}`;
+
+                            alert(message);
+                        } else {
+                            showStatusMessage('All tests completed!');
+                        }
+
+                        // Update button color based on overall results
+                        const allPassed = result.results.tests.every(t => t.status === 'PASSED');
+                        allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
+                    } catch (e) {
+                        showStatusMessage(`Failed: ${e.message}`, true);
+                        allTestsBtn.classList.add('btn-failure');
+                    } finally {
+                        // Fetch test results to update UI
+                        await fetchChargePoints();
+
+                        // Remove running state
+                        allTestsBtn.classList.remove('btn-running', 'disabled');
+
+                        // Re-enable other buttons
+                        document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
+                            if (otherBtn !== allTestsBtn) {
+                                otherBtn.classList.remove('disabled');
+                            }
+                        });
+                    }
+                };
+                categoryCContainer.appendChild(allTestsBtn);
             }
 
             // Add "Clear Test Results" button after X.2 in the System Control section

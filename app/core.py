@@ -123,14 +123,14 @@ SERVER_SETTINGS = {
 # Predefined charging power/current values for tests
 # Based on actual Actec wallbox capabilities: 130A max @ 230V = ~30kW max
 CHARGING_RATE_CONFIG = {
-    "power_values_w": [6900, 13800, 23000, 29900],  # Watts (30A, 60A, 100A, 130A @ 230V)
-    "current_values_a": [30, 60, 100, 130],         # Amperes (actual wallbox current levels)
+    "power_values_w": [4100, 8000, 10000, 11000],  # Watts for low, medium, c_default, high
+    "current_values_a": [6, 10, 10, 16],           # Amperes for low, medium, c_default, high
     "test_value_mapping": {
         "disable": {"W": 0, "A": 0},           # 0W or 0A (disable charging)
-        "low": {"W": 6900, "A": 30},           # Low power: 6900W or 30A (230V × 30A)
-        "medium": {"W": 13800, "A": 60},       # Medium power: 13800W or 60A (230V × 60A)
-        "high": {"W": 23000, "A": 100},        # High power: 23000W or 100A (230V × 100A)
-        "max": {"W": 29900, "A": 130}          # Max power: 29900W or 130A (wallbox maximum)
+        "c_default": {"W": 10000, "A": 10},    # C.1 and C.2 default: 10000W or 10A
+        "low": {"W": 4100, "A": 6},            # Low power: 4100W or 6A
+        "medium": {"W": 8000, "A": 10},        # Medium power: 8000W or 10A
+        "high": {"W": 11000, "A": 16}          # High power: 11000W or 16A
     }
 }
 
