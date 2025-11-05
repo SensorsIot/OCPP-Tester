@@ -1357,31 +1357,27 @@
                         if (!response.ok) throw new Error(result.error || 'Unknown error');
 
                         // Show status message with log file location
-                        if (result.results && result.results.log_file) {
-                            showStatusMessage(`All tests completed! Log saved to: ${result.results.log_file}`);
+                        if (result.log_file) {
+                            showStatusMessage(`C.1 and C.2 Tests completed! Log saved to: ${result.log_file}`);
 
                             // Show detailed results popup
-                            const tests = result.results.tests || [];
-                            const passed = tests.filter(t => t.status === 'PASSED').length;
-                            const failed = tests.filter(t => t.status !== 'PASSED').length;
+                            const c1Result = result.test_results.c1 || 'NOT RUN';
+                            const c2Result = result.test_results.c2 || 'NOT RUN';
 
                             let message = `C.1 and C.2 Tests Completed!\n\n`;
                             message += `Results:\n`;
-                            tests.forEach(t => {
-                                message += `  ${t.test} (${t.name}): ${t.status}\n`;
-                            });
-                            message += `\nPassed: ${passed}/${tests.length}\n`;
-                            message += `Failed: ${failed}/${tests.length}\n\n`;
-                            message += `Log file: ${result.results.log_file}`;
+                            message += `  C.1 SetChargingProfile: ${c1Result}\n`;
+                            message += `  C.2 TxDefaultProfile: ${c2Result}\n\n`;
+                            message += `Log file: ${result.log_file}`;
 
                             alert(message);
-                        } else {
-                            showStatusMessage('All tests completed!');
-                        }
 
-                        // Update button color based on overall results
-                        const allPassed = result.results.tests.every(t => t.status === 'PASSED');
-                        allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
+                            // Update button color based on results
+                            const allPassed = c1Result === 'PASSED' && c2Result === 'PASSED';
+                            allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
+                        } else {
+                            showStatusMessage(result.status || 'Tests completed!');
+                        }
                     } catch (e) {
                         showStatusMessage(`Failed: ${e.message}`, true);
                         allTestsBtn.classList.add('btn-failure');
