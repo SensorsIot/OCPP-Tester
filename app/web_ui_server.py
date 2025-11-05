@@ -588,10 +588,21 @@ def get_verification_results():
         if not active_cp_id:
             return jsonify({"error": "No active charge point selected"}), 400
 
-        if active_cp_id not in VERIFICATION_RESULTS:
-            return jsonify({"error": "No verification results available"}), 404
+        # Check if specific test requested via query param
+        test_param = request.args.get('test', '').upper()  # C1 or C2
 
-        return jsonify(VERIFICATION_RESULTS[active_cp_id])
+        if test_param:
+            # Return specific test results
+            key = f"{active_cp_id}_{test_param}"
+            if key not in VERIFICATION_RESULTS:
+                return jsonify({"error": f"No verification results available for {test_param}"}), 404
+            return jsonify(VERIFICATION_RESULTS[key])
+        else:
+            # Return all verification results for this charge point
+            cp_results = {k: v for k, v in VERIFICATION_RESULTS.items() if k.startswith(f"{active_cp_id}_")}
+            if not cp_results:
+                return jsonify({"error": "No verification results available"}), 404
+            return jsonify(cp_results)
     except Exception as e:
         logging.exception("Error getting verification results")
         return jsonify({"error": f"Failed to get verification results: {e}"}), 500
