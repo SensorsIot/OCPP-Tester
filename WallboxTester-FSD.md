@@ -76,10 +76,10 @@ Performs emergency wallbox reboot using OCPP Reset Hard command. Forces terminat
 ### **C. Smart Charging Profile**
 
 #### C.1: SetChargingProfile (TxProfile) [AUTONOMOUS]
-Sets transaction-specific charging profiles with configurable power/current limits, units (W/A), duration, and profile parameters. **Fully autonomous**: Automatically starts transaction if needed, tests profile application, then cleans up (stops transaction, clears profile, resets EV to state A). Can run independently without manual setup.
+Sets transaction-specific charging profiles with configurable power/current limits, units (W/A), duration, and profile parameters. **Fully autonomous**: Automatically starts transaction if needed, tests profile application, then cleans up (stops transaction, clears profile, resets EV to state A). Can run independently without manual setup. **Includes verification**: After setting the profile, the test automatically verifies the profile was applied correctly by calling GetCompositeSchedule and comparing expected vs actual values (charging rate unit and power limit). Results are displayed in a popup showing OK/NOT OK status for each parameter.
 
 #### C.2: TxDefaultProfile [AUTONOMOUS]
-Sets default charging profiles that apply to future transactions at both charge point and connector levels. **Fully autonomous**: Tests profile creation, then clears the TxDefaultProfile at completion. No transaction required, no manual cleanup needed.
+Sets default charging profiles that apply to future transactions at both charge point and connector levels. **Fully autonomous**: Tests profile creation, then clears the TxDefaultProfile at completion. No transaction required, no manual cleanup needed. **Includes verification**: After setting the profile, the test automatically verifies the profile was applied correctly by calling GetCompositeSchedule (at charge point level, connectorId=0) and comparing expected vs actual values (charging rate unit and power limit). Results are displayed in a popup showing OK/NOT OK status for each parameter.
 
 #### C.3: GetCompositeSchedule [AUTONOMOUS]
 Retrieves and displays the current composite charging schedule from the charge point to verify active profile application. Shows charging rate unit, periods, limits, and phases. **Read-only operation** - no side effects, no cleanup needed.
@@ -230,3 +230,28 @@ This section details the recent feature implementations and bug fixes for the Wa
   - Tests clean up their own state after completion
   - No dependencies between tests - can run in any order
 - **Test Sequence Improvement**: Corrected C section test ordering in documentation to match implementation (C.1: TxProfile, C.2: TxDefaultProfile, C.3: GetCompositeSchedule, C.4: Clear, C.5: Cleanup)
+
+### 9. Charging Profile Verification System
+
+- **Automated Verification for C.1 and C.2**: Enhanced smart charging tests with automatic verification using GetCompositeSchedule
+  - After SetChargingProfile command succeeds, automatically calls GetCompositeSchedule to verify profile application
+  - 2-second delay before verification to allow wallbox processing time
+  - Compares expected vs actual values for charging rate unit and power limit
+  - C.1 uses `connectorId=1` for transaction-specific verification
+  - C.2 uses `connectorId=0` for charge point level verification
+- **Verification Results Storage**: Added VERIFICATION_RESULTS global dictionary in core.py
+  - Stores verification data keyed by charge_point_id
+  - Contains test name and array of verification results (parameter, expected, actual, status)
+- **REST API Endpoint**: Added `/api/verification_results` endpoint
+  - Returns verification results for the active charge point
+  - Used by frontend to fetch and display verification data
+- **Interactive Popup Display**: Enhanced UI with verification results modal
+  - Automatically displays after C.1 or C.2 tests complete successfully
+  - Shows table with Parameter, Expected, Actual, and Status columns
+  - Green "OK" status with checkmark for matching values
+  - Red "NOT OK" status with X for mismatched values
+  - Styled modal with professional table layout and color-coded status indicators
+- **User Experience**: Provides immediate feedback on profile application success
+  - Confirms wallbox correctly applied the charging profile
+  - Helps diagnose configuration issues if values don't match
+  - Only shown when test passes (PASSED status)

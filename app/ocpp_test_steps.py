@@ -1181,9 +1181,75 @@ class OcppTestSteps:
         self._check_cancellation()
 
         test_passed = False
+        verification_results = []
+
         if success and success.get("status") == "Accepted":
             logger.info("SUCCESS: SetChargingProfile was acknowledged by the charge point.")
             test_passed = True
+
+            # Verify profile was applied using GetCompositeSchedule
+            logger.info("🔍 Verifying profile application with GetCompositeSchedule...")
+            await asyncio.sleep(2)  # Small delay for wallbox to process
+
+            verify_response = await self.handler.send_and_wait(
+                "GetCompositeSchedule",
+                GetCompositeScheduleRequest(connectorId=1, duration=3600, chargingRateUnit=charging_unit),
+                timeout=10
+            )
+
+            if verify_response and verify_response.get("status") == "Accepted":
+                schedule = verify_response.get("chargingSchedule")
+                if schedule:
+                    actual_unit = schedule.get("chargingRateUnit", "N/A")
+                    periods = schedule.get("chargingSchedulePeriod", [])
+                    actual_limit = periods[0].get("limit") if periods else "N/A"
+
+                    # Compare expected vs actual
+                    unit_match = actual_unit == charging_unit
+                    limit_match = abs(float(actual_limit) - limit) < 0.01 if actual_limit != "N/A" else False
+
+                    verification_results = [
+                        {
+                            "parameter": "Charging Rate Unit",
+                            "expected": str(charging_unit),
+                            "actual": str(actual_unit),
+                            "status": "OK" if unit_match else "NOT OK"
+                        },
+                        {
+                            "parameter": f"Power Limit ({charging_unit})",
+                            "expected": str(limit),
+                            "actual": str(actual_limit),
+                            "status": "OK" if limit_match else "NOT OK"
+                        }
+                    ]
+
+                    if unit_match and limit_match:
+                        logger.info(f"   ✓ Verification passed: {limit}{charging_unit} profile applied correctly")
+                    else:
+                        logger.warning(f"   ⚠️ Verification warning: Expected {limit}{charging_unit}, got {actual_limit}{actual_unit}")
+                else:
+                    logger.warning("   ⚠️ No charging schedule returned")
+                    verification_results = [{
+                        "parameter": "Charging Schedule",
+                        "expected": "Present",
+                        "actual": "Not returned",
+                        "status": "NOT OK"
+                    }]
+            else:
+                logger.warning(f"   ⚠️ GetCompositeSchedule failed: {verify_response}")
+                verification_results = [{
+                    "parameter": "GetCompositeSchedule",
+                    "expected": "Accepted",
+                    "actual": verify_response.get("status") if verify_response else "No response",
+                    "status": "NOT OK"
+                }]
+
+            # Store verification results
+            from app.core import VERIFICATION_RESULTS
+            VERIFICATION_RESULTS[self.charge_point_id] = {
+                "test": "C.1: SetChargingProfile",
+                "results": verification_results
+            }
         else:
             logger.error(f"FAILURE: SetChargingProfile was not acknowledged by the charge point. Response: {success}")
 
@@ -1289,9 +1355,75 @@ class OcppTestSteps:
         self._check_cancellation()
 
         test_passed = False
+        verification_results = []
+
         if success and success.get("status") == "Accepted":
             logger.info(f"PASSED: SetChargingProfile to {limit}{charging_unit} was acknowledged.")
             test_passed = True
+
+            # Verify profile was applied using GetCompositeSchedule
+            logger.info("🔍 Verifying profile application with GetCompositeSchedule...")
+            await asyncio.sleep(2)  # Small delay for wallbox to process
+
+            verify_response = await self.handler.send_and_wait(
+                "GetCompositeSchedule",
+                GetCompositeScheduleRequest(connectorId=0, duration=3600, chargingRateUnit=charging_unit),
+                timeout=10
+            )
+
+            if verify_response and verify_response.get("status") == "Accepted":
+                schedule = verify_response.get("chargingSchedule")
+                if schedule:
+                    actual_unit = schedule.get("chargingRateUnit", "N/A")
+                    periods = schedule.get("chargingSchedulePeriod", [])
+                    actual_limit = periods[0].get("limit") if periods else "N/A"
+
+                    # Compare expected vs actual
+                    unit_match = actual_unit == charging_unit
+                    limit_match = abs(float(actual_limit) - limit) < 0.01 if actual_limit != "N/A" else False
+
+                    verification_results = [
+                        {
+                            "parameter": "Charging Rate Unit",
+                            "expected": str(charging_unit),
+                            "actual": str(actual_unit),
+                            "status": "OK" if unit_match else "NOT OK"
+                        },
+                        {
+                            "parameter": f"Power Limit ({charging_unit})",
+                            "expected": str(limit),
+                            "actual": str(actual_limit),
+                            "status": "OK" if limit_match else "NOT OK"
+                        }
+                    ]
+
+                    if unit_match and limit_match:
+                        logger.info(f"   ✓ Verification passed: {limit}{charging_unit} profile applied correctly")
+                    else:
+                        logger.warning(f"   ⚠️ Verification warning: Expected {limit}{charging_unit}, got {actual_limit}{actual_unit}")
+                else:
+                    logger.warning("   ⚠️ No charging schedule returned")
+                    verification_results = [{
+                        "parameter": "Charging Schedule",
+                        "expected": "Present",
+                        "actual": "Not returned",
+                        "status": "NOT OK"
+                    }]
+            else:
+                logger.warning(f"   ⚠️ GetCompositeSchedule failed: {verify_response}")
+                verification_results = [{
+                    "parameter": "GetCompositeSchedule",
+                    "expected": "Accepted",
+                    "actual": verify_response.get("status") if verify_response else "No response",
+                    "status": "NOT OK"
+                }]
+
+            # Store verification results
+            from app.core import VERIFICATION_RESULTS
+            VERIFICATION_RESULTS[self.charge_point_id] = {
+                "test": "C.2: TxDefaultProfile",
+                "results": verification_results
+            }
         else:
             logger.error(f"FAILED: SetChargingProfile to {limit}{charging_unit} was not acknowledged. Response: {success}")
 

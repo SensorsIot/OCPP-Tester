@@ -33,6 +33,9 @@ CHARGE_POINTS: Dict[str, Dict[str, Any]] = {}
 
 TRANSACTIONS: Dict[int, Dict[str, Any]] = {}
 
+# Store verification results for each charge point
+VERIFICATION_RESULTS: Dict[str, Dict[str, Any]] = {}
+
 _active_charge_point_id: Optional[str] = None
 _active_transaction_id: Optional[int] = None
 

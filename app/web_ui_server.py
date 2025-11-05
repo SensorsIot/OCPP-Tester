@@ -12,7 +12,7 @@ from flask import Flask, jsonify, request, render_template
 
 from app.ocpp_server_logic import OcppServerLogic
 from app.ocpp_test_steps import OcppTestSteps
-from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id, get_active_transaction_id, get_shutdown_event, set_shutdown_event, EV_SIMULATOR_BASE_URL, OCPP_PORT, get_current_charging_values
+from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, VERIFICATION_RESULTS, get_active_charge_point_id, set_active_charge_point_id, get_active_transaction_id, get_shutdown_event, set_shutdown_event, EV_SIMULATOR_BASE_URL, OCPP_PORT, get_current_charging_values
 from app.streamers import EVStatusStreamer
 
 app = Flask(__name__)
@@ -410,3 +410,19 @@ def clear_test_results():
     except Exception as e:
         logging.exception("Error clearing test results")
         return jsonify({"error": f"Failed to clear test results: {e}"}), 500
+
+@app.route("/api/verification_results", methods=["GET"])
+def get_verification_results():
+    """Get verification results for the active charge point."""
+    try:
+        active_cp_id = get_active_charge_point_id()
+        if not active_cp_id:
+            return jsonify({"error": "No active charge point selected"}), 400
+
+        if active_cp_id not in VERIFICATION_RESULTS:
+            return jsonify({"error": "No verification results available"}), 404
+
+        return jsonify(VERIFICATION_RESULTS[active_cp_id])
+    except Exception as e:
+        logging.exception("Error getting verification results")
+        return jsonify({"error": f"Failed to get verification results: {e}"}), 500

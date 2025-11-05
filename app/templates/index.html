@@ -148,6 +148,53 @@
             box-sizing: border-box;
         }
 
+        /* Verification Results Modal */
+        .verification-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .verification-table th,
+        .verification-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .verification-table th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .verification-table tr:hover {
+            background-color: #f9f9f9;
+        }
+
+        .verification-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .verification-status.ok {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .verification-status.not-ok {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .verification-icon {
+            font-size: 18px;
+        }
+
         /* B.1 Warning Popup */
         #b1WarningPopup {
             display: none;
@@ -566,6 +613,34 @@
   </div>
 </div>
 
+<!-- Verification Results Modal -->
+<div id="verificationResultsModal" class="modal">
+  <div class="modal-content">
+    <span class="close" id="verification-modal-close">&times;</span>
+    <h3 id="verification-modal-title">Verification Results</h3>
+    <div id="verification-results-content">
+      <table class="verification-table">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Expected</th>
+            <th>Actual</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="verification-table-body">
+          <!-- Rows will be populated dynamically -->
+        </tbody>
+      </table>
+    </div>
+    <div style="text-align: center; margin-top: 20px;">
+      <button type="button" id="verification-ok-btn" class="button" style="background-color: #007bff; color: white; padding: 10px 30px; border: none; border-radius: 4px; font-size: 16px;">
+        OK
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- B.1 Warning Popup Overlay -->
 <div id="b1WarningOverlay" style="display: none; position: fixed: top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); z-index: 9998;"></div>
 
@@ -660,6 +735,49 @@
 
         popup.style.display = 'none';
         overlay.style.display = 'none';
+    }
+
+    // Verification Results Modal Functions
+    function showVerificationResults(title, results) {
+        const modal = document.getElementById('verificationResultsModal');
+        const modalTitle = document.getElementById('verification-modal-title');
+        const tableBody = document.getElementById('verification-table-body');
+
+        // Set title
+        modalTitle.textContent = title;
+
+        // Clear existing rows
+        tableBody.innerHTML = '';
+
+        // Add rows for each result
+        results.forEach(result => {
+            const row = document.createElement('tr');
+
+            const isOk = result.status === 'OK';
+            const statusClass = isOk ? 'ok' : 'not-ok';
+            const statusIcon = isOk ? '✓' : '✗';
+
+            row.innerHTML = `
+                <td>${result.parameter}</td>
+                <td>${result.expected}</td>
+                <td>${result.actual}</td>
+                <td>
+                    <span class="verification-status ${statusClass}">
+                        <span class="verification-icon">${statusIcon}</span>
+                        ${result.status}
+                    </span>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+
+        // Show modal
+        modal.style.display = 'block';
+    }
+
+    function closeVerificationModal() {
+        const modal = document.getElementById('verificationResultsModal');
+        modal.style.display = 'none';
     }
 
     function showStatusMessage(message, isError = false) {
@@ -982,6 +1100,28 @@
                     otherBtn.classList.remove('disabled');
                 }
             });
+
+            // Show verification results popup for C.1 and C.2 tests if they passed
+            if ((stepKey === 'run_c1_set_charging_profile_test' || stepKey === 'run_c2_tx_default_profile_test')) {
+                const cpData = chargePointsData[Object.keys(chargePointsData)[0]];
+                if (cpData && cpData.test_results) {
+                    const result = cpData.test_results[stepKey];
+                    // Only show verification if test passed
+                    if (result === 'PASSED') {
+                        try {
+                            const verifyResponse = await fetch('/api/verification_results');
+                            if (verifyResponse.ok) {
+                                const verifyData = await verifyResponse.json();
+                                if (verifyData && verifyData.results && verifyData.results.length > 0) {
+                                    showVerificationResults(verifyData.test, verifyData.results);
+                                }
+                            }
+                        } catch (verifyError) {
+                            console.error('Failed to fetch verification results:', verifyError);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -2101,6 +2241,23 @@
         const remoteStartModal = document.getElementById('remoteStartModal');
         if (event.target === remoteStartModal) {
             closeRemoteStartModal();
+        }
+    });
+
+    // Verification Modal Event Listeners
+    document.getElementById('verification-modal-close').onclick = function() {
+        closeVerificationModal();
+    }
+
+    document.getElementById('verification-ok-btn').onclick = function() {
+        closeVerificationModal();
+    }
+
+    // Close verification modal when clicking outside
+    window.addEventListener('click', function(event) {
+        const verificationModal = document.getElementById('verificationResultsModal');
+        if (event.target === verificationModal) {
+            closeVerificationModal();
         }
     });
 
