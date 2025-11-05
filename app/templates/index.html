@@ -1339,6 +1339,29 @@
                         return;
                     }
 
+                    // Enable RFID test mode for B.3
+                    try {
+                        await fetch('/api/enable_rfid_test_mode', { method: 'POST' });
+                        console.log('✅ B All Tests: RFID test mode enabled');
+                    } catch (e) {
+                        console.error('Failed to enable RFID test mode:', e);
+                    }
+
+                    // Show the RFID modal immediately with instructions
+                    const modal = document.getElementById('tapToChargeModal');
+                    const timerDiv = document.getElementById('tap-to-charge-timer');
+                    const countdownDiv = document.getElementById('tap-to-charge-countdown');
+
+                    timerDiv.innerHTML = `
+                        🔄 Running B All Tests (B.2-B.5)<br>
+                        <br>
+                        ⏳ <strong>B.3: Tap to Charge</strong> will require your RFID card<br>
+                        <br>
+                        Please tap your RFID card when the test reaches B.3
+                    `;
+                    countdownDiv.textContent = 'Tests running... Please wait';
+                    modal.style.display = 'block';
+
                     // Show running state
                     allTestsBtn.classList.remove('btn-success', 'btn-failure');
                     allTestsBtn.classList.add('btn-running', 'disabled');
@@ -1353,6 +1376,9 @@
                     try {
                         const response = await fetch('/api/test/b_all_tests', { method: 'POST' });
                         const result = await response.json();
+
+                        // Close the modal
+                        modal.style.display = 'none';
 
                         if (!response.ok) throw new Error(result.error || 'Unknown error');
 
@@ -1385,9 +1411,18 @@
                             showStatusMessage(result.status || 'Tests completed!');
                         }
                     } catch (e) {
+                        // Close the modal on error
+                        modal.style.display = 'none';
                         showStatusMessage(`Failed: ${e.message}`, true);
                         allTestsBtn.classList.add('btn-failure');
                     } finally {
+                        // Disable RFID test mode
+                        try {
+                            await fetch('/api/disable_rfid_test_mode', { method: 'POST' });
+                        } catch (e) {
+                            console.error('Failed to disable RFID test mode:', e);
+                        }
+
                         // Fetch test results to update UI
                         await fetchChargePoints();
 
