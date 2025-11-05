@@ -1350,58 +1350,64 @@
                         }
                     });
 
+                    // Show status modal
+                    const modal = document.getElementById('tapToChargeModal');
+                    const timerDiv = document.getElementById('tap-to-charge-timer');
+                    const countdownDiv = document.getElementById('tap-to-charge-countdown');
+
+                    timerDiv.innerHTML = `
+                        🔄 Running B All Tests (B.2-B.5)<br><br>
+                        <strong>Please tap your RFID card when B.3 starts</strong><br><br>
+                        Tests are running sequentially...
+                    `;
+                    countdownDiv.textContent = 'Please wait...';
+                    modal.style.display = 'block';
+
                     try {
-                        showStatusMessage('Running B.2: Autonomous Start...');
-                        await fetch('/api/test/run_b2_autonomous_start_test', { method: 'POST' });
-                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        const response = await fetch('/api/test/b_all_tests', { method: 'POST' });
+                        const result = await response.json();
 
-                        showStatusMessage('Running B.3: Tap to Charge... (RFID modal will appear)');
-                        // B.3 will automatically show its modal
-                        await openTapToChargeModal();
-                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        // Close modal
+                        modal.style.display = 'none';
 
-                        showStatusMessage('Running B.4: Anonymous Remote Start...');
-                        await fetch('/api/test/run_b4_anonymous_remote_start_test', { method: 'POST' });
-                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        if (!response.ok) throw new Error(result.error || 'Unknown error');
 
-                        showStatusMessage('Running B.5: Plug and Charge...');
-                        await fetch('/api/test/run_b5_plug_and_charge_test', { method: 'POST' });
-                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        // Show status message with log file location
+                        if (result.log_file) {
+                            showStatusMessage(`B All Tests completed! Log saved to: ${result.log_file}`);
 
-                        // Fetch updated results
-                        await fetchChargePoints();
+                            // Show detailed results popup
+                            const b2Result = result.test_results.b2 || 'NOT RUN';
+                            const b3Result = result.test_results.b3 || 'NOT RUN';
+                            const b4Result = result.test_results.b4 || 'NOT RUN';
+                            const b5Result = result.test_results.b5 || 'NOT RUN';
 
-                        // Get test results from charge point data
-                        const cpResponse = await fetch('/api/charge_points');
-                        const cpData = await cpResponse.json();
-                        const activeCP = cpData.charge_points[backendActiveCpId];
-                        const testResults = activeCP?.test_results || {};
+                            let message = `B All Tests Completed!\n\n`;
+                            message += `Results:\n`;
+                            message += `  B.2 Autonomous Start: ${b2Result}\n`;
+                            message += `  B.3 Tap to Charge: ${b3Result}\n`;
+                            message += `  B.4 Anonymous Remote Start: ${b4Result}\n`;
+                            message += `  B.5 Plug and Charge: ${b5Result}\n\n`;
+                            message += `Total: 4 tests completed\n\n`;
+                            message += `Log file: ${result.log_file}`;
 
-                        const b2Result = testResults['run_b2_autonomous_start_test'] || 'NOT RUN';
-                        const b3Result = testResults['run_b3_tap_to_charge_test'] || 'NOT RUN';
-                        const b4Result = testResults['run_b4_anonymous_remote_start_test'] || 'NOT RUN';
-                        const b5Result = testResults['run_b5_plug_and_charge_test'] || 'NOT RUN';
+                            alert(message);
 
-                        showStatusMessage('B All Tests completed!');
-
-                        let message = `B All Tests Completed!\n\n`;
-                        message += `Results:\n`;
-                        message += `  B.2 Autonomous Start: ${b2Result}\n`;
-                        message += `  B.3 Tap to Charge: ${b3Result}\n`;
-                        message += `  B.4 Anonymous Remote Start: ${b4Result}\n`;
-                        message += `  B.5 Plug and Charge: ${b5Result}\n\n`;
-                        message += `Total: 4 tests completed`;
-
-                        alert(message);
-
-                        // Update button color based on results
-                        const allPassed = b2Result === 'PASSED' && b3Result === 'PASSED' &&
-                                        b4Result === 'PASSED' && b5Result === 'PASSED';
-                        allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
+                            // Update button color based on results
+                            const allPassed = b2Result === 'PASSED' && b3Result === 'PASSED' &&
+                                            b4Result === 'PASSED' && b5Result === 'PASSED';
+                            allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
+                        } else {
+                            showStatusMessage(result.status || 'Tests completed!');
+                        }
                     } catch (e) {
+                        modal.style.display = 'none';
                         showStatusMessage(`Failed: ${e.message}`, true);
                         allTestsBtn.classList.add('btn-failure');
                     } finally {
+                        // Fetch test results to update UI
+                        await fetchChargePoints();
+
                         // Remove running state
                         allTestsBtn.classList.remove('btn-running', 'disabled');
 
