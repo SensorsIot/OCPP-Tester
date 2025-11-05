@@ -351,3 +351,62 @@ def get_rfid_status():
     except Exception as e:
         logging.exception("Error getting RFID status")
         return jsonify({"error": f"Failed to get RFID status: {e}"}), 500
+
+@app.route("/api/enable_rfid_test_mode", methods=["POST"])
+def enable_rfid_test_mode():
+    """Enable RFID test mode to accept any card and clear accepted_rfid."""
+    try:
+        from app.ocpp_message_handlers import rfid_test_state
+        rfid_test_state["active"] = True
+        rfid_test_state["cards_presented"] = []
+
+        # Clear accepted_rfid for active charge point so any card tap is detected as new
+        active_cp_id = get_active_charge_point_id()
+        if active_cp_id and active_cp_id in CHARGE_POINTS:
+            CHARGE_POINTS[active_cp_id]["accepted_rfid"] = None
+            logging.info(f"🔄 Cleared accepted_rfid for {active_cp_id} to detect new card taps")
+
+        logging.info("🔓 RFID test mode enabled via API - any card will be accepted")
+        return jsonify({
+            "status": "success",
+            "message": "RFID test mode enabled"
+        })
+    except Exception as e:
+        logging.exception("Error enabling RFID test mode")
+        return jsonify({"error": f"Failed to enable RFID test mode: {e}"}), 500
+
+@app.route("/api/disable_rfid_test_mode", methods=["POST"])
+def disable_rfid_test_mode():
+    """Disable RFID test mode."""
+    try:
+        from app.ocpp_message_handlers import rfid_test_state
+        rfid_test_state["active"] = False
+        rfid_test_state["cards_presented"] = []
+        logging.info("🔒 RFID test mode disabled via API")
+        return jsonify({
+            "status": "success",
+            "message": "RFID test mode disabled"
+        })
+    except Exception as e:
+        logging.exception("Error disabling RFID test mode")
+        return jsonify({"error": f"Failed to disable RFID test mode: {e}"}), 500
+
+@app.route("/api/clear_test_results", methods=["POST"])
+def clear_test_results():
+    """Clear all test results for all charge points."""
+    try:
+        cleared_count = 0
+        for cp_id, cp_data in CHARGE_POINTS.items():
+            if "test_results" in cp_data:
+                cp_data["test_results"] = {}
+                cleared_count += 1
+
+        logging.info(f"🧹 Cleared test results for {cleared_count} charge point(s)")
+        return jsonify({
+            "status": "success",
+            "message": f"Cleared test results for {cleared_count} charge point(s)",
+            "cleared_count": cleared_count
+        })
+    except Exception as e:
+        logging.exception("Error clearing test results")
+        return jsonify({"error": f"Failed to clear test results: {e}"}), 500

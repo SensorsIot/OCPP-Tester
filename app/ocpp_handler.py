@@ -161,10 +161,12 @@ class OCPPHandler:
     async def run_logic_and_periodic_tasks(self):
         try:
             # The server is now fully driven by the UI for running test steps.
-            # This task's only responsibility is to start the passive,
-            # long-running health check loop that waits for heartbeats.
+            # This task runs periodic health checks.
             logger.info(f"Connection for {self.charge_point_id} established. Starting periodic health checks.")
+
+            # Run health check task
             await self.ocpp_logic.periodic_health_checks()
+
         except asyncio.CancelledError:
             logger.info(f"Logic task for {self.charge_point_id} cancelled.")
         except ConnectionClosedOK:

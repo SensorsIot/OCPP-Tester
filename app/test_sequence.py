@@ -79,8 +79,8 @@ class TestSequence:
         await self.ocpp_logic._set_ev_state("B")
         await asyncio.sleep(2) # Give a moment for CP to process state B
 
-        logger.info("Attempting to remotely start a transaction for idTag 'test_id_2' on connector 1.")
-        request = RemoteStartTransactionRequest(idTag="test_id_2", connectorId=1)
+        logger.info("Attempting to remotely start a transaction for idTag '50600020100021' on connector 1.")
+        request = RemoteStartTransactionRequest(idTag="50600020100021", connectorId=1)
         await self.ocpp_logic.send_and_wait("RemoteStartTransaction", request)
 
         # Emulate the EV starting to draw power, which is required for a transaction to start.
@@ -92,7 +92,7 @@ class TestSequence:
         for t_id, t_data in TRANSACTIONS.items():
             if (
                 t_data.get("charge_point_id") == self.charge_point_id and
-                t_data.get("id_tag") == "test_id_2" and "stop_time" not in t_data
+                t_data.get("id_tag") == "50600020100021" and "stop_time" not in t_data
             ):
                 active_transaction_id = t_id
                 break
@@ -105,7 +105,7 @@ class TestSequence:
             # Emulate the EV stopping the charge but remaining connected.
             await self.ocpp_logic._set_ev_state("B")
         else:
-            logger.warning("NOTICE: No new transaction for 'test_id_2' was detected. Skipping remote stop.")
+            logger.warning("NOTICE: No new transaction for '50600020100021' was detected. Skipping remote stop.")
 
         # Clean up by simulating EV disconnection.
         await asyncio.sleep(5)

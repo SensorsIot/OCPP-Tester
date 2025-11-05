@@ -24,7 +24,9 @@ import asyncio
 import logging
 import signal
 import warnings
-from logging import StreamHandler
+from logging import StreamHandler, FileHandler
+from logging.handlers import RotatingFileHandler
+import os
 
 import uvicorn
 from websockets import serve
@@ -103,6 +105,26 @@ class ColoredFormatter(logging.Formatter):
             return formatted_message
 
 logger = logging.getLogger(__name__)
+
+# ---------- File logging formatter for disk logging ----------
+class FileLogFormatter(logging.Formatter):
+    def __init__(self):
+        super().__init__("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+    def format(self, record):
+        # Strip ANSI color codes from the message for clean file logging
+        import re
+        message = record.getMessage()
+        # Remove ANSI escape sequences
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        clean_message = ansi_escape.sub('', message)
+
+        # Create a copy of the record with cleaned message
+        record_copy = logging.makeLogRecord(record.__dict__)
+        record_copy.msg = clean_message
+        record_copy.args = None
+
+        return super().format(record_copy)
 
 # ---------- Per-path WebSocket handlers ----------
 async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: asyncio.Event, ev_sim_manager: EVSimulatorManager):
@@ -231,9 +253,28 @@ async def main():
     root_logger.setLevel(logging.DEBUG)
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
+
+    # Console handler with colors
     console = StreamHandler()
     console.setFormatter(ColoredFormatter())
     root_logger.addHandler(console)
+
+    # Disk logging setup - create logs directory if it doesn't exist
+    logs_dir = "logs"
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
+
+    # File handler with rotation (10MB max file size, keep 5 backup files)
+    file_handler = RotatingFileHandler(
+        os.path.join(logs_dir, "ocpp_commands.log"),
+        maxBytes=10*1024*1024,  # 10MB
+        backupCount=5
+    )
+    file_handler.setFormatter(FileLogFormatter())
+    file_handler.setLevel(logging.DEBUG)
+    root_logger.addHandler(file_handler)
+
+    logger.info(f"📁 Command logging enabled - logs saved to {os.path.join(logs_dir, 'ocpp_commands.log')}")
 
     # Streamers
     log_streamer = LogStreamer()

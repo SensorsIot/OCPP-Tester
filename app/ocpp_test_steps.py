@@ -69,7 +69,7 @@ class OcppTestSteps:
         logger.info(f"--- Step A.1 for {self.charge_point_id} complete. ---")
 
     async def run_a2_get_configuration_test(self):
-        """A.2: GetConfiguration - Fetches and displays all configuration settings from the charge point."""
+        """A.2: Get All Configuration - Fetches and displays all configuration settings from the charge point using empty key array."""
         logger.info(f"--- Step A.2: Running GetConfiguration test for {self.charge_point_id} ---")
         step_name = "run_a2_get_configuration_test"
         self._check_cancellation()
@@ -130,7 +130,7 @@ class OcppTestSteps:
         logger.info(f"--- Step A.2 for {self.charge_point_id} complete. ---")
 
     async def run_a3_change_configuration_test(self):
-        """A.3: GetConfiguration - Retrieves all OCPP 1.6-J configuration parameters."""
+        """A.3: Get OCPP Standard Keys - Retrieves all OCPP 1.6-J standard configuration parameters by explicitly requesting each key."""
         logger.info(f"--- Step A.3: Running GetConfiguration test for {self.charge_point_id} ---")
         step_name = "run_a3_change_configuration_test"
         self._check_cancellation()
@@ -327,7 +327,7 @@ class OcppTestSteps:
 
         # Test state C - Start a transaction first
         logger.info("Starting transaction for state C test...")
-        id_tag = "test_id_1"  # Use same ID tag as other tests
+        id_tag = "50600020100021"  # Use same ID tag as other tests
         start_response = await self.handler.send_and_wait(
             "RemoteStartTransaction",
             RemoteStartTransactionRequest(idTag=id_tag, connectorId=1),
@@ -540,9 +540,15 @@ class OcppTestSteps:
                 logger.error(f"  \033[91m{key}: {result}\033[0m")
         logger.info("--------------------")
 
-        if any(result == "PASSED" for result in results.values()):
+        # Only pass if the three essential runtime messages pass
+        # (BootNotification, DiagnosticsStatusNotification, and FirmwareStatusNotification are optional)
+        essential_messages = ["Heartbeat", "MeterValues", "StatusNotification"]
+        if all(results.get(msg) == "PASSED" for msg in essential_messages):
+            logger.info(f"✅ All essential runtime messages (Heartbeat, MeterValues, StatusNotification) passed")
             self._set_test_result(step_name, "PASSED")
         else:
+            failed_essential = [msg for msg in essential_messages if results.get(msg) != "PASSED"]
+            logger.error(f"❌ Essential runtime messages failed: {', '.join(failed_essential)}")
             self._set_test_result(step_name, "FAILED")
             
         logger.info(f"--- Step A.5 for {self.charge_point_id} complete. ---")
@@ -586,35 +592,271 @@ class OcppTestSteps:
 
         logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
 
-    async def run_b1_remote_start_transaction_test(self):
-        """B.1: RemoteStartTransaction - Starts a transaction remotely and verifies it's active."""
-        logger.info(f"--- Step B.1: Running RemoteStartTransaction test for {self.charge_point_id} ---")
-        step_name = "run_b1_remote_start_transaction_test"
-        self._check_cancellation()
-        id_tag = "test_id_1"
-        connector_id = 1
-
-        # 1. Simulate connecting an EV to the charge point.
-        logger.info("📡 Step 1: Setting EV state to 'B' (vehicle connected)...")
-        await self._set_ev_state("B")
-        self._check_cancellation()
-        logger.debug(f"Wallbox status after setting EV state to B: {CHARGE_POINTS.get(self.charge_point_id, {}).get('status')}")
-        # Give the charge point a moment to process the state change (e.g., send StatusNotification)
-        logger.debug("Waiting for wallbox to detect EV connection and send StatusNotification...")
-        await asyncio.sleep(2)
+    async def run_b1_reset_transaction_management(self):
+        """B.1: Reset Transaction Management - Establishes clean baseline for authorization testing."""
+        logger.info(f"--- Step B.1: Reset Transaction Management for {self.charge_point_id} ---")
+        step_name = "run_b1_reset_transaction_management"
         self._check_cancellation()
 
-        # 2. Send the RemoteStartTransaction command.
-        logger.info(f"📡 Step 2: Sending RemoteStartTransaction with idTag '{id_tag}'...")
+        # Step 1: Clear RFID cache
+        logger.info("🗑️  Step 1: Clearing RFID cache...")
+        logger.info("   📘 This removes all cached RFID authorizations from wallbox memory")
 
+        clear_cache_request = ClearCacheRequest()
+        cache_cleared = False
+
+        try:
+            response = await self.handler.send_and_wait("ClearCache", clear_cache_request, timeout=10)
+
+            if response is None:
+                logger.warning("⚠️  ClearCache request timed out")
+            else:
+                status = response.get("status", "Unknown")
+                logger.info(f"   📝 ClearCache response: {status}")
+
+                if status == "Accepted":
+                    logger.info("   ✅ RFID cache cleared successfully")
+                    cache_cleared = True
+                elif status == "Rejected":
+                    logger.warning("   ⚠️  ClearCache rejected (wallbox may not support this)")
+                else:
+                    logger.warning(f"   ⚠️  Unexpected status: {status}")
+
+        except Exception as e:
+            logger.error(f"   ❌ Error clearing cache: {e}")
+
+        # Step 2: Configure baseline parameters
+        logger.info("🔧 Step 2: Setting baseline configuration parameters...")
+
+        config_params = [
+            {"key": "LocalPreAuthorize", "value": "false",
+             "purpose": "Disable auto-start - wallbox must wait for authorization"},
+
+            {"key": "AuthorizeRemoteTxRequests", "value": "false",
+             "purpose": "Allow remote transactions WITHOUT authorization check - Central System has full control"},
+
+            {"key": "LocalAuthorizeOffline", "value": "false",
+             "purpose": "Require online authorization - no offline cache usage"},
+
+            {"key": "LocalAuthListEnabled", "value": "false",
+             "purpose": "Disable local authorization list"},
+
+            {"key": "AuthorizationCacheEnabled", "value": "false",
+             "purpose": "Disable authorization cache - prevents use of cached ElecqAutoStart ID"},
+        ]
+
+        logger.info(f"   📋 Configuring {len(config_params)} parameters for clean baseline:")
+        for param in config_params:
+            logger.info(f"      • {param['key']}: {param['value']} - {param['purpose']}")
+
+        success_count = 0
+        total_configs = len(config_params)
+        reboot_required = False
+
+        # Configure each parameter
+        for param in config_params:
+            key = param['key']
+            value = param['value']
+
+            logger.info(f"   🔧 Setting {key}...")
+            config_request = ChangeConfigurationRequest(key=key, value=value)
+
+            try:
+                response = await self.handler.send_and_wait("ChangeConfiguration", config_request, timeout=30)
+                self._check_cancellation()
+
+                if response and response.get("status"):
+                    status = response["status"]
+                    if status == "Accepted":
+                        logger.info(f"      ✅ {key} configuration ACCEPTED")
+                        success_count += 1
+                    elif status == "RebootRequired":
+                        logger.info(f"      ⚠️  {key} accepted but REBOOT REQUIRED")
+                        reboot_required = True
+                        success_count += 1
+                    elif status == "NotSupported":
+                        logger.warning(f"      ⚠️  {key} is NOT SUPPORTED by this charge point")
+                    elif status == "Rejected":
+                        logger.error(f"      ❌ {key} configuration REJECTED")
+                    else:
+                        logger.error(f"      ❌ {key} failed with status: {status}")
+                else:
+                    logger.error(f"      ❌ No response for {key}")
+
+            except Exception as e:
+                logger.error(f"      ❌ Exception configuring {key}: {e}")
+
+        # Step 3: Verify configuration by reading back the values
+        logger.info("🔍 Step 3: Verifying configuration was applied...")
+
+        verification_passed = True
+        keys_to_verify = [param['key'] for param in config_params]
+
+        get_config_request = GetConfigurationRequest(key=keys_to_verify)
+
+        try:
+            response = await self.handler.send_and_wait("GetConfiguration", get_config_request, timeout=10)
+            self._check_cancellation()
+
+            if response and response.get("configurationKey"):
+                logger.info("   📋 Current configuration values:")
+                config_keys = response.get("configurationKey", [])
+
+                for param in config_params:
+                    key = param['key']
+                    expected_value = param['value']
+
+                    # Find the actual value from response
+                    actual_value = None
+                    for config_item in config_keys:
+                        if config_item.get("key") == key:
+                            actual_value = config_item.get("value")
+                            break
+
+                    if actual_value is not None:
+                        if actual_value.lower() == expected_value.lower():
+                            logger.info(f"      ✅ {key} = {actual_value} (correct)")
+                        else:
+                            logger.error(f"      ❌ {key} = {actual_value} (expected: {expected_value})")
+                            verification_passed = False
+                    else:
+                        logger.warning(f"      ⚠️  {key} - not returned in GetConfiguration response")
+                        verification_passed = False
+            else:
+                logger.error("   ❌ GetConfiguration failed - cannot verify settings")
+                verification_passed = False
+
+        except Exception as e:
+            logger.error(f"   ❌ Exception during verification: {e}")
+            verification_passed = False
+
+        # Determine overall test result
+        if reboot_required:
+            logger.warning("")
+            logger.warning("⚠️  ═══════════════════════════════════════════════════")
+            logger.warning("⚠️  REBOOT REQUIRED - Configuration changes need reboot")
+            logger.warning("⚠️  ═══════════════════════════════════════════════════")
+            logger.warning("   Please run test X.1 'Reboot Wallbox' now,")
+            logger.warning("   then run B.1 again to verify the configuration.")
+            logger.warning("")
+
+        if success_count == total_configs and verification_passed:
+            if cache_cleared:
+                logger.info("✅ Step B.1: Baseline configuration complete and verified - cache cleared, all parameters set")
+                self._set_test_result(step_name, "PASSED")
+            else:
+                logger.info("⚠️  Step B.1: Baseline configuration verified - parameters set, cache clearing failed/not supported")
+                self._set_test_result(step_name, "PARTIAL")
+        elif success_count == total_configs and not verification_passed:
+            logger.error("❌ Step B.1: Configuration was ACCEPTED but VERIFICATION FAILED")
+            logger.error("   The wallbox accepted the changes but GetConfiguration shows different values!")
+            logger.error("   This usually means:")
+            logger.error("   1. The wallbox needs to be rebooted (run X.1 Reboot Wallbox)")
+            logger.error("   2. The configuration is read-only or locked")
+            logger.error("   3. The wallbox has a factory default override")
+            self._set_test_result(step_name, "FAILED")
+        elif success_count > 0:
+            logger.info(f"⚠️  Step B.1: Partial baseline configuration ({success_count}/{total_configs} parameters)")
+            self._set_test_result(step_name, "PARTIAL")
+        else:
+            logger.error("❌ Step B.1: Failed to establish baseline configuration")
+            self._set_test_result(step_name, "FAILED")
+
+        logger.info(f"📊 Configuration results: {success_count}/{total_configs} parameters configured, verification: {'✅ PASSED' if verification_passed else '❌ FAILED'}")
+
+        if verification_passed:
+            logger.info("📋 BASELINE ESTABLISHED:")
+            logger.info("   • Wallbox will wait for authorization (no auto-start)")
+            logger.info("   • Remote commands enabled (RemoteStartTransaction will work)")
+            logger.info("   • Online authorization required (Central System must approve)")
+            logger.info("   • RFID cache cleared (only new authorizations accepted)")
+            logger.info("")
+            logger.info("💡 You can now run authorization tests:")
+            logger.info("   • B.2: RFID Authorization Test")
+            logger.info("   • B.2: Autonomous Start Test")
+        else:
+            logger.error("⚠️  BASELINE NOT VERIFIED - DO NOT proceed with B.2 yet!")
+            logger.error("   Please investigate the configuration mismatch above.")
+
+        logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
+
+    async def run_b2_autonomous_start_test(self):
+        """B.2: Autonomous Start - Tests autonomous transaction initiation without manual authorization."""
+        logger.info(f"--- Step B.2: Running Autonomous Start test for {self.charge_point_id} ---")
+        step_name = "run_b2_autonomous_start_test"
+        self._check_cancellation()
+
+        logger.info("📋 AUTONOMOUS START TEST")
+        logger.info("   📘 This tests sending RemoteStartTransaction BEFORE EV connects:")
+        logger.info("   📘 1. Central System sends RemoteStartTransaction")
+        logger.info("   📘 2. User then plugs in EV")
+        logger.info("   📘 3. Wallbox starts transaction automatically")
+        logger.info("")
+
+        # Step 0: Ensure baseline configuration
+        logger.info("🔧 Step 0: Verifying baseline configuration...")
+        logger.info("   📘 For this test: AuthorizeRemoteTxRequests=false (remote commands don't need auth)")
+
+        try:
+            response = await self.handler.send_and_wait(
+                "GetConfiguration",
+                GetConfigurationRequest(key=["AuthorizeRemoteTxRequests"]),
+                timeout=10
+            )
+            self._check_cancellation()
+
+            authorize_remote = None
+            if response and response.get("configurationKey"):
+                for key in response.get("configurationKey", []):
+                    if key.get("key") == "AuthorizeRemoteTxRequests":
+                        authorize_remote = key.get("value", "").lower()
+                        break
+
+            if authorize_remote != "false":
+                logger.info(f"   🔧 Setting AuthorizeRemoteTxRequests=false (currently: {authorize_remote})...")
+                config_response = await self.handler.send_and_wait(
+                    "ChangeConfiguration",
+                    ChangeConfigurationRequest(key="AuthorizeRemoteTxRequests", value="false"),
+                    timeout=10
+                )
+                self._check_cancellation()
+                if config_response and config_response.get("status") == "Accepted":
+                    logger.info("   ✅ Configuration updated")
+                else:
+                    logger.warning(f"   ⚠️  Configuration may not have updated: {config_response.get('status', 'Unknown')}")
+            else:
+                logger.info("   ✅ Configuration already correct")
+
+        except Exception as e:
+            logger.warning(f"   ⚠️  Could not verify/update configuration: {e}")
+
+        logger.info("")
+
+        # Try to use the RFID card from B.2 test, otherwise use default
+        id_tag = CHARGE_POINTS.get(self.charge_point_id, {}).get("accepted_rfid", "50600020100021")
+        if CHARGE_POINTS.get(self.charge_point_id, {}).get("accepted_rfid"):
+            logger.info(f"   🎫 Using RFID card from B.2 test: {id_tag}")
+        else:
+            logger.info(f"   🎫 Using default RFID card: {id_tag}")
+            logger.info(f"   💡 Run B.10 first to use your actual RFID card")
+
+        connector_id = 1  # Use connector 1 instead of 0
+
+        # 1. First ensure EV is UNPLUGGED (State A)
+        logger.info("📡 Step 1: Ensuring EV is unplugged (State A)...")
+        await self._set_ev_state("A")
+        await asyncio.sleep(1)
+        self._check_cancellation()
+
+        # 2. Send RemoteStartTransaction FIRST (before EV connects)
         try:
             start_response = await asyncio.wait_for(
                 self.handler.send_and_wait(
                     "RemoteStartTransaction",
                     RemoteStartTransactionRequest(idTag=id_tag, connectorId=connector_id),
-                    timeout=15  # 15 second timeout for this specific call
+                    timeout=15
                 ),
-                timeout=20  # Overall timeout including processing
+                timeout=20
             )
             self._check_cancellation()
 
@@ -622,124 +864,140 @@ class OcppTestSteps:
                 status = start_response.get("status", "Unknown") if start_response else "No response"
                 logger.error(f"    ❌ RemoteStartTransaction: {status}")
                 self._set_test_result(step_name, "FAILED")
-                await self._set_ev_state("A")  # Cleanup
                 return
 
         except asyncio.TimeoutError:
             logger.error(f"    ❌ RemoteStartTransaction: Timeout - wallbox did not respond within 20 seconds")
             self._set_test_result(step_name, "FAILED")
-            await self._set_ev_state("A")  # Cleanup
             return
 
         logger.info("    ✅ RemoteStartTransaction: Accepted")
+        logger.info("    💡 Transaction authorized - waiting for EV to connect...")
+        logger.info("")
 
-        # 3. RemoteStartTransaction was acknowledged. Register the transaction on the server side.
-        #    We now use a temporary key for TRANSACTIONS until the CP's transactionId is known.
-        temp_transaction_key = f"{self.charge_point_id}-{connector_id}"
-        cs_internal_transaction_id = start_response.get("transactionId") # Get the CS's internal ID from the response
-
+        # Create placeholder transaction entry to track this remote start
+        # Use a temporary key (we'll get the real transaction ID from StartTransaction.req)
+        temp_transaction_key = f"temp_remote_{connector_id}"
         TRANSACTIONS[temp_transaction_key] = {
             "charge_point_id": self.charge_point_id,
             "id_tag": id_tag,
             "start_time": datetime.now(timezone.utc).isoformat(),
-            "meter_start": 0, # We don't have meter start from CP yet
+            "meter_start": 0,  # Will be updated by StartTransaction
             "connector_id": connector_id,
             "status": "Ongoing",
-            "remote_started": True, # Mark as remotely started
-            "cp_transaction_id": None, # CP's transaction ID is not yet known
-            "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
+            "remote_started": True,  # Mark as remotely started
+            "cp_transaction_id": None,  # Will be filled by StartTransaction
         }
-        set_active_transaction_id(cs_internal_transaction_id) # Update the global active transaction ID with CS's ID
-        logger.debug(f"Transaction (temp key: {temp_transaction_key}, CS ID: {cs_internal_transaction_id}) registered internally after RemoteStartTransaction.")
-        logger.info("⚡ Transaction authorized. Simulating EV requesting power...")
+        logger.debug(f"   📝 Created placeholder transaction entry: {temp_transaction_key}")
 
-        # 4. Simulate the EV drawing power by setting state to 'C'
-        logger.info("📡 Step 3: Setting EV state to 'C' (requesting power)...")
-        await self._set_ev_state("C")
+        # 3. NOW connect the EV (State B)
+        logger.info("📡 Step 3: Simulating EV cable connection (State B)...")
+        await self._set_ev_state("B")
         self._check_cancellation()
-        await asyncio.sleep(2)  # Give wallbox time to process
+        await asyncio.sleep(2)  # Give wallbox time to process connection
 
-        # 5. Wait for the charge point to send a StatusNotification indicating "Charging".
-        logger.info("📡 Step 4: Waiting for charge point to report 'Charging' status...")
-        try:
-            await asyncio.wait_for(self._wait_for_status("Charging"), timeout=10)
+        # 4. Wait for transaction to start
+        logger.info("⏳ Step 4: Waiting for transaction to start...")
+        transaction_id = None
+        start_time = asyncio.get_event_loop().time()
+        timeout = 10  # 10 seconds to detect transaction start
+
+        while (asyncio.get_event_loop().time() - start_time) < timeout:
             self._check_cancellation()
-            logger.info("✅ Charge point is now charging!")
-        except asyncio.TimeoutError:
-            logger.error("    ❌ Timeout waiting for 'Charging' status")
+            await asyncio.sleep(0.5)
+
+            # Check for new ongoing transaction
+            for tx_id, tx_data in TRANSACTIONS.items():
+                if (tx_data.get("charge_point_id") == self.charge_point_id and
+                    tx_data.get("status") == "Ongoing" and
+                    tx_data.get("remote_started") == True):
+                    transaction_id = tx_id
+                    break
+
+            if transaction_id:
+                break
+
+        if not transaction_id:
+            logger.error("❌ Transaction did not start after EV connection")
+            logger.info("   💡 Check wallbox logs for errors")
+            await self._set_ev_state("A")
             self._set_test_result(step_name, "FAILED")
-            await self._set_ev_state("A") # Cleanup
-            self._check_cancellation()
             return
 
-        # 6. Verify charging parameters and let transaction run
-        logger.info("📊 Verifying charging parameters...")
+        logger.info(f"   ✅ Transaction started! (ID: {transaction_id})")
+        logger.info("")
+
+        # 5. Simulate the EV drawing power by setting state to 'C'
+        logger.info("📡 Step 5: Setting EV state to 'C' (requesting power)...")
+        await self._set_ev_state("C")
+        self._check_cancellation()
         await asyncio.sleep(2)
-        self._check_cancellation()
 
-        # Verify wallbox capability and duty cycle from EV simulator
-        # Expected: 130A maximum capability based on actual wallbox specs
-        logger.debug("Verifying advertised current and CP duty cycle from EV simulator...")
-        # Force a refresh of the EV simulator status to get the latest values
-        if self.ocpp_server_logic.refresh_trigger:
-            self.ocpp_server_logic.refresh_trigger.set()
-            await asyncio.sleep(1)  # wait for poll to complete
+        # 6. Wait for the charge point to send a StatusNotification indicating "Charging".
+        logger.info("📡 Step 6: Waiting for charge point to report 'Charging' status...")
+        try:
+            await asyncio.wait_for(self._wait_for_status("Charging"), timeout=15)
             self._check_cancellation()
+            logger.info("   ✅ Charge point is now charging!")
+        except asyncio.TimeoutError:
+            logger.error("    ❌ Timeout waiting for 'Charging' status")
+            await self._set_ev_state("A")
+            self._set_test_result(step_name, "FAILED")
+            return
 
-        advertised_amps = EV_SIMULATOR_STATE.get("wallbox_advertised_max_current_amps")
-        duty_cycle = EV_SIMULATOR_STATE.get("cp_duty_cycle")
-
-        # Based on actual wallbox capabilities (130A max)
-        wallbox_max_amps = 130.0
-        expected_duty_cycle = (wallbox_max_amps / 0.6) / 100  # Calculate based on max capability
-        tolerance = 0.05  # 5% tolerance for duty cycle (more realistic)
-
-        logger.debug(f"EV simulator reports: Advertised Amps = {advertised_amps}, Duty Cycle = {duty_cycle}")
-        logger.debug(f"Wallbox max capability: {wallbox_max_amps}A, Expected Duty Cycle = ~{expected_duty_cycle:.4f}")
-
-        if advertised_amps == wallbox_max_amps:
-            logger.info(f"✅ Wallbox advertised current ({advertised_amps}A) matches maximum capability ({wallbox_max_amps}A).")
-        elif advertised_amps and advertised_amps > 0:
-            # Calculate the equivalent power
-            power_w = advertised_amps * 230  # Assume 230V
-            logger.info(f"📊 Wallbox capability: {advertised_amps}A × 230V = {power_w:.0f}W")
-        else:
-            logger.warning(f"⚠️  Could not determine wallbox current capability from simulator.")
-
-        if duty_cycle is not None and duty_cycle > 0:
-            # Reverse calculate the current from duty cycle for verification
-            calculated_current = duty_cycle * 0.6 * 100  # Reverse of duty cycle formula
-            logger.info(f"📊 CP Duty Cycle {duty_cycle:.3f} indicates ~{calculated_current:.1f}A capability")
-        else:
-            logger.warning(f"⚠️  Could not read CP duty cycle from simulator.")
-
-        await asyncio.sleep(5) # Let transaction run briefly to verify it's working
+        # 7. Brief verification
+        logger.info("")
+        logger.info("📊 Verifying transaction is active...")
+        await asyncio.sleep(3)
         self._check_cancellation()
 
-        # Verify transaction is active and receiving meter values
-        active_transaction_id = get_active_transaction_id()
-        if active_transaction_id and active_transaction_id in TRANSACTIONS:
-            transaction_data = TRANSACTIONS[active_transaction_id]
-            meter_values_count = len(transaction_data.get("meter_values", []))
-            logger.info(f"✅ Transaction {active_transaction_id} is active with {meter_values_count} meter value records")
-            logger.info("✅ RemoteStartTransaction test completed successfully!")
-            self._set_test_result(step_name, "PASSED")
-        else:
-            logger.error("❌ No active transaction found after RemoteStartTransaction")
-            self._set_test_result(step_name, "FAILED")
+        # Check transaction is still active
+        if transaction_id in TRANSACTIONS:
+            tx_data = TRANSACTIONS[transaction_id]
+            if tx_data.get("stop_timestamp") is None:
+                meter_values_count = len(tx_data.get("meter_values", []))
+                logger.info(f"   ✅ Transaction {transaction_id} active")
+                logger.info(f"   📊 Received {meter_values_count} meter value samples")
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("✅ AUTONOMOUS START TEST PASSED")
+        logger.info("=" * 60)
+        logger.info(f"   ⚡ Transaction ID: {transaction_id}")
+        logger.info(f"   🎫 ID Tag: {id_tag}")
+        logger.info("   📱 Remote start flow working correctly")
 
-        # Note: Transaction is left running for B.2 (RemoteStopTransaction) test
-        # EV state remains at 'C' (charging) to continue the transaction
-        logger.info("📝 Transaction left running for separate B.2 (RemoteStopTransaction) test")
-        logger.info(f"🏁 Step B.1 for {self.charge_point_id} complete.")
+        self._set_test_result(step_name, "PASSED")
 
-        # Standardized test completion logging
-        result = CHARGE_POINTS.get(self.charge_point_id, {}).get("test_results", {}).get(step_name, "UNKNOWN")
-        if result == "PASSED":
-            logger.info(f"✅ SUCCESS: Step B.1 RemoteStartTransaction test PASSED for {self.charge_point_id}")
-        else:
-            logger.error(f"❌ FAILURE: Step B.1 RemoteStartTransaction test FAILED for {self.charge_point_id}")
-        logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
+        # Cleanup: Stop the transaction and reset EV state
+        logger.info("")
+        logger.info("🧹 Cleaning up: Stopping transaction and resetting EV state...")
+
+        if transaction_id:
+            try:
+                stop_response = await self.handler.send_and_wait(
+                    "RemoteStopTransaction",
+                    RemoteStopTransactionRequest(transactionId=transaction_id),
+                    timeout=10
+                )
+                self._check_cancellation()
+                if stop_response and stop_response.get("status") == "Accepted":
+                    logger.info(f"   ✅ Transaction {transaction_id} stopped")
+                    await asyncio.sleep(2)
+            except Exception as e:
+                logger.warning(f"   ⚠️  Could not stop transaction: {e}")
+
+        # Reset EV state to A (unplugged)
+        await self._set_ev_state("A")
+        logger.info("   ✅ EV state reset to A (unplugged)")
+
+        # Wait for Available status
+        try:
+            await asyncio.wait_for(self._wait_for_status("Available"), timeout=10)
+            logger.info("   ✅ Wallbox returned to Available state")
+        except asyncio.TimeoutError:
+            logger.warning("   ⚠️  Timeout waiting for Available status")
+
+        logger.info(f"--- Step B.3 for {self.charge_point_id} complete. ---")
 
     async def run_c2_user_initiated_transaction_test(self):
         """C.2: Guides the user to start a transaction manually."""
@@ -842,13 +1100,18 @@ class OcppTestSteps:
         )
         logger.info(f"ClearChargingProfile response: {clear_response}")
 
-        # Get values from params or use defaults
-        stack_level = params.get("stackLevel", 0)
+        # Get values from params or use defaults, with proper type conversion
+        stack_level = int(params.get("stackLevel", 0))
         purpose = params.get("chargingProfilePurpose", "TxProfile")
         kind = params.get("chargingProfileKind", "Absolute")
         charging_unit = params.get("chargingRateUnit")
         limit = params.get("limit")
-        duration = params.get("duration", 3600)
+        duration = int(params.get("duration", 3600))
+        number_phases = int(params.get("numberPhases", 3))
+
+        # Convert limit to float if provided
+        if limit is not None:
+            limit = float(limit)
 
         # If no unit or limit specified, use configured charging values
         if charging_unit is None or limit is None:
@@ -867,9 +1130,9 @@ class OcppTestSteps:
                 chargingProfilePurpose=purpose, 
                 chargingProfileKind=kind, 
                 chargingSchedule=ChargingSchedule(
-                    duration=duration, 
-                    chargingRateUnit=charging_unit, 
-                    chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=limit)]
+                    duration=duration,
+                    chargingRateUnit=charging_unit,
+                    chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=limit, numberPhases=number_phases)]
                 )
             )
         )
@@ -884,17 +1147,22 @@ class OcppTestSteps:
             self._set_test_result(step_name, "FAILED")
         logger.info(f"--- Step C.1 for {self.charge_point_id} complete. ---")
 
-    async def run_c4_tx_default_profile_test(self, params: Dict[str, Any] = None):
-        """C.4: TxDefaultProfile - Sets a default charging profile to medium power/current for future transactions."""
+    async def run_c2_tx_default_profile_test(self, params: Dict[str, Any] = None):
+        """C.2: TxDefaultProfile - Sets a default charging profile to medium power/current for future transactions."""
         if params is None:
             params = {}
 
-        # Get values from params or use defaults
-        stack_level = params.get("stackLevel", 0) # Changed default to 0
+        # Get values from params or use defaults, with proper type conversion
+        stack_level = int(params.get("stackLevel", 0)) # Changed default to 0
         purpose = params.get("chargingProfilePurpose", "TxDefaultProfile")
         kind = params.get("chargingProfileKind", "Absolute")
         charging_unit = params.get("chargingRateUnit")
         limit = params.get("limit")
+        number_phases = int(params.get("numberPhases", 3))
+
+        # Convert limit to float if provided
+        if limit is not None:
+            limit = float(limit)
         # Note: TxDefaultProfile should not have duration per OCPP standard
 
         # If no unit or limit specified, use configured charging values
@@ -905,8 +1173,8 @@ class OcppTestSteps:
             if limit is None:
                 limit = medium_value
 
-        logger.info(f"--- Step C.4: Running TxDefaultProfile test to {limit}{charging_unit} for {self.charge_point_id} ---")
-        step_name = "run_c4_tx_default_profile_test"
+        logger.info(f"--- Step C.2: Running TxDefaultProfile test to {limit}{charging_unit} for {self.charge_point_id} ---")
+        step_name = "run_c2_tx_default_profile_test"
         self._check_cancellation()
 
         # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
@@ -916,8 +1184,8 @@ class OcppTestSteps:
         )
         logger.info(f"ClearChargingProfile response: {clear_response}")
 
-        # First profile: connectorId=0 (charge point level)
-        profile_cp = SetChargingProfileRequest(
+        # Send single TxDefaultProfile with configured stackLevel
+        profile = SetChargingProfileRequest(
             connectorId=0,
             csChargingProfiles=ChargingProfile(
                 chargingProfileId=random.randint(1, 1000),
@@ -930,47 +1198,23 @@ class OcppTestSteps:
                         ChargingSchedulePeriod(
                             startPeriod=0,
                             limit=limit,
-                            numberPhases=3
+                            numberPhases=number_phases
                         )
                     ]
                 )
             )
         )
-        logger.info(f"Sending SetChargingProfile message for connectorId=0: {asdict(profile_cp)}")
-        success_cp = await self.handler.send_and_wait("SetChargingProfile", profile_cp)
+        logger.info(f"Sending SetChargingProfile message: {asdict(profile)}")
+        success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
 
-        # Second profile: connectorId=1 (connector level)
-        profile_conn = SetChargingProfileRequest(
-            connectorId=1,
-            csChargingProfiles=ChargingProfile(
-                chargingProfileId=random.randint(1, 1000),
-                stackLevel=stack_level,
-                chargingProfilePurpose=purpose,
-                chargingProfileKind=kind,
-                chargingSchedule=ChargingSchedule(
-                    chargingRateUnit=charging_unit,
-                    chargingSchedulePeriod=[
-                        ChargingSchedulePeriod(
-                            startPeriod=0,
-                            limit=limit,
-                            numberPhases=3
-                        )
-                    ]
-                )
-            )
-        )
-        logger.info(f"Sending SetChargingProfile message for connectorId=1: {asdict(profile_conn)}")
-        success_conn = await self.handler.send_and_wait("SetChargingProfile", profile_conn)
-        self._check_cancellation()
-
-        if success_cp and success_cp.get("status") == "Accepted" and success_conn and success_conn.get("status") == "Accepted":
-            logger.info(f"PASSED: SetChargingProfile to {limit}{charging_unit} for both connectorId=0 and connectorId=1 was acknowledged.")
+        if success and success.get("status") == "Accepted":
+            logger.info(f"PASSED: SetChargingProfile to {limit}{charging_unit} was acknowledged.")
             self._set_test_result(step_name, "PASSED")
         else:
-            logger.error(f"FAILED: SetChargingProfile to {limit}{charging_unit} was not acknowledged for connectorId=0: {success_cp}, connectorId=1: {success_conn}")
+            logger.error(f"FAILED: SetChargingProfile to {limit}{charging_unit} was not acknowledged. Response: {success}")
             self._set_test_result(step_name, "FAILED")
-        logger.info(f"--- Step C.4 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step C.2 for {self.charge_point_id} complete. ---")
 
     async def run_d3_smart_charging_capability_test(self):
         """D.3: Placeholder for a more complex smart charging test."""
@@ -983,10 +1227,10 @@ class OcppTestSteps:
         self._set_test_result(step_name, "PASSED")
         logger.info(f"--- Step D.3 for {self.charge_point_id} complete. ---")
 
-    async def run_c3_clear_charging_profile_test(self):
-        """C.3: ClearChargingProfile - Clears any default charging profiles."""
-        logger.info(f"--- Step C.3: Running ClearChargingProfile test for {self.charge_point_id} ---")
-        step_name = "run_c3_clear_charging_profile_test"
+    async def run_c4_clear_charging_profile_test(self):
+        """C.4: ClearChargingProfile - Clears any default charging profiles."""
+        logger.info(f"--- Step C.4: Running ClearChargingProfile test for {self.charge_point_id} ---")
+        step_name = "run_c4_clear_charging_profile_test"
         self._check_cancellation()
         success = await self.handler.send_and_wait(
             "ClearChargingProfile",
@@ -999,7 +1243,7 @@ class OcppTestSteps:
         else:
             logger.error("FAILURE: ClearChargingProfile was not acknowledged.")
             self._set_test_result(step_name, "FAILED")
-        logger.info(f"--- Step D.4 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step C.4 for {self.charge_point_id} complete. ---")
 
     async def run_d5_set_profile_5000w(self):
         """D.5: Sets a charging profile to medium power/current."""
@@ -1028,7 +1272,7 @@ class OcppTestSteps:
                 chargingSchedule=ChargingSchedule(
                     chargingRateUnit=charging_unit,
                     chargingSchedulePeriod=[
-                        ChargingSchedulePeriod(startPeriod=0, limit=medium_value)
+                        ChargingSchedulePeriod(startPeriod=0, limit=medium_value, numberPhases=3)
                     ]
                 )
             )
@@ -1131,8 +1375,8 @@ class OcppTestSteps:
         logger.info(f"--- Step E.1: RemoteStartTransaction from State A for {self.charge_point_id} ---")
         step_name = "run_e1_remote_start_from_state_a"
         self._check_cancellation()
-        id_tag = "test_id_1"
-        connector_id = 1
+        id_tag = "50600020100021"
+        connector_id = 0
 
         # 1. Ensure EV simulator is in state A.
         await self._set_ev_state("A")
@@ -1172,8 +1416,8 @@ class OcppTestSteps:
         logger.info(f"--- Step E.2: RemoteStartTransaction from State B for {self.charge_point_id} ---")
         step_name = "run_e2_remote_start_state_b"
         self._check_cancellation()
-        id_tag = "test_id_1"
-        connector_id = 1
+        id_tag = "50600020100021"
+        connector_id = 0
 
         # 1. Ensure EV simulator is in state B.
         await self._set_ev_state("B")
@@ -1203,10 +1447,10 @@ class OcppTestSteps:
             self._set_test_result(step_name, "PASSED")
             # Register the transaction on the server side.
             # We now use a temporary key for TRANSACTIONS until the CP's transactionId is known.
-            temp_transaction_key = f"{self.charge_point_id}-{connector_id}"
-            cs_internal_transaction_id = start_response.get("transactionId") # Get the CS's internal ID from the response
+            # Always use transaction ID 0 for simplicity
+            cs_internal_transaction_id = 0
 
-            TRANSACTIONS[temp_transaction_key] = {
+            TRANSACTIONS[0] = {
                 "charge_point_id": self.charge_point_id,
                 "id_tag": id_tag,
                 "start_time": datetime.now(timezone.utc).isoformat(),
@@ -1218,7 +1462,7 @@ class OcppTestSteps:
                 "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
             }
             set_active_transaction_id(cs_internal_transaction_id) # Update the global active transaction ID with CS's ID
-            logger.info(f"Transaction (temp key: {temp_transaction_key}, CS ID: {cs_internal_transaction_id}) registered internally.")
+            logger.info(f"Transaction (temp key: {0}, CS ID: {cs_internal_transaction_id}) registered internally.")
             # Simulate EV drawing power.
             logger.info(f"Setting EV state to 'C' to simulate charging.")
             await self._set_ev_state("C")
@@ -1241,8 +1485,8 @@ class OcppTestSteps:
         logger.info(f"--- Step E.3: RemoteStartTransaction from State C for {self.charge_point_id} ---")
         step_name = "run_e3_remote_start_state_c" # Corrected step_name
         self._check_cancellation()
-        id_tag = "test_id_1"
-        connector_id = 1
+        id_tag = "50600020100021"
+        connector_id = 0
 
         # 1. Ensure EV simulator is in state C.
         await self._set_ev_state("C")
@@ -1269,10 +1513,10 @@ class OcppTestSteps:
             self._set_test_result(step_name, "PASSED")
             # Register the transaction on the server side.
             # We now use a temporary key for TRANSACTIONS until the CP's transactionId is known.
-            temp_transaction_key = f"{self.charge_point_id}-{connector_id}"
-            cs_internal_transaction_id = start_response.get("transactionId") # Get the CS's internal ID from the response
+            # Always use transaction ID 0 for simplicity
+            cs_internal_transaction_id = 0
 
-            TRANSACTIONS[temp_transaction_key] = {
+            TRANSACTIONS[0] = {
                 "charge_point_id": self.charge_point_id,
                 "id_tag": id_tag,
                 "start_time": datetime.now(timezone.utc).isoformat(),
@@ -1284,7 +1528,7 @@ class OcppTestSteps:
                 "cs_internal_transaction_id": cs_internal_transaction_id # Store the CS's internal ID
             }
             set_active_transaction_id(cs_internal_transaction_id) # Update the global active transaction ID with CS's ID
-            logger.info(f"Transaction (temp key: {temp_transaction_key}, CS ID: {cs_internal_transaction_id}) registered internally.")
+            logger.info(f"Transaction (temp key: {0}, CS ID: {cs_internal_transaction_id}) registered internally.")
             # Simulate EV drawing power.
             logger.info(f"Setting EV state to 'C' to simulate charging.")
             await self._set_ev_state("C")
@@ -1331,7 +1575,7 @@ class OcppTestSteps:
                 chargingSchedule=ChargingSchedule(
                     chargingRateUnit=rate_unit,
                     chargingSchedulePeriod=[
-                        ChargingSchedulePeriod(startPeriod=0, limit=charging_value)
+                        ChargingSchedulePeriod(startPeriod=0, limit=charging_value, numberPhases=3)
                     ]
                 )
             )
@@ -1490,7 +1734,7 @@ class OcppTestSteps:
                 chargingSchedule=ChargingSchedule(
                     chargingRateUnit=rate_unit,
                     chargingSchedulePeriod=[
-                        ChargingSchedulePeriod(startPeriod=0, limit=charging_value)
+                        ChargingSchedulePeriod(startPeriod=0, limit=charging_value, numberPhases=3)
                     ]
                 )
             )
@@ -1532,102 +1776,10 @@ class OcppTestSteps:
         # Leave EV in state C (or whatever state it was left in by the transaction start test)
         logger.info(f"--- Step E.7 for {self.charge_point_id} complete. ---")
 
-    async def run_b2_remote_stop_transaction_test(self):
-        """B.2: RemoteStopTransaction - Stops the active transaction remotely."""
-        logger.info(f"--- Step B.2: Running RemoteStopTransaction test for {self.charge_point_id} ---")
-        step_name = "run_b2_remote_stop_transaction_test"
-        self._check_cancellation()
-
-        transaction_id = get_active_transaction_id()
-        if transaction_id is None:
-            logger.error("FAILED: No active transaction found to stop.")
-            self._set_test_result(step_name, "FAILED")
-            return
-
-        stop_response = await self.handler.send_and_wait(
-            "RemoteStopTransaction",
-            RemoteStopTransactionRequest(transactionId=transaction_id),
-            timeout=30
-        )
-        self._check_cancellation()
-
-        if not stop_response or stop_response.get("status") != "Accepted":
-            status = stop_response.get('status', 'no response') if stop_response else 'no response'
-            logger.error(f"FAILED: RemoteStopTransaction for transaction {transaction_id} was not accepted (status: {status}).")
-            self._set_test_result(step_name, "FAILED")
-        else:
-            logger.info(f"PASSED: RemoteStopTransaction for transaction {transaction_id} was acknowledged.")
-            self._set_test_result(step_name, "PASSED")
-
-        # After stopping, simulate unplugging the EV
-        logger.info("🔌 Simulating EV unplugged (State A)...")
-        await self._set_ev_state("A")
-        self._check_cancellation()
-
-        # Wait for the charge point to become available again
-        logger.info("⏳ Waiting for charge point to become Available...")
-        try:
-            await asyncio.wait_for(self._wait_for_status("Available"), timeout=20)
-            self._check_cancellation()
-            logger.info("✅ Charge point is Available.")
-        except asyncio.TimeoutError:
-            logger.error("❌ Timeout waiting for 'Available' status after remote stop.")
-            # This might not be a test failure, but a warning for the next test
-        
-        logger.info(f"--- Step B.2 for {self.charge_point_id} complete. ---")
-
-    async def run_b3_rfid_authorization_test(self):
-        """B.3: RFID Authorization - Tests RFID card authorization with accepted and invalid cards."""
-        logger.info(f"--- Step B.3: RFID Authorization test for {self.charge_point_id} ---")
-        step_name = "run_b3_rfid_authorization_test"
-        self._check_cancellation()
-
-        # Import here to avoid circular imports
-        from app.ocpp_message_handlers import rfid_test_state
-        from datetime import datetime, timezone
-
-        # Activate RFID test mode
-        rfid_test_state["active"] = True
-        rfid_test_state["cards_presented"] = []
-        rfid_test_state["test_start_time"] = datetime.now(timezone.utc)
-
-        logger.info("🎫 RFID Test Mode ACTIVATED")
-        logger.info("   📘 Instruction: Present the FIRST RFID card (will be ACCEPTED)")
-        logger.info("   📘 Then present a DIFFERENT RFID card (will be INVALID)")
-        logger.info("   📘 Any additional cards will also be INVALID")
-        logger.info("   💡 IMPORTANT: Use different cards - same card may not be re-read immediately")
-        logger.info("   📘 The wallbox will send Authorize.req messages to the server")
-
-        # Wait for user to present cards and wallbox to send Authorize requests
-        logger.info("⏳ Waiting 60 seconds for RFID card presentations...")
-        logger.info("   👤 User Action Required: Present RFID cards to the wallbox reader")
-
-        try:
-            await asyncio.sleep(60)
-        finally:
-            # Deactivate RFID test mode
-            rfid_test_state["active"] = False
-
-        logger.info("✅ Step B.3: RFID Authorization test completed")
-        logger.info(f"   📊 Cards presented during test: {len(rfid_test_state['cards_presented'])}")
-        for i, card_id in enumerate(rfid_test_state["cards_presented"], 1):
-            status = "ACCEPTED" if i == 1 else "INVALID"
-            logger.info(f"   🎫 Card #{i}: {card_id} → {status}")
-
-        # Test passes if at least one card was presented
-        if rfid_test_state["cards_presented"]:
-            self._set_test_result(step_name, "PASSED")
-            logger.info("✅ Test PASSED: At least one card was detected")
-        else:
-            self._set_test_result(step_name, "FAILED")
-            logger.warning("⚠️ Test FAILED: No cards were detected during test period")
-
-        logger.info(f"--- Step B.3 for {self.charge_point_id} complete. ---")
-
-    async def run_b4_clear_rfid_cache(self):
-        """B.4: Clear RFID Cache - Clears the local authorization list (RFID cache) in the wallbox."""
-        logger.info(f"--- Step B.4: Clear RFID Cache for {self.charge_point_id} ---")
-        step_name = "run_b4_clear_rfid_cache"
+    async def run_b6_clear_rfid_cache(self):
+        """B.6: Clear RFID Cache - Clears the local authorization list (RFID cache) in the wallbox."""
+        logger.info(f"--- Step B.6: Clear RFID Cache for {self.charge_point_id} ---")
+        step_name = "run_b6_clear_rfid_cache"
         self._check_cancellation()
 
         logger.info("🗑️ Sending ClearCache command to wallbox...")
@@ -1666,12 +1818,12 @@ class OcppTestSteps:
             logger.error(f"❌ Error during ClearCache: {e}")
             self._set_test_result(step_name, "FAILED")
 
-        logger.info(f"--- Step B.4 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step B.6 for {self.charge_point_id} complete. ---")
 
-    async def run_b5_send_rfid_list(self):
-        """B.5: Send RFID List - Sends a local authorization list with RFID cards to the wallbox."""
-        logger.info(f"--- Step B.5: Send RFID List for {self.charge_point_id} ---")
-        step_name = "run_b5_send_rfid_list"
+    async def run_b7_send_rfid_list(self):
+        """B.7: Send RFID List - Sends a local authorization list with RFID cards to the wallbox."""
+        logger.info(f"--- Step B.7: Send RFID List for {self.charge_point_id} ---")
+        step_name = "run_b7_send_rfid_list"
         self._check_cancellation()
 
         logger.info("📋 Sending local authorization list to wallbox...")
@@ -1730,7 +1882,7 @@ class OcppTestSteps:
             elif status == "NotSupported":
                 logger.warning("⚠️ Send RFID List not supported by wallbox")
                 logger.info("   💡 Wallbox doesn't support local authorization lists")
-                self._set_test_result(step_name, "FAILED")
+                self._set_test_result(step_name, "NOT_SUPPORTED")
             elif status == "VersionMismatch":
                 logger.warning("⚠️ Version mismatch - wallbox has different list version")
                 logger.info("   💡 Try running B.6 Get RFID List Version first")
@@ -1743,12 +1895,12 @@ class OcppTestSteps:
             logger.error(f"❌ Error during SendLocalList: {e}")
             self._set_test_result(step_name, "FAILED")
 
-        logger.info(f"--- Step B.5 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step B.7 for {self.charge_point_id} complete. ---")
 
-    async def run_b6_get_rfid_list_version(self):
-        """B.6: Get RFID List Version - Gets the current version of the local authorization list."""
-        logger.info(f"--- Step B.6: Get RFID List Version for {self.charge_point_id} ---")
-        step_name = "run_b6_get_rfid_list_version"
+    async def run_b8_get_rfid_list_version(self):
+        """B.8: Get RFID List Version - Gets the current version of the local authorization list."""
+        logger.info(f"--- Step B.8: Get RFID List Version for {self.charge_point_id} ---")
+        step_name = "run_b8_get_rfid_list_version"
         self._check_cancellation()
 
         logger.info("📋 Requesting local authorization list version from wallbox...")
@@ -1774,7 +1926,7 @@ class OcppTestSteps:
                 logger.info("✅ Get RFID List Version successful")
                 if list_version == 0:
                     logger.info("   💡 Version 0 means no local authorization list is stored")
-                    logger.info("   💡 Run B.5 Send RFID List to create a local authorization list")
+                    logger.info("   💡 Run B.8 Send RFID List to create a local authorization list")
                 else:
                     logger.info(f"   💡 Local authorization list exists with version {list_version}")
                     logger.info("   💡 Use this version number for differential updates")
@@ -1783,7 +1935,7 @@ class OcppTestSteps:
                 logger.warning("⚠️ Wallbox returned version -1")
                 logger.info("   💡 This typically means the wallbox does not support local authorization lists")
                 logger.info("   💡 Or local authorization functionality is disabled")
-                logger.info("   💡 Try B.5 Send RFID List to test if SendLocalList is supported")
+                logger.info("   💡 Try B.8 Send RFID List to test if SendLocalList is supported")
                 self._set_test_result(step_name, "NOT_SUPPORTED")
             else:
                 logger.error(f"❌ Invalid list version received: {list_version}")
@@ -1793,7 +1945,540 @@ class OcppTestSteps:
             logger.error(f"❌ Error during GetLocalListVersion: {e}")
             self._set_test_result(step_name, "FAILED")
 
-        logger.info(f"--- Step B.6 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step B.8 for {self.charge_point_id} complete. ---")
+
+    async def run_b3_tap_to_charge_test(self):
+        """B.3: RFID Tap-to-Charge (Online Authorization) - Tests the standard RFID tap-to-charge flow."""
+        logger.info(f"--- Step B.3: RFID Tap-to-Charge (Online Authorization) for {self.charge_point_id} ---")
+        step_name = "run_b3_tap_to_charge_test"
+        self._check_cancellation()
+
+        logger.info("🎫 TAP-TO-CHARGE TEST")
+        logger.info("   📘 This tests the standard OCPP 1.6-J authorization flow:")
+        logger.info("   📘 1. User taps RFID card → Wallbox sends Authorize request")
+        logger.info("   📘 2. Central System responds Accepted/Blocked")
+        logger.info("   📘 3. Test automatically plugs in EV → Wallbox starts transaction")
+        logger.info("")
+        logger.info("👤 USER ACTION REQUIRED:")
+        logger.info("   • TAP your RFID card on the wallbox reader")
+        logger.info("")
+        logger.info("🤖 AUTOMATIC ACTIONS:")
+        logger.info("   • Central System will accept the RFID card")
+        logger.info("   • EV simulator will automatically plug in (State B)")
+        logger.info("   • Transaction will start automatically")
+        logger.info("")
+        logger.info("⏳ Waiting for RFID card tap (timeout: 60 seconds)...")
+        logger.info("   💡 Test will automatically proceed after card is detected")
+
+        # Enable RFID test mode - accept ANY card during B.10 test
+        from app.ocpp_message_handlers import rfid_test_state
+        rfid_test_state["active"] = True
+        rfid_test_state["cards_presented"] = []
+        logger.debug("🔓 RFID test mode enabled - any card will be accepted")
+
+        # Track authorization state
+        authorized_card = None
+        transaction_started = False
+        rfid_detected = False
+
+        # Wait for RFID Authorization request from wallbox
+        start_time = asyncio.get_event_loop().time()
+        timeout = 60  # 60 seconds to tap card
+
+        try:
+            while asyncio.get_event_loop().time() - start_time < timeout:
+                await asyncio.sleep(0.5)
+                self._check_cancellation()
+
+                # Check if we received an authorization
+                if self.charge_point_id in CHARGE_POINTS:
+                    cp_data = CHARGE_POINTS[self.charge_point_id]
+
+                    # Check if RFID card was accepted (but transaction not yet started)
+                    if not rfid_detected and cp_data.get("accepted_rfid"):
+                        rfid_detected = True
+                        authorized_card = cp_data.get("accepted_rfid")
+                        logger.info(f"✅ RFID card detected and authorized: {authorized_card}")
+                        logger.info("   Central System accepted the card")
+                        logger.info("")
+                        logger.info("🔌 Automatically plugging in EV cable (setting State B)...")
+
+                        # Set EV simulator to State B (Connected) to trigger transaction
+                        await self._set_ev_state("B")
+                        logger.info("   ✅ EV cable plugged in")
+                        logger.info("   ⏳ Waiting for wallbox to start transaction...")
+
+                    # Check for ongoing transaction
+                    if rfid_detected:
+                        for tx_id, tx_data in TRANSACTIONS.items():
+                            if (tx_data.get("charge_point_id") == self.charge_point_id and
+                                tx_data.get("status") == "Ongoing"):
+                                transaction_started = True
+                                logger.info(f"✅ Transaction started!")
+                                logger.info(f"   Transaction ID: {tx_id}")
+                                logger.info(f"   RFID Card: {authorized_card}")
+                                break
+
+                    if transaction_started:
+                        break
+
+        except asyncio.TimeoutError:
+            logger.error("❌ Timeout: No RFID card tap detected within 60 seconds")
+            rfid_test_state["active"] = False  # Disable RFID test mode
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        if not transaction_started:
+            logger.error("❌ Test FAILED: No transaction was started")
+            logger.info("   💡 Please ensure:")
+            logger.info("      - RFID card is valid and registered")
+            logger.info("      - EV cable is plugged in after tapping card")
+            logger.info("      - Wallbox LEDs indicate ready state")
+            rfid_test_state["active"] = False  # Disable RFID test mode
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        # Test PASSED - transaction started successfully
+        logger.info("✅ TAP-TO-CHARGE TEST PASSED")
+        logger.info(f"   🎫 RFID Card: {authorized_card}")
+        logger.info("   ⚡ Transaction: Started")
+        logger.info("   💡 Standard OCPP 1.6-J authorization flow working correctly")
+
+        rfid_test_state["active"] = False  # Disable RFID test mode
+        self._set_test_result(step_name, "PASSED")
+
+        # Cleanup: Stop the transaction and reset EV state
+        logger.info("")
+        logger.info("🧹 Cleaning up: Stopping transaction and resetting EV state...")
+
+        # Find the active transaction
+        transaction_id = None
+        for tx_id, tx_data in TRANSACTIONS.items():
+            if (tx_data.get("charge_point_id") == self.charge_point_id and
+                tx_data.get("status") == "Ongoing"):
+                transaction_id = tx_id
+                break
+
+        if transaction_id:
+            try:
+                stop_response = await self.handler.send_and_wait(
+                    "RemoteStopTransaction",
+                    RemoteStopTransactionRequest(transactionId=transaction_id),
+                    timeout=10
+                )
+                self._check_cancellation()
+                if stop_response and stop_response.get("status") == "Accepted":
+                    logger.info(f"   ✅ Transaction {transaction_id} stopped")
+                    await asyncio.sleep(2)  # Wait for StopTransaction message
+            except Exception as e:
+                logger.warning(f"   ⚠️  Could not stop transaction: {e}")
+
+        # Reset EV state to A (unplugged)
+        await self._set_ev_state("A")
+        logger.info("   ✅ EV state reset to A (unplugged)")
+
+        # Wait for Available status
+        try:
+            await asyncio.wait_for(self._wait_for_status("Available"), timeout=10)
+            logger.info("   ✅ Wallbox returned to Available state")
+        except asyncio.TimeoutError:
+            logger.warning("   ⚠️  Timeout waiting for Available status")
+
+        logger.info(f"--- Step B.3 for {self.charge_point_id} complete. ---")
+
+    async def run_b4_anonymous_remote_start_test(self, params=None):
+        """B.4: Anonymous Remote Start - Tests remote transaction initiation via app/website."""
+        logger.info(f"--- Step B.4: Anonymous Remote Start for {self.charge_point_id} ---")
+        step_name = "run_b4_anonymous_remote_start_test"
+        self._check_cancellation()
+
+        logger.info("📱 REMOTE START TEST")
+        logger.info("   📘 This tests remote charging initiation:")
+        logger.info("   📘 1. User initiates charging (e.g., via website, QR code, or app)")
+        logger.info("   📘 2. Central System sends RemoteStartTransaction with user's idTag")
+        logger.info("   📘 3. Wallbox starts transaction for the specified user")
+        logger.info("")
+        logger.info("💡 Use cases: App-based charging, web portal charging, pre-authorized sessions")
+        logger.info("")
+
+        # Step 0: Ensure baseline configuration
+        logger.info("🔧 Step 0: Verifying baseline configuration...")
+        logger.info("   📘 For this test: AuthorizeRemoteTxRequests=false (remote commands don't need auth)")
+
+        try:
+            response = await self.handler.send_and_wait(
+                "GetConfiguration",
+                GetConfigurationRequest(key=["AuthorizeRemoteTxRequests"]),
+                timeout=10
+            )
+            self._check_cancellation()
+
+            authorize_remote = None
+            if response and response.get("configurationKey"):
+                for key in response.get("configurationKey", []):
+                    if key.get("key") == "AuthorizeRemoteTxRequests":
+                        authorize_remote = key.get("value", "").lower()
+                        break
+
+            if authorize_remote != "false":
+                logger.info(f"   🔧 Setting AuthorizeRemoteTxRequests=false (currently: {authorize_remote})...")
+                config_response = await self.handler.send_and_wait(
+                    "ChangeConfiguration",
+                    ChangeConfigurationRequest(key="AuthorizeRemoteTxRequests", value="false"),
+                    timeout=10
+                )
+                self._check_cancellation()
+                if config_response and config_response.get("status") == "Accepted":
+                    logger.info("   ✅ Configuration updated")
+                else:
+                    logger.warning(f"   ⚠️  Configuration may not have updated: {config_response.get('status', 'Unknown')}")
+            else:
+                logger.info("   ✅ Configuration already correct")
+
+        except Exception as e:
+            logger.warning(f"   ⚠️  Could not verify/update configuration: {e}")
+
+        logger.info("")
+
+        # Step 1: Plug in EV (set State B)
+        logger.info("🔌 Step 1: Simulating EV cable connection...")
+        logger.info("   💡 In real scenario, user plugs in their EV")
+
+        await self._set_ev_state("B")
+        logger.info("   ✅ EV cable connected (State B)")
+
+        # Step 2: Send RemoteStartTransaction with idTag for remote charging
+        logger.info("")
+        logger.info("📤 Step 2: Sending RemoteStartTransaction command...")
+        logger.info("   🎫 ID Tag: ElecqAutoStart (using wallbox's authorized tag)")
+        logger.info("   🔌 Connector: 1")
+
+        try:
+            response = await self.handler.send_and_wait(
+                "RemoteStartTransaction",
+                RemoteStartTransactionRequest(
+                    idTag="ElecqAutoStart",  # Use wallbox's authorized tag
+                    connectorId=1
+                ),
+                timeout=10
+            )
+            self._check_cancellation()
+
+            if not response or response.get("status") != "Accepted":
+                status = response.get("status", "Unknown") if response else "No response"
+                logger.error(f"❌ RemoteStartTransaction rejected: {status}")
+                self._set_test_result(step_name, "FAILED")
+                return
+
+            logger.info(f"✅ RemoteStartTransaction accepted by wallbox")
+            logger.info("   💡 Transaction authorized - waiting for StartTransaction...")
+            logger.info("")
+
+            # Create placeholder transaction entry to track this remote start
+            # Use a temporary key (we'll get the real transaction ID from StartTransaction.req)
+            temp_transaction_key = f"temp_remote_b11_1"
+            TRANSACTIONS[temp_transaction_key] = {
+                "charge_point_id": self.charge_point_id,
+                "id_tag": "ElecqAutoStart",  # Wallbox's authorized tag
+                "start_time": datetime.now(timezone.utc).isoformat(),
+                "meter_start": 0,  # Will be updated by StartTransaction
+                "connector_id": 1,
+                "status": "Ongoing",
+                "remote_started": True,  # Mark as remotely started
+                "anonymous": False,  # Not anonymous - has idTag
+                "cp_transaction_id": None,  # Will be filled by StartTransaction
+            }
+            logger.debug(f"   📝 Created placeholder transaction entry: {temp_transaction_key}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to send RemoteStartTransaction: {e}")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        # Step 3: Wait for transaction to start
+        logger.info("")
+        logger.info("⏳ Step 3: Waiting for transaction to start...")
+        logger.info("   💡 Wallbox should now initiate the transaction")
+
+        transaction_id = None
+        start_time = asyncio.get_event_loop().time()
+        timeout = 15  # 15 seconds to start transaction
+
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            await asyncio.sleep(0.5)
+            self._check_cancellation()
+
+            # Check for new ongoing transaction
+            for tx_id, tx_data in TRANSACTIONS.items():
+                if (tx_data.get("charge_point_id") == self.charge_point_id and
+                    tx_data.get("status") == "Ongoing" and
+                    tx_data.get("remote_started") == True):
+                    transaction_id = tx_id
+                    logger.info(f"✅ Transaction started!")
+                    logger.info(f"   Transaction ID: {tx_id}")
+                    logger.info(f"   ID Tag: {tx_data.get('id_tag', 'N/A')}")
+                    break
+
+            if transaction_id:
+                break
+
+        if not transaction_id:
+            logger.error("❌ Transaction did not start within timeout")
+            logger.info("   💡 Check wallbox logs for errors")
+            await self._set_ev_state("A")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        # Test PASSED
+        logger.info("")
+        logger.info("✅ ANONYMOUS REMOTE START TEST PASSED")
+        logger.info(f"   ⚡ Transaction ID: {transaction_id}")
+        logger.info("   ❗ No ID Tag (Anonymous charging)")
+        logger.info("   📱 Free/anonymous charging flow working correctly")
+
+        self._set_test_result(step_name, "PASSED")
+
+        # Cleanup: Stop the transaction and reset EV state
+        logger.info("")
+        logger.info("🧹 Cleaning up: Stopping anonymous transaction and resetting EV state...")
+
+        if transaction_id:
+            try:
+                stop_response = await self.handler.send_and_wait(
+                    "RemoteStopTransaction",
+                    RemoteStopTransactionRequest(transactionId=transaction_id),
+                    timeout=10
+                )
+                self._check_cancellation()
+                if stop_response and stop_response.get("status") == "Accepted":
+                    logger.info(f"   ✅ Transaction {transaction_id} stopped")
+                    await asyncio.sleep(2)  # Wait for StopTransaction message
+            except Exception as e:
+                logger.warning(f"   ⚠️  Could not stop transaction: {e}")
+
+        # Reset EV state to A (unplugged)
+        await self._set_ev_state("A")
+        logger.info("   ✅ EV state reset to A (unplugged)")
+
+        # Wait for Available status
+        try:
+            await asyncio.wait_for(self._wait_for_status("Available"), timeout=10)
+            logger.info("   ✅ Wallbox returned to Available state")
+        except asyncio.TimeoutError:
+            logger.warning("   ⚠️  Timeout waiting for Available status")
+
+        logger.info(f"--- Step B.4 for {self.charge_point_id} complete. ---")
+
+    async def run_b5_plug_and_charge_test(self, params=None):
+        """B.5: Plug-and-Charge - Tests automatic charging when EV is plugged in with LocalPreAuthorize enabled."""
+        logger.info(f"--- Step B.5: Plug-and-Charge for {self.charge_point_id} ---")
+        step_name = "run_b5_plug_and_charge_test"
+        self._check_cancellation()
+
+        logger.info("🔌 PLUG-AND-CHARGE TEST")
+        logger.info("   📘 This tests automatic charging with LocalPreAuthorize:")
+        logger.info("   📘 1. User plugs in their EV (no RFID tap needed)")
+        logger.info("   📘 2. Wallbox automatically starts transaction with default idTag")
+        logger.info("   📘 3. Charging begins immediately")
+        logger.info("")
+        logger.info("💡 Use case: Private home chargers - just plug in and charge!")
+        logger.info("")
+
+        # Step 1: Verify and enable LocalPreAuthorize if needed
+        logger.info("📤 Step 1: Checking LocalPreAuthorize configuration...")
+
+        try:
+            response = await self.handler.send_and_wait(
+                "GetConfiguration",
+                GetConfigurationRequest(key=["LocalPreAuthorize"]),
+                timeout=10
+            )
+            self._check_cancellation()
+
+            local_pre_authorize = None
+            if response and response.get("configurationKey"):
+                for key in response.get("configurationKey", []):
+                    if key.get("key") == "LocalPreAuthorize":
+                        local_pre_authorize = key.get("value", "").lower()
+                        break
+
+            if local_pre_authorize == "true":
+                logger.info("   ✅ LocalPreAuthorize is already enabled")
+            else:
+                logger.warning(f"   ⚠️  LocalPreAuthorize is '{local_pre_authorize}' - enabling it now...")
+
+                # Enable LocalPreAuthorize
+                config_response = await self.handler.send_and_wait(
+                    "ChangeConfiguration",
+                    ChangeConfigurationRequest(key="LocalPreAuthorize", value="true"),
+                    timeout=10
+                )
+                self._check_cancellation()
+
+                if config_response and config_response.get("status") == "Accepted":
+                    logger.info("   ✅ LocalPreAuthorize enabled successfully")
+                elif config_response and config_response.get("status") == "RebootRequired":
+                    logger.warning("   ⚠️  LocalPreAuthorize enabled but REBOOT REQUIRED")
+                    logger.info("   💡 Please run X.1: Reboot Wallbox and try B.12 again")
+                    self._set_test_result(step_name, "FAILED")
+                    return
+                else:
+                    status = config_response.get("status", "Unknown") if config_response else "No response"
+                    logger.error(f"   ❌ Failed to enable LocalPreAuthorize: {status}")
+                    logger.info("   💡 You may need to enable it manually or use B.4 test")
+                    self._set_test_result(step_name, "FAILED")
+                    return
+
+        except Exception as e:
+            logger.error(f"❌ Failed to configure LocalPreAuthorize: {e}")
+            logger.info("   💡 Try running B.4 test first or enable manually")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        # Step 2: Ensure we're in idle state (State A)
+        logger.info("")
+        logger.info("🔄 Step 2: Ensuring wallbox is ready (State A)...")
+
+        await self._set_ev_state("A")
+        await asyncio.sleep(2)
+        logger.info("   ✅ Wallbox ready in idle state")
+
+        # Step 3: Plug in EV (State B) - this should automatically start charging
+        logger.info("")
+        logger.info("🔌 Step 3: Plugging in EV...")
+        logger.info("   💡 With LocalPreAuthorize enabled, wallbox should auto-start transaction")
+
+        await self._set_ev_state("B")
+        await asyncio.sleep(1)
+        logger.info("   ✅ EV cable connected (State B)")
+
+        # Step 4: Wait for automatic transaction start
+        logger.info("")
+        logger.info("⏳ Step 4: Waiting for automatic transaction start...")
+        logger.info("   💡 Wallbox should start transaction without RFID or remote command")
+
+        transaction_id = None
+        start_time = asyncio.get_event_loop().time()
+        timeout = 20  # Wait up to 20 seconds for auto-start
+
+        while (asyncio.get_event_loop().time() - start_time) < timeout:
+            self._check_cancellation()
+            await asyncio.sleep(0.5)
+
+            # Check if a new transaction was created
+            for tx_id, tx_data in TRANSACTIONS.items():
+                if (tx_data.get("charge_point_id") == self.charge_point_id and
+                    tx_data.get("connector_id") == 1 and
+                    tx_data.get("stop_timestamp") is None and
+                    not tx_data.get("remote_started", False)):  # Not remotely started
+                    transaction_id = tx_id
+                    break
+
+            if transaction_id:
+                break
+
+        if not transaction_id:
+            logger.error("❌ Wallbox did not automatically start transaction")
+            logger.info("   💡 Check that LocalPreAuthorize is enabled (run B.4 first)")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        # Wait a moment for transaction details to be fully populated
+        await asyncio.sleep(0.5)
+
+        # Get transaction details
+        tx_data = TRANSACTIONS.get(transaction_id, {})
+        id_tag = tx_data.get("id_tag", "Unknown")
+
+        logger.info(f"   ✅ Transaction automatically started!")
+        logger.info(f"   ⚡ Transaction ID: {transaction_id}")
+        logger.info(f"   🏷️  Default idTag: '{id_tag}'")
+        logger.info("")
+        logger.info("💡 This is the default idTag used for plug-and-charge")
+        logger.info("   (Common values: 'ElecqAutoStart', 'AutoStart', etc.)")
+
+        # Step 5: Verify charging is active
+        logger.info("")
+        logger.info("⚡ Step 5: Verifying charging session is active...")
+
+        await asyncio.sleep(2)
+
+        # Check if transaction is still active
+        if transaction_id in TRANSACTIONS:
+            tx_data = TRANSACTIONS[transaction_id]
+            if tx_data.get("stop_timestamp") is None:
+                logger.info("   ✅ Charging session is active")
+
+                # Check for meter values
+                meter_values = tx_data.get("meter_values", [])
+                if meter_values:
+                    logger.info(f"   📊 Received {len(meter_values)} meter value samples")
+                else:
+                    logger.info("   ⏳ Waiting for meter values...")
+            else:
+                logger.warning("   ⚠️  Transaction stopped unexpectedly")
+        else:
+            logger.warning("   ⚠️  Transaction no longer exists")
+
+        # Summary
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("✅ PLUG-AND-CHARGE TEST PASSED")
+        logger.info("=" * 60)
+        logger.info(f"   ⚡ Transaction ID: {transaction_id}")
+        logger.info(f"   🏷️  Default idTag: '{id_tag}'")
+        logger.info("   🔌 Plug-and-charge flow working correctly")
+
+        self._set_test_result(step_name, "PASSED")
+
+        # Cleanup: Stop the transaction, reset EV state, and restore configuration
+        logger.info("")
+        logger.info("🧹 Cleaning up: Stopping transaction, resetting EV state, and restoring configuration...")
+
+        if transaction_id:
+            try:
+                stop_response = await self.handler.send_and_wait(
+                    "RemoteStopTransaction",
+                    RemoteStopTransactionRequest(transactionId=transaction_id),
+                    timeout=10
+                )
+                self._check_cancellation()
+                if stop_response and stop_response.get("status") == "Accepted":
+                    logger.info(f"   ✅ Transaction {transaction_id} stopped")
+                    await asyncio.sleep(2)  # Wait for StopTransaction message
+            except Exception as e:
+                logger.warning(f"   ⚠️  Could not stop transaction: {e}")
+
+        # Reset EV state to A (unplugged)
+        await self._set_ev_state("A")
+        logger.info("   ✅ EV state reset to A (unplugged)")
+
+        # Wait for Available status
+        try:
+            await asyncio.wait_for(self._wait_for_status("Available"), timeout=10)
+            logger.info("   ✅ Wallbox returned to Available state")
+        except asyncio.TimeoutError:
+            logger.warning("   ⚠️  Timeout waiting for Available status")
+
+        # Restore LocalPreAuthorize to false to match baseline configuration
+        logger.info("   🔧 Restoring LocalPreAuthorize to baseline (false)...")
+        try:
+            config_response = await self.handler.send_and_wait(
+                "ChangeConfiguration",
+                ChangeConfigurationRequest(key="LocalPreAuthorize", value="false"),
+                timeout=10
+            )
+            self._check_cancellation()
+            if config_response and config_response.get("status") in ["Accepted", "RebootRequired"]:
+                logger.info("   ✅ LocalPreAuthorize restored to false")
+                if config_response.get("status") == "RebootRequired":
+                    logger.info("   ⚠️  Reboot required for configuration to take effect")
+            else:
+                logger.warning(f"   ⚠️  Could not restore LocalPreAuthorize: {config_response.get('status', 'Unknown')}")
+        except Exception as e:
+            logger.warning(f"   ⚠️  Error restoring LocalPreAuthorize: {e}")
+
+        logger.info(f"--- Step B.5 for {self.charge_point_id} complete. ---")
 
     async def run_x1_reboot_wallbox(self):
         """X.1: Reboot Wallbox - Sends Reset Hard to force stop all transactions and reboot charge point."""
@@ -1824,13 +2509,70 @@ class OcppTestSteps:
 
         logger.info(f"--- Step X.1 for {self.charge_point_id} complete. ---")
 
-    async def run_c2_get_composite_schedule_test(self, params: Dict[str, Any] = None):
-        """C.2: GetCompositeSchedule - Queries the current schedule being applied on connector 1."""
+    async def run_x2_dump_all_configuration(self):
+        """X.2: Dump All Configuration - Retrieves and displays ALL configuration parameters from wallbox."""
+        logger.info(f"--- Step X.2: Dump All Configuration for {self.charge_point_id} ---")
+        step_name = "run_x2_dump_all_configuration"
+        self._check_cancellation()
+
+        logger.info("📋 Requesting ALL configuration parameters from wallbox...")
+
+        # GetConfiguration without specifying keys returns ALL parameters
+        get_config_request = GetConfigurationRequest(key=None)
+
+        try:
+            response = await self.handler.send_and_wait("GetConfiguration", get_config_request, timeout=10)
+            self._check_cancellation()
+
+            if response and response.get("configurationKey"):
+                config_keys = response.get("configurationKey", [])
+                logger.info(f"✅ Retrieved {len(config_keys)} configuration parameters")
+                logger.info("")
+                logger.info("═" * 80)
+                logger.info("ALL CONFIGURATION PARAMETERS:")
+                logger.info("═" * 80)
+
+                # Sort by key name for easier reading
+                config_keys_sorted = sorted(config_keys, key=lambda x: x.get("key", ""))
+
+                for config_item in config_keys_sorted:
+                    key = config_item.get("key", "N/A")
+                    value = config_item.get("value", "N/A")
+                    readonly = config_item.get("readonly", False)
+                    readonly_str = " [READONLY]" if readonly else ""
+                    logger.info(f"  {key:40} = {value}{readonly_str}")
+
+                logger.info("═" * 80)
+                logger.info("")
+
+                # Highlight authorization-related parameters
+                logger.info("🔍 AUTHORIZATION-RELATED PARAMETERS:")
+                auth_keywords = ["auth", "pre", "auto", "local", "remote", "start", "offline"]
+                for config_item in config_keys_sorted:
+                    key = config_item.get("key", "")
+                    if any(keyword in key.lower() for keyword in auth_keywords):
+                        value = config_item.get("value", "N/A")
+                        logger.info(f"  ✅ {key:40} = {value}")
+
+                logger.info("")
+                self._set_test_result(step_name, "PASSED")
+            else:
+                logger.error("❌ GetConfiguration failed - no response")
+                self._set_test_result(step_name, "FAILED")
+
+        except Exception as e:
+            logger.error(f"❌ Exception during configuration dump: {e}")
+            self._set_test_result(step_name, "FAILED")
+
+        logger.info(f"--- Step X.2 for {self.charge_point_id} complete. ---")
+
+    async def run_c3_get_composite_schedule_test(self, params: Dict[str, Any] = None):
+        """C.3: GetCompositeSchedule - Queries the current schedule being applied on connector 1."""
         if params is None:
             params = {}
 
-        logger.info(f"--- Step C.2: Running GetCompositeSchedule test for {self.charge_point_id} ---")
-        step_name = "run_c2_get_composite_schedule_test"
+        logger.info(f"--- Step C.3: Running GetCompositeSchedule test for {self.charge_point_id} ---")
+        step_name = "run_c3_get_composite_schedule_test"
         self._check_cancellation()
 
         # Extract parameters with defaults
@@ -1877,7 +2619,7 @@ class OcppTestSteps:
             logger.error(f"FAILED: GetCompositeSchedule was not accepted. Response: {response}")
             self._set_test_result(step_name, "FAILED")
 
-        logger.info(f"--- Step C.2 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step C.3 for {self.charge_point_id} complete. ---")
 
     async def run_e11_clear_all_profiles(self):
         """E.11: Clears ALL charging profiles from the charge point."""

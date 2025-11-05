@@ -82,6 +82,10 @@
         .button-group button { padding:10px 15px; font-size:14px; border:none; border-radius:5px; color:#fff; background:#007bff; cursor:pointer; }
         .button-group button.btn-success { background-color: #28a745; }
         .button-group button.btn-failure { background-color: #dc3545; }
+        .button-group button.btn-running { background-color: #6c757d; cursor: wait; }
+        .button-group button.btn-skipped { background-color: #ffc107; color: #000; }
+        .button-group button.btn-partial { background-color: #fd7e14; }
+        .button-group button.btn-not-supported { background-color: #6c757d; }
         .button-group button.active-state { background-color: #28a745; }
         .button-group button.disabled { background:#6c757d; cursor:not-allowed; }
         .log-container { height:400px; overflow-y:scroll; border:1px solid #ccc; padding:10px; background:#f8f9fa; border-radius:8px; margin-top:20px; font-family:'Courier New', Courier, monospace; font-size:14px; }
@@ -143,6 +147,91 @@
             padding: 8px;
             box-sizing: border-box;
         }
+
+        /* B.1 Warning Popup */
+        #b1WarningPopup {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            background: linear-gradient(135deg, #fff5e6 0%, #fff 100%);
+            border: 3px solid #ff6b6b;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(255, 107, 107, 0.4);
+            max-width: 450px;
+            animation: popupSlideIn 0.3s ease-out;
+        }
+
+        @keyframes popupSlideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        #b1WarningPopup::before {
+            content: '⚠️';
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 40px;
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-5px); }
+        }
+
+        #b1WarningPopup .popup-header {
+            font-size: 18px;
+            font-weight: bold;
+            color: #d32f2f;
+            margin-bottom: 15px;
+            text-align: center;
+            border-bottom: 2px solid #ffcdd2;
+            padding-bottom: 10px;
+        }
+
+        #b1WarningPopup .popup-content {
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            font-size: 15px;
+        }
+
+        #b1WarningPopup .popup-button {
+            width: 100%;
+            padding: 12px;
+            background: #d32f2f;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        #b1WarningPopup .popup-button:hover {
+            background: #b71c1c;
+        }
+
+        #b1WarningPopup .popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9998;
+            display: none;
+        }
 </style>
 </head>
 <body>
@@ -153,7 +242,7 @@
     <div class="wallbox-discovery-section">
         <div class="discovery-controls">
             <div class="active-wallbox">
-                <strong>Active Wallbox:</strong> <span id="active-wallbox-name">No wallboxes discovered yet. Connect a wallbox to ws://192.168.0.150:8887/YourWallboxID</span>
+                <strong>Active Wallbox:</strong> <span id="active-wallbox-name">Loading...</span>
             </div>
         </div>
 
@@ -222,7 +311,7 @@
     <div class="quick-actions-container" style="display: flex; justify-content: space-around; margin-top: 15px;">
         <div class="quick-action">
             <button onclick="runTestWithParams('run_a3_change_configuration_test', {})" class="analysis-btn">
-                A.3: Get All Configuration
+                A.3: Get OCPP Standard Keys
             </button>
         </div>
     </div>
@@ -240,8 +329,8 @@
         </div>
         <div class="quick-actions-container" style="display: flex; justify-content: space-around; margin-top: 15px;">
             <div class="quick-action">
-                <button onclick="runTestWithParams('run_c2_get_composite_schedule_test', {})" class="analysis-btn">
-                    C.2: GetCompositeSchedule
+                <button onclick="runTestWithParams('run_c3_get_composite_schedule_test', {})" class="analysis-btn">
+                    C.3: GetCompositeSchedule
                 </button>
             </div>
         </div>
@@ -253,14 +342,20 @@
             <h3>A. Core Communication & Status</h3>
             <div class="button-group" id="category-a-buttons">
                 <button data-step-key="run_a1_change_configuration_test">A.1: ChangeConfiguration</button>
-                <button data-step-key="run_a2_get_configuration_test">A.2: GetConfiguration</button>
+                <button data-step-key="run_a2_get_configuration_test">A.2: Get All Configuration</button>
             </div>
         </div>
         <div class="test-category">
             <h3>B. Authorization & Transaction Management</h3>
             <div class="button-group" id="category-b-buttons">
-                <button data-step-key="run_b1_remote_start_transaction_test">B.1: RemoteStartTransaction</button>
-                <button data-step-key="run_b2_remote_stop_transaction_test">B.2: RemoteStopTransaction</button>
+                <button data-step-key="run_b1_reset_transaction_management">B.1: Reset Transaction Management</button>
+                <button data-step-key="run_b2_autonomous_start_test">B.2: Autonomous Start</button>
+                <button data-step-key="run_b6_clear_rfid_cache">B.6: Clear RFID Cache</button>
+                <button data-step-key="run_b7_send_rfid_list">B.7: Send RFID List</button>
+                <button data-step-key="run_b8_get_rfid_list_version">B.8: Get RFID List Version</button>
+                <button data-step-key="run_b3_tap_to_charge_test">B.3: RFID Tap-to-Charge</button>
+                <button data-step-key="run_b4_anonymous_remote_start_test">B.4: Anonymous Remote Start</button>
+                <button data-step-key="run_b5_plug_and_charge_test">B.5: Plug-and-Charge</button>
             </div>
         </div>
         <div class="test-category">
@@ -268,10 +363,12 @@
             <div class="button-group" id="category-c-buttons">
             </div>
         </div>
-        <div class="test-category">
-            <h3>X. System Control</h3>
-            <div class="button-group" id="category-x-buttons">
-            </div>
+    </div>
+
+    <h2>System Control</h2>
+    <div class="test-category" style="margin-bottom: 20px;">
+        <div class="button-group" id="category-x-buttons">
+            <!-- Dynamic X.1, X.2, and Clear Test Results buttons will be inserted here -->
         </div>
     </div>
     <div id="status-message" class="status-message" style="display:none;"></div>
@@ -336,6 +433,14 @@
             <label for="limit">Limit</label>
             <input type="number" id="limit" name="limit" value="0">
         </div>
+        <div class="form-group">
+            <label for="numberPhases">Number of Phases</label>
+            <select id="numberPhases" name="numberPhases">
+                <option value="1">1 (Single Phase)</option>
+                <option value="3" selected>3 (Three Phase)</option>
+            </select>
+            <small>Most installations use 3-phase power</small>
+        </div>
         <div class="form-group" id="duration-form-group">
             <label for="duration">Duration (seconds)</label>
             <input type="number" id="duration" name="duration" value="3600">
@@ -349,7 +454,7 @@
 <div id="compositeScheduleModal" class="modal">
   <div class="modal-content">
     <span class="close" id="composite-modal-close-button">&times;</span>
-    <h3>C.2: GetCompositeSchedule</h3>
+    <h3>C.3: GetCompositeSchedule</h3>
     <form id="compositeScheduleForm">
         <div class="form-group">
             <label for="composite-connectorId">Connector ID</label>
@@ -410,6 +515,71 @@
   </div>
 </div>
 
+<!-- B.3 RFID Tap-to-Charge Modal -->
+<div id="tapToChargeModal" class="modal">
+  <div class="modal-content">
+    <span class="close" id="tap-to-charge-modal-close">&times;</span>
+    <h3>🎫 B.3: RFID Tap-to-Charge Test</h3>
+    <div id="tap-to-charge-status">
+        <div style="margin: 30px 0; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 20px;">🎫</div>
+            <div id="tap-to-charge-timer" style="font-weight: bold; color: #007bff; font-size: 20px; margin-bottom: 20px;">
+                ⏳ Please present your RFID card to the wallbox
+            </div>
+            <div id="tap-to-charge-countdown" style="font-size: 16px; color: #6c757d;">
+                Time remaining: 60s
+            </div>
+        </div>
+    </div>
+  </div>
+</div>
+
+<!-- B.4 Anonymous Remote Start Modal -->
+<div id="remoteStartModal" class="modal">
+  <div class="modal-content">
+    <span class="close" id="remote-start-modal-close">&times;</span>
+    <h3>📱 B.4: Anonymous Remote Start</h3>
+    <div style="padding: 20px;">
+      <p style="margin-bottom: 20px; color: #666; font-size: 16px;">
+        This simulates <strong>free charging</strong> or charging where payment is handled externally.<br>
+        The Central System will send a <strong>RemoteStartTransaction</strong> command <strong>without an ID tag</strong>.
+      </p>
+      <p style="margin-bottom: 20px; color: #444;">
+        <strong>Use cases:</strong>
+      </p>
+      <ul style="margin-bottom: 20px; color: #666;">
+        <li>Free public charging</li>
+        <li>One-time credit card payment on website</li>
+        <li>Pre-paid charging sessions</li>
+      </ul>
+      <form id="remoteStartForm">
+        <div style="margin-top: 20px;">
+          <button type="submit" class="button" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; margin-right: 10px; font-size: 16px;">
+            🚗 Start Anonymous Charging
+          </button>
+          <button type="button" id="remote-start-cancel-btn" class="button" style="background-color: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 4px; font-size: 16px;">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- B.1 Warning Popup Overlay -->
+<div id="b1WarningOverlay" style="display: none; position: fixed: top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); z-index: 9998;"></div>
+
+<!-- B.1 Warning Popup -->
+<div id="b1WarningPopup" style="display: none;">
+    <div class="popup-header">
+        ⚠️  TEST CANNOT PROCEED
+    </div>
+    <div class="popup-content" id="b1WarningContent">
+        Wallbox has offline authorization enabled and auto-started a transaction.
+    </div>
+    <button class="popup-button" onclick="closeB1Warning()">ACKNOWLEDGE</button>
+</div>
+
 <script>
     const chargingStatusEl = document.getElementById("charging-status");
     const currentChargingEl = document.getElementById("current-charging");
@@ -436,6 +606,61 @@
     let transactionsData = {};
     let isConnected = false;
     let useSimulator = false;
+    let serverSettings = {};
+    let activeTestKey = null;  // Track which test is currently running
+
+    // B.1 Warning Popup Functions
+    function showB1Warning(message, buttonElement) {
+        const popup = document.getElementById('b1WarningPopup');
+        const overlay = document.getElementById('b1WarningOverlay');
+        const content = document.getElementById('b1WarningContent');
+
+        // Set the message content
+        content.textContent = message;
+
+        // Show overlay
+        overlay.style.display = 'block';
+
+        // Show popup
+        popup.style.display = 'block';
+
+        // Position popup near the button
+        if (buttonElement) {
+            const rect = buttonElement.getBoundingClientRect();
+
+            // Position popup to the right and slightly below the button (fixed positioning = relative to viewport)
+            let topPosition = rect.bottom + 10;
+            let leftPosition = rect.left;
+
+            // Adjust if popup would go off-screen
+            const popupWidth = 450; // max-width from CSS
+            if (leftPosition + popupWidth > window.innerWidth) {
+                leftPosition = window.innerWidth - popupWidth - 20;
+            }
+
+            // Ensure it doesn't go below the viewport
+            if (topPosition + 300 > window.innerHeight) {
+                topPosition = rect.top - 310;  // Show above button instead
+            }
+
+            popup.style.top = topPosition + 'px';
+            popup.style.left = leftPosition + 'px';
+            popup.style.transform = 'none';  // Clear any previous transform
+        } else {
+            // Center if no button reference
+            popup.style.top = '50%';
+            popup.style.left = '50%';
+            popup.style.transform = 'translate(-50%, -50%)';
+        }
+    }
+
+    function closeB1Warning() {
+        const popup = document.getElementById('b1WarningPopup');
+        const overlay = document.getElementById('b1WarningOverlay');
+
+        popup.style.display = 'none';
+        overlay.style.display = 'none';
+    }
 
     function showStatusMessage(message, isError = false) {
         statusMessageEl.textContent = message;
@@ -471,11 +696,25 @@
             document.querySelectorAll('[data-step-key]').forEach(btn => {
                 const stepKey = btn.dataset.stepKey;
                 const result = testResults[stepKey];
-                btn.classList.remove('btn-success', 'btn-failure');
-                if (result === 'PASSED') {
-                    btn.classList.add('btn-success');
-                } else if (result === 'FAILED') {
-                    btn.classList.add('btn-failure');
+
+                // Only update colors if button is not currently running a test
+                // Check both the CSS class AND the activeTestKey flag for extra protection
+                const isRunning = btn.classList.contains('btn-running');
+                const isActiveTest = (typeof activeTestKey !== 'undefined' && stepKey === activeTestKey);
+
+                if (!isRunning && !isActiveTest) {
+                    btn.classList.remove('btn-success', 'btn-failure', 'btn-skipped', 'btn-partial', 'btn-not-supported');
+                    if (result === 'PASSED') {
+                        btn.classList.add('btn-success');
+                    } else if (result === 'FAILED') {
+                        btn.classList.add('btn-failure');
+                    } else if (result === 'SKIPPED') {
+                        btn.classList.add('btn-skipped');
+                    } else if (result === 'PARTIAL') {
+                        btn.classList.add('btn-partial');
+                    } else if (result === 'NOT_SUPPORTED') {
+                        btn.classList.add('btn-not-supported');
+                    }
                 }
             });
 
@@ -584,7 +823,7 @@
             // Disable all test buttons when no wallbox is connected
             document.querySelectorAll('.test-category .button-group button').forEach(btn => {
                 btn.classList.add('disabled');
-                btn.classList.remove('btn-success', 'btn-failure');
+                btn.classList.remove('btn-success', 'btn-failure', 'btn-skipped', 'btn-partial', 'btn-not-supported');
             });
 
             // Also disable all analysis buttons (quick action buttons)
@@ -651,6 +890,7 @@
             form.chargingProfileKind.value = 'Absolute';
             form.chargingRateUnit.value = 'W';
             form.limit.value = 0;
+            form.numberPhases.value = 3;
             form.duration.value = 3600;
 
             for (let i = 0; i < purposeSelect.options.length; i++) {
@@ -659,13 +899,14 @@
                 }
             }
 
-        } else if (stepKey === 'run_c4_tx_default_profile_test') {
-            modalTitle.textContent = 'C.4: TxDefaultProfile';
+        } else if (stepKey === 'run_c2_tx_default_profile_test') {
+            modalTitle.textContent = 'C.2: TxDefaultProfile';
             form.stackLevel.value = 0;
             form.chargingProfilePurpose.value = 'TxDefaultProfile';
             form.chargingProfileKind.value = 'Absolute';
             form.chargingRateUnit.value = 'W';
             form.limit.value = 5000;
+            form.numberPhases.value = 3;
 
             document.getElementById('purpose-form-group').style.display = 'none';
             document.getElementById('duration-form-group').style.display = 'none';
@@ -681,7 +922,13 @@
 
     async function runTestWithParams(stepKey, params) {
         const btn = document.querySelector(`[data-step-key='${stepKey}']`);
-        btn.classList.add('disabled');
+
+        // Remove any previous result colors and show running state
+        btn.classList.remove('btn-success', 'btn-failure', 'btn-skipped', 'btn-partial', 'btn-not-supported');
+        btn.classList.add('btn-running', 'disabled');
+        activeTestKey = stepKey;  // Mark this test as active
+
+        // Disable other buttons during test
         document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
             if (otherBtn !== btn) {
                 otherBtn.classList.add('disabled');
@@ -698,10 +945,38 @@
             if (!r.ok) throw new Error(j.error || 'Unknown error');
             showStatusMessage(j.status || 'Done');
         } catch (e) {
+            // Show custom popup for B.3 offline authorization warning
+            if (stepKey === 'run_b2_autonomous_start_test' && e.message.includes('offline authorization')) {
+                showB1Warning(e.message, btn);
+            }
             showStatusMessage(`Failed: ${e.message}`, true);
         } finally {
+            // Fetch test results to get the latest test status
             await fetchChargePoints();
-            btn.classList.remove('disabled');
+
+            // Remove running state AFTER fetching results
+            btn.classList.remove('btn-running', 'disabled');
+            activeTestKey = null;  // Clear active test marker
+
+            // Manually apply the result color from the fetched data
+            const cpData = chargePointsData[Object.keys(chargePointsData)[0]];
+            if (cpData && cpData.test_results) {
+                const result = cpData.test_results[stepKey];
+                btn.classList.remove('btn-success', 'btn-failure', 'btn-skipped', 'btn-partial', 'btn-not-supported');
+                if (result === 'PASSED') {
+                    btn.classList.add('btn-success');
+                } else if (result === 'FAILED') {
+                    btn.classList.add('btn-failure');
+                } else if (result === 'SKIPPED') {
+                    btn.classList.add('btn-skipped');
+                } else if (result === 'PARTIAL') {
+                    btn.classList.add('btn-partial');
+                } else if (result === 'NOT_SUPPORTED') {
+                    btn.classList.add('btn-not-supported');
+                }
+            }
+
+            // Re-enable other buttons
             document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
                 if (otherBtn !== btn) {
                     otherBtn.classList.remove('disabled');
@@ -713,22 +988,25 @@
     async function fetchAndRenderTestSteps() {
         const testDefinitions = {
             'run_a1_initial_registration': { name: 'A.1: Initial Registration', category: 'category-a-buttons' },
-            'run_a2_get_configuration_test': { name: 'A.2: GetConfiguration', category: 'category-a-buttons' },
-            'run_a3_change_configuration_test': { name: 'A.3: Get All Configuration', category: 'category-a-buttons' },
+            'run_a2_get_configuration_test': { name: 'A.2: Get All Configuration', category: 'category-a-buttons' },
+            'run_a3_change_configuration_test': { name: 'A.3: Get OCPP Standard Keys', category: 'category-a-buttons' },
             'run_a4_check_initial_state': { name: 'A.4: Check Initial State', category: 'category-a-buttons' },
             'run_a5_trigger_all_messages_test': { name: 'A.5: Trigger All Messages', category: 'category-a-buttons' },
             'run_a6_status_and_meter_value_acquisition': { name: 'A.6: Meter Values', category: 'category-a-buttons' },
-            'run_b1_remote_start_transaction_test': { name: 'B.1: RemoteStartTransaction', category: 'category-b-buttons' },
-            'run_b2_remote_stop_transaction_test': { name: 'B.2: RemoteStopTransaction', category: 'category-b-buttons' },
-            'run_b3_rfid_authorization_test': { name: 'B.3: RFID Authorization', category: 'category-b-buttons' },
-            'run_b4_clear_rfid_cache': { name: 'B.4: Clear RFID Cache', category: 'category-b-buttons' },
-            'run_b5_send_rfid_list': { name: 'B.5: Send RFID List', category: 'category-b-buttons' },
-            'run_b6_get_rfid_list_version': { name: 'B.6: Get RFID List Version', category: 'category-b-buttons' },
+            'run_b1_reset_transaction_management': { name: 'B.1: Reset Transaction Management', category: 'category-b-buttons' },
+            'run_b2_autonomous_start_test': { name: 'B.2: Autonomous Start', category: 'category-b-buttons' },
+            'run_b3_tap_to_charge_test': { name: 'B.3: RFID Tap-to-Charge', category: 'category-b-buttons' },
+            'run_b4_anonymous_remote_start_test': { name: 'B.4: Anonymous Remote Start', category: 'category-b-buttons' },
+            'run_b5_plug_and_charge_test': { name: 'B.5: Plug-and-Charge', category: 'category-b-buttons' },
+            'run_b6_clear_rfid_cache': { name: 'B.6: Clear RFID Cache', category: 'category-b-buttons' },
+            'run_b7_send_rfid_list': { name: 'B.7: Send RFID List', category: 'category-b-buttons' },
+            'run_b8_get_rfid_list_version': { name: 'B.8: Get RFID List Version', category: 'category-b-buttons' },
             'run_x1_reboot_wallbox': { name: 'X.1: Reboot Wallbox', category: 'category-x-buttons' },
+            'run_x2_dump_all_configuration': { name: 'X.2: Dump All Configuration', category: 'category-x-buttons' },
             'run_c1_set_charging_profile_test': { name: 'C.1: SetChargingProfile', category: 'category-c-buttons' },
-            'run_c2_get_composite_schedule_test': { name: 'C.2: GetCompositeSchedule', category: 'category-c-buttons' },
-            'run_c3_clear_charging_profile_test': { name: 'C.3: ClearChargingProfile', category: 'category-c-buttons' },
-            'run_c4_tx_default_profile_test': { name: 'C.4: TxDefaultProfile', category: 'category-c-buttons' }
+            'run_c2_tx_default_profile_test': { name: 'C.2: TxDefaultProfile', category: 'category-c-buttons' },
+            'run_c3_get_composite_schedule_test': { name: 'C.3: GetCompositeSchedule', category: 'category-c-buttons' },
+            'run_c4_clear_charging_profile_test': { name: 'C.4: ClearChargingProfile', category: 'category-c-buttons' }
         };
 
         try {
@@ -746,17 +1024,31 @@
                 btn.textContent = def.name;
                 btn.dataset.stepKey = key;
 
-                if (key === 'run_c1_set_charging_profile_test' || key === 'run_c4_tx_default_profile_test') {
+                if (key === 'run_c1_set_charging_profile_test' || key === 'run_c2_tx_default_profile_test') {
                     btn.onclick = () => {
                         openChargingProfileModal(key);
                     };
-                } else if (key === 'run_c2_get_composite_schedule_test') {
-                    btn.onclick = () => {
-                        openCompositeScheduleModal();
+                } else if (key === 'run_c3_get_composite_schedule_test') {
+                    btn.onclick = async () => {
+                        const r = await fetch('/api/discovered_charge_points');
+                        const data = await r.json();
+                        if (data.active_charge_point_id) {
+                            runTestWithParams(key, {});
+                        } else {
+                            showStatusMessage('No active charge point selected.', true);
+                        }
                     };
-                } else if (key === 'run_b3_rfid_authorization_test') {
+                } else if (key === 'run_b2_rfid_authorization_test') {
                     btn.onclick = () => {
                         openRfidModal();
+                    };
+                } else if (key === 'run_b3_tap_to_charge_test') {
+                    btn.onclick = () => {
+                        openTapToChargeModal();
+                    };
+                } else if (key === 'run_b4_anonymous_remote_start_test') {
+                    btn.onclick = () => {
+                        openRemoteStartModal();
                     };
                 } else {
                     btn.onclick = async () => {
@@ -769,7 +1061,12 @@
                             return;
                         }
 
-                        btn.classList.add('disabled');
+                        // Remove any previous result colors and show running state
+                        btn.classList.remove('btn-success', 'btn-failure', 'btn-skipped', 'btn-partial', 'btn-not-supported');
+                        btn.classList.add('btn-running', 'disabled');
+                        activeTestKey = key;  // Mark this test as active
+
+                        // Disable other buttons during test
                         document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
                             if (otherBtn !== btn) {
                                 otherBtn.classList.add('disabled');
@@ -782,10 +1079,38 @@
                             if (!r.ok) throw new Error(j.error || 'Unknown error');
                             showStatusMessage(j.status || 'Done');
                         } catch (e) {
+                            // Show custom popup for B.3 offline authorization warning
+                            if (key === 'run_b2_autonomous_start_test' && e.message.includes('offline authorization')) {
+                                showB1Warning(e.message, btn);
+                            }
                             showStatusMessage(`Failed: ${e.message}`, true);
                         } finally {
+                            // Fetch test results to get the latest test status
                             await fetchChargePoints();
-                            btn.classList.remove('disabled');
+
+                            // Remove running state AFTER fetching results
+                            btn.classList.remove('btn-running', 'disabled');
+                            activeTestKey = null;  // Clear active test marker
+
+                            // Manually apply the result color from the fetched data
+                            const cpData = chargePointsData[Object.keys(chargePointsData)[0]];
+                            if (cpData && cpData.test_results) {
+                                const result = cpData.test_results[key];
+                                btn.classList.remove('btn-success', 'btn-failure', 'btn-skipped', 'btn-partial', 'btn-not-supported');
+                                if (result === 'PASSED') {
+                                    btn.classList.add('btn-success');
+                                } else if (result === 'FAILED') {
+                                    btn.classList.add('btn-failure');
+                                } else if (result === 'SKIPPED') {
+                                    btn.classList.add('btn-skipped');
+                                } else if (result === 'PARTIAL') {
+                                    btn.classList.add('btn-partial');
+                                } else if (result === 'NOT_SUPPORTED') {
+                                    btn.classList.add('btn-not-supported');
+                                }
+                            }
+
+                            // Re-enable other buttons
                             document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
                                 if (otherBtn !== btn) {
                                     otherBtn.classList.remove('disabled');
@@ -795,6 +1120,17 @@
                     };
                 }
                 container.appendChild(btn);
+            }
+
+            // Add "Clear Test Results" button after X.2 in the System Control section
+            const categoryXContainer = document.getElementById('category-x-buttons');
+            if (categoryXContainer) {
+                const clearBtn = document.createElement('button');
+                clearBtn.textContent = 'Clear Test Results';
+                clearBtn.style.backgroundColor = '#ffc107';
+                clearBtn.style.color = '#000';
+                clearBtn.onclick = clearTestResults;
+                categoryXContainer.appendChild(clearBtn);
             }
         } catch (e) {
             console.error("Failed to load test steps", e);
@@ -807,6 +1143,7 @@
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const settings = await r.json();
 
+            serverSettings = settings;
             useSimulator = settings.use_simulator;
             const currentModeEl = document.getElementById('current-mode');
 
@@ -985,6 +1322,27 @@
         }
     };
 
+    async function clearTestResults() {
+        if (confirm("Are you sure you want to clear all test results? This will remove all green/red colors from test buttons.")) {
+            try {
+                const r = await fetch('/api/clear_test_results', { method: 'POST' });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || 'Unknown error');
+                showStatusMessage(j.message || 'Test results cleared.');
+
+                // Manually remove all color classes from all test buttons
+                document.querySelectorAll('.test-category .button-group button').forEach(btn => {
+                    btn.classList.remove('btn-success', 'btn-failure', 'btn-running', 'btn-skipped', 'btn-partial', 'btn-not-supported');
+                });
+
+                // Refresh the charge points to update button colors
+                await fetchChargePoints();
+            } catch (e) {
+                showStatusMessage(`Failed to clear test results: ${e.message}`, true);
+            }
+        }
+    }
+
     async function rebootWallbox() {
         // Check if a wallbox is connected first
         try {
@@ -1125,7 +1483,9 @@
                 btn.disabled = false;
             });
         } else {
-            activeWallboxName.textContent = 'No wallboxes discovered yet. Connect a wallbox to ws://192.168.0.150:8887/YourWallboxID';
+            const hostname = window.location.hostname;
+            const port = WS_PORT;
+            activeWallboxName.textContent = `No wallboxes discovered yet. Connect a wallbox to ws://${hostname}:${port}/YourWallboxID`;
             // Disable buttons when no wallbox is connected
             document.querySelectorAll('.test-category .button-group button').forEach(btn => {
                 btn.classList.add('disabled');
@@ -1247,6 +1607,7 @@
                 chargingProfileKind: form.chargingProfileKind.value,
                 chargingRateUnit: form.chargingRateUnit.value,
                 limit: parseFloat(form.limit.value),
+                numberPhases: parseInt(form.numberPhases.value),
                 duration: parseInt(form.duration.value)
             };
             runTestWithParams(stepKey, params);
@@ -1275,8 +1636,14 @@
                 duration: parseInt(compositeForm.duration.value),
                 chargingRateUnit: compositeForm.chargingRateUnit.value || null
             };
-            runTestWithParams('run_c2_get_composite_schedule_test', params);
+            runTestWithParams('run_c3_get_composite_schedule_test', params);
             compositeModal.style.display = "none";
+        }
+
+        // B.1 Warning Popup - Add overlay click handler
+        const b1Overlay = document.getElementById('b1WarningOverlay');
+        if (b1Overlay) {
+            b1Overlay.onclick = closeB1Warning;
         }
     });
 
@@ -1344,7 +1711,7 @@
             try {
                 addRfidLog('🚀 Starting RFID authorization test...');
 
-                const response = await fetch('/api/test/run_b3_rfid_authorization_test', { method: 'POST' });
+                const response = await fetch('/api/test/run_b2_rfid_authorization_test', { method: 'POST' });
                 const result = await response.json();
 
                 if (!response.ok) {
@@ -1467,6 +1834,274 @@
             chargingModal.style.display = "none";
         }
     }
+
+    // B.3 RFID Tap-to-Charge Modal Functions
+    let tapToChargeInterval = null;
+    let tapToChargeTestStartTime = null;
+    let tapToChargeTestActive = false;
+    let initialTransactionIds = new Set();
+    let initialAcceptedRfid = null;
+
+    async function openTapToChargeModal() {
+        // Check if wallbox is connected
+        try {
+            const r = await fetch('/api/discovered_charge_points');
+            const responseData = await r.json();
+
+            if (!responseData.active_charge_point_id) {
+                showStatusMessage("Please connect a wallbox first. No active wallbox detected.", true);
+                return;
+            }
+
+            // Enable RFID test mode and clear accepted_rfid to detect ANY card tap
+            try {
+                const rfidResponse = await fetch('/api/enable_rfid_test_mode', { method: 'POST' });
+                if (rfidResponse.ok) {
+                    console.log('✅ B.3: RFID test mode enabled - any card will be accepted');
+                }
+            } catch (e) {
+                console.error('Failed to enable RFID test mode:', e);
+            }
+
+            const modal = document.getElementById('tapToChargeModal');
+
+            // Reset modal state (wait for it to capture existing transactions)
+            await resetTapToChargeModal();
+
+            modal.style.display = 'block';
+
+            // Start the test automatically
+            startTapToChargeTest();
+        } catch (e) {
+            showStatusMessage(`Failed to check wallbox connection: ${e.message}`, true);
+        }
+    }
+
+    async function resetTapToChargeModal() {
+        tapToChargeTestStartTime = Date.now();
+        tapToChargeTestActive = false;
+
+        document.getElementById('tap-to-charge-timer').textContent = '⏳ Please present your RFID card to the wallbox';
+        document.getElementById('tap-to-charge-countdown').textContent = 'Time remaining: 60s';
+
+        if (tapToChargeInterval) {
+            clearInterval(tapToChargeInterval);
+            tapToChargeInterval = null;
+        }
+
+        // Capture existing transaction IDs and accepted RFID to ignore them
+        initialTransactionIds = new Set();
+        initialAcceptedRfid = null;
+
+        try {
+            // Get initial transactions
+            const response = await fetch('/api/transactions');
+            if (response.ok) {
+                const data = await response.json();
+                const transactions = data.transactions || {};
+                for (const txId of Object.keys(transactions)) {
+                    initialTransactionIds.add(txId);
+                }
+                console.log('Initial transaction IDs:', Array.from(initialTransactionIds));
+            }
+
+            // Get initial accepted RFID
+            const cpResponse = await fetch('/api/charge_points');
+            if (cpResponse.ok) {
+                const cpData = await cpResponse.json();
+                const chargePoints = cpData.charge_points || {};
+                const activeCpId = cpData.active_charge_point_id;
+
+                if (activeCpId && chargePoints[activeCpId]) {
+                    initialAcceptedRfid = chargePoints[activeCpId].accepted_rfid || null;
+                    console.log('Initial accepted RFID:', initialAcceptedRfid);
+                }
+            }
+        } catch (e) {
+            console.error('Error fetching initial state:', e);
+        }
+    }
+
+    async function startTapToChargeTest() {
+        tapToChargeTestActive = true;
+
+        // Start the backend test (fire and forget)
+        fetch('/api/test/run_b3_tap_to_charge_test', { method: 'POST' })
+            .then(r => r.json())
+            .then(result => {
+                console.log('B.3 test started:', result);
+            })
+            .catch(e => {
+                console.error('Failed to start B.3 test:', e);
+            });
+
+        // Start polling for transaction status
+        startTapToChargeStatusPolling();
+    }
+
+    function startTapToChargeStatusPolling() {
+        let rfidDetectedInBackend = false;
+
+        tapToChargeInterval = setInterval(async () => {
+            const elapsed = Math.floor((Date.now() - tapToChargeTestStartTime) / 1000);
+            const remaining = Math.max(0, 60 - elapsed);
+
+            // Update countdown
+            document.getElementById('tap-to-charge-countdown').textContent = `Time remaining: ${remaining}s`;
+
+            // Check timeout
+            if (remaining <= 0 && !rfidDetectedInBackend) {
+                clearInterval(tapToChargeInterval);
+                tapToChargeInterval = null;
+                document.getElementById('tap-to-charge-timer').textContent = '⏰ Timeout - No RFID detected';
+                tapToChargeTestActive = false;
+                return;
+            }
+
+            try {
+                // Check for new transactions - this is the most reliable indicator
+                const response = await fetch('/api/transactions');
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const transactions = data.transactions || {};
+
+                console.log('Polling - Transactions:', Object.keys(transactions).length, 'Initial IDs:', Array.from(initialTransactionIds));
+
+                // Look for a NEW transaction (not in initial set)
+                for (const [txId, txData] of Object.entries(transactions)) {
+                    const isNew = !initialTransactionIds.has(txId);
+                    console.log('TX', txId, '- isNew:', isNew, 'status:', txData.status);
+
+                    // Detect ANY new transaction (ongoing or not)
+                    if (isNew && !rfidDetectedInBackend) {
+                        console.log('✅ New transaction detected:', txId, '- closing modal');
+
+                        // Transaction detected - close modal immediately
+                        rfidDetectedInBackend = true;
+
+                        // Stop polling
+                        clearInterval(tapToChargeInterval);
+                        tapToChargeInterval = null;
+                        tapToChargeTestActive = false;
+
+                        // Close modal immediately
+                        closeTapToChargeModal();
+                        return;
+                    }
+                }
+
+                // Also check if accepted_rfid changed (backup method)
+                const cpResponse = await fetch('/api/charge_points');
+                if (cpResponse.ok) {
+                    const cpData = await cpResponse.json();
+                    const chargePoints = cpData.charge_points || {};
+                    const activeCpId = cpData.active_charge_point_id;
+
+                    if (activeCpId && chargePoints[activeCpId]) {
+                        const cp = chargePoints[activeCpId];
+                        const currentAcceptedRfid = cp.accepted_rfid || null;
+
+                        console.log('Polling RFID - Initial:', initialAcceptedRfid, 'Current:', currentAcceptedRfid);
+
+                        // Check if accepted_rfid has CHANGED from initial value
+                        if (currentAcceptedRfid && currentAcceptedRfid !== initialAcceptedRfid && !rfidDetectedInBackend) {
+                            console.log('✅ RFID changed:', currentAcceptedRfid, '- closing modal');
+
+                            rfidDetectedInBackend = true;
+                            clearInterval(tapToChargeInterval);
+                            tapToChargeInterval = null;
+                            tapToChargeTestActive = false;
+                            closeTapToChargeModal();
+                            return;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error polling:', e);
+            }
+        }, 500); // Poll every 500ms for faster response
+    }
+
+    // Close modal handlers
+    document.getElementById('tap-to-charge-modal-close').onclick = function() {
+        closeTapToChargeModal();
+    }
+
+    function closeTapToChargeModal() {
+        const modal = document.getElementById('tapToChargeModal');
+        modal.style.display = 'none';
+
+        if (tapToChargeInterval) {
+            clearInterval(tapToChargeInterval);
+            tapToChargeInterval = null;
+        }
+
+        tapToChargeTestActive = false;
+
+        // Disable RFID test mode when closing
+        fetch('/api/disable_rfid_test_mode', { method: 'POST' })
+            .then(() => console.log('🔒 B.3: RFID test mode disabled'))
+            .catch(e => console.error('Failed to disable RFID test mode:', e));
+    }
+
+    // Close modal when clicking outside
+    window.addEventListener('click', function(event) {
+        const tapToChargeModal = document.getElementById('tapToChargeModal');
+        if (event.target === tapToChargeModal) {
+            closeTapToChargeModal();
+        }
+    });
+
+    // B.4 Anonymous Remote Start Modal Functions
+    function openRemoteStartModal() {
+        fetch('/api/discovered_charge_points')
+            .then(r => r.json())
+            .then(responseData => {
+                if (!responseData.active_charge_point_id) {
+                    showStatusMessage("Please connect a wallbox first. No active wallbox detected.", true);
+                    return;
+                }
+
+                const modal = document.getElementById('remoteStartModal');
+                modal.style.display = 'block';
+            })
+            .catch(e => {
+                showStatusMessage(`Failed to check wallbox connection: ${e.message}`, true);
+            });
+    }
+
+    function closeRemoteStartModal() {
+        const modal = document.getElementById('remoteStartModal');
+        modal.style.display = 'none';
+    }
+
+    // Close modal handlers
+    document.getElementById('remote-start-modal-close').onclick = function() {
+        closeRemoteStartModal();
+    }
+
+    document.getElementById('remote-start-cancel-btn').onclick = function() {
+        closeRemoteStartModal();
+    }
+
+    // Form submit handler - anonymous remote start (no ID tag)
+    document.getElementById('remoteStartForm').onsubmit = function(event) {
+        event.preventDefault();
+
+        // For anonymous remote start, don't send any idTag parameter
+        const params = {};  // Empty params = anonymous charging
+        runTestWithParams('run_b4_anonymous_remote_start_test', params);
+        closeRemoteStartModal();
+    }
+
+    // Close modal when clicking outside
+    window.addEventListener('click', function(event) {
+        const remoteStartModal = document.getElementById('remoteStartModal');
+        if (event.target === remoteStartModal) {
+            closeRemoteStartModal();
+        }
+    });
 
 </script>
 </body>

@@ -42,29 +42,31 @@ Tests TriggerMessage functionality for StatusNotification, MeterValues, BootNoti
 #### A.6: Meter Values
 Triggers StatusNotification and MeterValues messages to test data acquisition capabilities.
 
-### **B. Transaction Management & Control**
+### **B. Authorization & Transaction Management**
 
-#### B.1: Remote Start Transaction
-Tests remote initiation of charging transactions with proper EV state simulation.
+#### B.1: Reset Transaction Management
+Resets the wallbox to a clean state by clearing all active transactions and setting connector availability to Operative.
 
-#### B.2: Remote Stop Transaction
-Tests remote termination of active charging transactions.
+#### B.2: Autonomous Start
+Tests autonomous transaction initiation without manual authorization. Configures the wallbox for automatic start when an EV connects.
 
-#### B.3: RFID Authorization
-Tests RFID card authorization with accepted and invalid cards using real-time popup interface.
+#### B.3: RFID Tap-to-Charge
+Tests standard RFID card authorization flow with online authorization. Uses interactive modal with test mode for accepting any RFID card.
 
-### **RFID Management (Experimental) 🧪**
+#### B.4: Anonymous Remote Start
+Tests remote transaction start without RFID card requirement. Initiates charging session remotely without user identification.
 
-**Note:** These tests implement OCPP 1.6-J standard commands for local authorization list management. Many wallboxes may not support these features and will return "NotSupported" or version -1 responses.
+#### B.5: Plug-and-Charge
+Tests plug-and-charge functionality where charging starts automatically when EV is connected, without RFID or remote start.
 
-#### B.4: Clear RFID Cache *(Experimental)*
-Clears the local authorization list (RFID memory) in the wallbox using the standard OCPP `ClearCache` command. Forces the wallbox to rely on the Central System for all RFID authorization.
+#### B.6: Clear RFID Cache
+Clears the local authorization list (RFID memory) using OCPP `ClearCache` command. May return "Rejected" if wallbox doesn't support local lists.
 
-#### B.5: Send RFID List *(Experimental)*
-Sends a local authorization list with predefined RFID cards to the wallbox using `SendLocalList` command. Enables local RFID authorization without Central System dependency. Includes example cards: TEST_CARD_001, TEST_CARD_002, TEST_CARD_003.
+#### B.7: Send RFID List
+Sends local authorization list with RFID cards (TEST_CARD_001, TEST_CARD_002, TEST_CARD_003) using `SendLocalList`. Returns "NotSupported" if feature unavailable.
 
-#### B.6: Get RFID List Version *(Experimental)*
-Retrieves the current version of the local authorization list using `GetLocalListVersion`. Returns version 0 for no list, positive numbers for active lists, or -1 for unsupported wallboxes.
+#### B.8: Get RFID List Version
+Retrieves version of local authorization list using `GetLocalListVersion`. Returns -1 if wallbox doesn't support local authorization lists.
 
 ### **X. System Control**
 
@@ -185,3 +187,16 @@ This section details the recent feature implementations and bug fixes for the Wa
 - **Comment Cleanup**: Removed redundant and obvious comments while preserving essential OCPP protocol documentation.
 - **Error Handling**: Improved graceful shutdown and error recovery mechanisms.
 - **OCPP Compliance**: Ensured all implementations follow OCPP 1.6-J specification requirements.
+
+### 7. Test Result Visual Feedback System
+
+- **Enhanced Button States**: Added comprehensive visual feedback for all test result states:
+  - Green (`btn-success`): Test passed
+  - Red (`btn-failure`): Test failed
+  - Yellow (`btn-skipped`): Test skipped
+  - Orange (`btn-partial`): Test partially completed
+  - Grey (`btn-not-supported`): Feature not supported by wallbox
+  - Grey with wait cursor (`btn-running`): Test currently executing
+- **Consistent Handling**: Unified test result handling across B.6, B.7, and B.8 for "NotSupported" responses
+- **Real-time Updates**: Polling mechanism updates button colors every 3 seconds based on server-side test results
+- **User Experience**: Clear visual distinction between test failures (red) and unsupported features (grey)

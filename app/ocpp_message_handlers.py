@@ -31,7 +31,7 @@ RFID_CARDS = {
     "first_card": "Accepted",   # Always accepted
     "second_card": "Invalid"    # Always invalid
 }
-VALID_ID_TAGS = ["test_id_1", "test_id_2"]  # Keep for backward compatibility
+VALID_ID_TAGS = ["50600020100021"]  # Real RFID card ID
 
 # Track card presentation order during testing
 rfid_test_state = {
@@ -127,6 +127,13 @@ class OcppMessageHandlers:
             logger.info(f"    ❌ Unknown ID Tag: {payload.idTag} → Status: {status}")
 
         logger.info(f"    ✅ Authorization {status} for idTag: {payload.idTag}")
+
+        # Store accepted RFID in charge point data for test detection
+        if status == "Accepted":
+            if charge_point_id in CHARGE_POINTS:
+                CHARGE_POINTS[charge_point_id]["accepted_rfid"] = payload.idTag
+                logger.debug(f"    📝 Stored accepted RFID '{payload.idTag}' in charge point data")
+
         return AuthorizeResponse(idTagInfo=IdTagInfo(status=status))
 
     async def handle_data_transfer(self, charge_point_id: str, payload: DataTransferRequest) -> DataTransferResponse:
@@ -195,39 +202,54 @@ class OcppMessageHandlers:
     async def handle_start_transaction(self, charge_point_id: str, payload: StartTransactionRequest) -> StartTransactionResponse:
         logger.info(f"📡 OCPP: StartTransaction from {charge_point_id}: {payload}")
 
-        base_id = int(time.time() * 1000) % 1000000
-        random_component = random.randint(1000, 9999)
-        transaction_id = base_id * 10000 + random_component
+        # Generate a transaction ID based on timestamp
+        import time
+        transaction_id = int(time.time() * 1000) % 100000  # Use last 5 digits of timestamp
 
         existing_transaction_data = None
+        existing_transaction_key = None
         for key, t_data in TRANSACTIONS.items():
             if t_data.get("charge_point_id") == charge_point_id and \
                t_data.get("connector_id") == payload.connectorId and \
                t_data.get("remote_started") is True and \
                t_data.get("status") == "Ongoing":
                 existing_transaction_data = t_data
+                existing_transaction_key = key
                 TRANSACTIONS[transaction_id] = TRANSACTIONS.pop(key)
                 break
 
         if existing_transaction_data:
+            # Preserve the remote_started flag and id_tag from the placeholder
+            preserved_id_tag = existing_transaction_data.get("id_tag")
             existing_transaction_data.update({
                 "start_time": payload.timestamp,
                 "meter_start": payload.meterStart,
-                "remote_started": False,
-                "transaction_id": transaction_id
+                "remote_started": True,  # KEEP True - this was a remote start!
+                "transaction_id": transaction_id,
+                "cp_transaction_id": transaction_id,
             })
+            # Keep id_tag if it was set (not anonymous)
+            if preserved_id_tag:
+                existing_transaction_data["id_tag"] = preserved_id_tag
+                existing_transaction_data.pop("anonymous", None)
+            else:
+                existing_transaction_data["anonymous"] = True
+                existing_transaction_data.pop("id_tag", None)
+
             logger.info(f"✅ OCPP: Confirmed remote transaction (CS assigned ID: {transaction_id}) with StartTransaction data.")
+            logger.debug(f"   🔄 Updated transaction from placeholder key '{existing_transaction_key}' to real ID {transaction_id}")
             transaction_id_to_return = transaction_id
         else:
             TRANSACTIONS[transaction_id] = {
                 "charge_point_id": charge_point_id,
-                "id_tag": payload.idTag,
-                "start_time": payload.timestamp,
+                # "id_tag": payload.idTag,  # Removed - no RFID storage for anonymous transactions
+                "start_time": "0000-00-00T00:00:00.000Z",
                 "meter_start": payload.meterStart,
                 "connector_id": payload.connectorId,
                 "status": "Ongoing",
                 "remote_started": False,
-                "transaction_id": transaction_id
+                "transaction_id": transaction_id,
+                "anonymous": True  # Flag to indicate no idTag stored
             }
             logger.info(f"💫 OCPP: Created new transaction (ID: {transaction_id}) initiated by CP.")
             transaction_id_to_return = transaction_id
@@ -240,36 +262,81 @@ class OcppMessageHandlers:
 
     async def handle_stop_transaction(self, charge_point_id: str, payload: StopTransactionRequest) -> StopTransactionResponse:
         logger.info(f"Received StopTransaction from {charge_point_id}: {payload}")
-        
-        # Try to find the transaction using the CP's transactionId as the key
-        transaction_data = TRANSACTIONS.get(payload.transactionId)
 
-        if transaction_data:
-            # Found by CP's transactionId
-            logger.debug(f"Found transaction {payload.transactionId} by its CP ID for StopTransaction.")
-            
+        transaction_data = None
+        transaction_key = None
+
+        # First try to find the transaction using the CP's transactionId as the key
+        if payload.transactionId:
+            transaction_data = TRANSACTIONS.get(payload.transactionId)
+            transaction_key = payload.transactionId
+            if transaction_data:
+                logger.debug(f"Found transaction {payload.transactionId} by its CP ID for StopTransaction.")
+
+        # If not found by transaction ID (or if transaction ID is empty), try to get current status
+        if not transaction_data:
+            if not payload.transactionId:
+                logger.info(f"StopTransaction received with empty transaction ID. Requesting status and meter values from {charge_point_id}...")
+                # Send TriggerMessage to get current status and meter values which might contain transaction ID
+                try:
+                    from app.messages import TriggerMessageRequest, MessageTrigger
+
+                    # First trigger StatusNotification
+                    status_response = await self.ocpp_server_logic.handler.send_and_wait(
+                        "TriggerMessage",
+                        TriggerMessageRequest(requestedMessage=MessageTrigger.StatusNotification, connectorId=1),
+                        timeout=10
+                    )
+                    logger.debug(f"TriggerMessage for StatusNotification response: {status_response}")
+
+                    # Then trigger MeterValues which often contains the correct transaction ID
+                    meter_response = await self.ocpp_server_logic.handler.send_and_wait(
+                        "TriggerMessage",
+                        TriggerMessageRequest(requestedMessage=MessageTrigger.MeterValues, connectorId=1),
+                        timeout=10
+                    )
+                    logger.debug(f"TriggerMessage for MeterValues response: {meter_response}")
+
+                    # Give the wallbox a moment to send the updates
+                    await asyncio.sleep(2)
+                except Exception as e:
+                    logger.warning(f"Failed to trigger status/meter updates: {e}")
+
+            # Now search by charge point ID for any ongoing transaction
+            for tid, tdata in TRANSACTIONS.items():
+                if tdata.get("charge_point_id") == charge_point_id and tdata.get("status") == "Ongoing":
+                    transaction_data = tdata
+                    transaction_key = tid
+                    logger.debug(f"Found ongoing transaction {tid} for charge point {charge_point_id} for StopTransaction.")
+                    break
+
+        if transaction_data and transaction_key:
+            # Update transaction with stop information
             transaction_data.update({
                 "stop_time": payload.timestamp,
                 "meter_stop": payload.meterStop,
                 "status": "Completed",
                 "reason": payload.reason
             })
-            # Ensure cp_transaction_id is set (it should be, but for safety)
+            # Ensure cp_transaction_id is set
             if transaction_data.get("cp_transaction_id") is None:
                 transaction_data["cp_transaction_id"] = payload.transactionId
 
             # Remove the transaction from the TRANSACTIONS dictionary
-            del TRANSACTIONS[payload.transactionId]
-            logger.info(f"Transaction {payload.transactionId} removed from active transactions.")
+            del TRANSACTIONS[transaction_key]
+            logger.info(f"Transaction {transaction_key} removed from active transactions.")
 
             # Clear the active transaction ID
             set_active_transaction_id(None)
             await asyncio.sleep(0.1) # Add a small delay
             return StopTransactionResponse()
         else:
-            logger.info(f"StopTransaction received for transaction (CP ID: {payload.transactionId}) not found in active records. Acknowledging stop.")
-            # Clear the active transaction ID even if not found, as the transaction is ending from CP\'s perspective
-            set_active_transaction_id(None) 
+            if not payload.transactionId:
+                logger.info(f"StopTransaction received with empty transaction ID from {charge_point_id}. No active transaction found. Acknowledging stop.")
+            else:
+                logger.info(f"StopTransaction received for transaction (CP ID: {payload.transactionId}) not found in active records. Acknowledging stop.")
+            # Clear the active transaction ID even if not found, as the transaction is ending from CP's perspective
+            set_active_transaction_id(None)
             await asyncio.sleep(0.1) # Add a small delay
             return StopTransactionResponse() # Still send a response even if not found internally
 

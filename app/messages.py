@@ -500,7 +500,7 @@ class RemoteStartTransactionRequest:
     """
     Represents the payload for a RemoteStartTransaction.req message.
     """
-    idTag: str
+    idTag: Optional[str] = None  # Made optional for anonymous charging
     connectorId: Optional[int] = None
     chargingProfile: Optional[ChargingProfile] = None
 

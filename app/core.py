@@ -113,6 +113,8 @@ SERVER_SETTINGS = {
     "charging_rate_unit_auto_detected": False,  # True if unit was auto-detected from charge point
     "auto_detection_completed": False,  # True when auto-detection attempt has finished (success or failure) - start as False to enable auto-detection
     "enforce_ocpp_compliance": False,  # Set to True to reject protocol violations (strict mode)
+    "ocpp_host": OCPP_HOST,  # OCPP WebSocket host
+    "ocpp_port": OCPP_PORT,  # OCPP WebSocket port
 }
 
 # Predefined charging power/current values for tests
