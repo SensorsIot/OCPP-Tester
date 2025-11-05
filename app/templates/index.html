@@ -1350,25 +1350,9 @@
                         }
                     });
 
-                    // Show status modal
-                    const modal = document.getElementById('tapToChargeModal');
-                    const timerDiv = document.getElementById('tap-to-charge-timer');
-                    const countdownDiv = document.getElementById('tap-to-charge-countdown');
-
-                    timerDiv.innerHTML = `
-                        🔄 Running B All Tests (B.2-B.5)<br><br>
-                        <strong>Please tap your RFID card when B.3 starts</strong><br><br>
-                        Tests are running sequentially...
-                    `;
-                    countdownDiv.textContent = 'Please wait...';
-                    modal.style.display = 'block';
-
                     try {
                         const response = await fetch('/api/test/b_all_tests', { method: 'POST' });
                         const result = await response.json();
-
-                        // Close modal
-                        modal.style.display = 'none';
 
                         if (!response.ok) throw new Error(result.error || 'Unknown error');
 
@@ -1401,7 +1385,6 @@
                             showStatusMessage(result.status || 'Tests completed!');
                         }
                     } catch (e) {
-                        modal.style.display = 'none';
                         showStatusMessage(`Failed: ${e.message}`, true);
                         allTestsBtn.classList.add('btn-failure');
                     } finally {

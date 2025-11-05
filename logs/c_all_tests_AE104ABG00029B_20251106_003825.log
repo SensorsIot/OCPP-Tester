@@ -1,0 +1,947 @@
+================================================================================
+OCPP 1.6J - C.1 and C.2 Tests - Comprehensive Log
+All Charging Rate Values (disable, low, medium, high)
+================================================================================
+Charge Point ID: AE104ABG00029B
+Test Start Time: 20251106_003825
+Server: OCPP Test Server
+================================================================================
+
+TEST RESULTS SUMMARY
+--------------------------------------------------------------------------------
+C.1 SetChargingProfile Test (4 iterations): PASSED
+C.2 TxDefaultProfile Test (4 iterations): PASSED
+Charging levels tested: disable (0A), low (6A), medium (10A), high (16A)
+--------------------------------------------------------------------------------
+
+OCPP MESSAGE LOG
+================================================================================
+
+[2025-11-06 00:38:25.004] REQUEST: RemoteStartTransaction
+--------------------------------------------------------------------------------
+{
+  "idTag": "SetChargingProfile",
+  "connectorId": 1,
+  "chargingProfile": null
+}
+================================================================================
+
+[2025-11-06 00:38:25.453] RESPONSE: RemoteStartTransaction
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:26.767] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:38:26.906] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:26.907] REQUEST: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "csChargingProfiles": {
+    "chargingProfileId": 440,
+    "stackLevel": 0,
+    "chargingProfilePurpose": "TxProfile",
+    "chargingProfileKind": "Absolute",
+    "chargingSchedule": {
+      "chargingRateUnit": "A",
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 0.0,
+          "numberPhases": 3
+        }
+      ],
+      "duration": 3600,
+      "startSchedule": null,
+      "minChargingRate": null
+    },
+    "transactionId": 6545,
+    "recurrencyKind": null,
+    "validFrom": null,
+    "validTo": null
+  }
+}
+================================================================================
+
+[2025-11-06 00:38:27.149] RESPONSE: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:29.150] REQUEST: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "duration": 3600,
+  "chargingRateUnit": null
+}
+================================================================================
+
+[2025-11-06 00:38:29.545] RESPONSE: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "chargingSchedule": {
+    "chargingRateUnit": "A",
+    "chargingSchedulePeriod": [
+      {
+        "limit": 6.0,
+        "numberPhases": 3,
+        "startPeriod": 0
+      }
+    ],
+    "duration": 3600,
+    "startSchedule": "2025-11-05T23:38:29Z"
+  },
+  "connectorId": 1,
+  "scheduleStart": "2025-11-05T23:38:29Z",
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:29.546] REQUEST: RemoteStopTransaction
+--------------------------------------------------------------------------------
+{
+  "transactionId": 6545
+}
+================================================================================
+
+[2025-11-06 00:38:29.670] RESPONSE: RemoteStopTransaction
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:31.671] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:38:31.926] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:34.215] REQUEST: RemoteStartTransaction
+--------------------------------------------------------------------------------
+{
+  "idTag": "SetChargingProfile",
+  "connectorId": 1,
+  "chargingProfile": null
+}
+================================================================================
+
+[2025-11-06 00:38:34.367] RESPONSE: RemoteStartTransaction
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:35.179] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:38:35.322] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:35.322] REQUEST: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "csChargingProfiles": {
+    "chargingProfileId": 203,
+    "stackLevel": 0,
+    "chargingProfilePurpose": "TxProfile",
+    "chargingProfileKind": "Absolute",
+    "chargingSchedule": {
+      "chargingRateUnit": "A",
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 6.0,
+          "numberPhases": 3
+        }
+      ],
+      "duration": 3600,
+      "startSchedule": null,
+      "minChargingRate": null
+    },
+    "transactionId": 14984,
+    "recurrencyKind": null,
+    "validFrom": null,
+    "validTo": null
+  }
+}
+================================================================================
+
+[2025-11-06 00:38:35.578] RESPONSE: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:37.581] REQUEST: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "duration": 3600,
+  "chargingRateUnit": null
+}
+================================================================================
+
+[2025-11-06 00:38:37.830] RESPONSE: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "chargingSchedule": {
+    "chargingRateUnit": "A",
+    "chargingSchedulePeriod": [
+      {
+        "limit": 6.0,
+        "numberPhases": 3,
+        "startPeriod": 0
+      }
+    ],
+    "duration": 3600,
+    "startSchedule": "2025-11-05T23:38:37Z"
+  },
+  "connectorId": 1,
+  "scheduleStart": "2025-11-05T23:38:37Z",
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:37.831] REQUEST: RemoteStopTransaction
+--------------------------------------------------------------------------------
+{
+  "transactionId": 14984
+}
+================================================================================
+
+[2025-11-06 00:38:37.856] RESPONSE: RemoteStopTransaction
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:39.858] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:38:40.113] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:42.414] REQUEST: RemoteStartTransaction
+--------------------------------------------------------------------------------
+{
+  "idTag": "SetChargingProfile",
+  "connectorId": 1,
+  "chargingProfile": null
+}
+================================================================================
+
+[2025-11-06 00:38:42.660] RESPONSE: RemoteStartTransaction
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:43.471] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:38:43.614] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:43.614] REQUEST: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "csChargingProfiles": {
+    "chargingProfileId": 370,
+    "stackLevel": 0,
+    "chargingProfilePurpose": "TxProfile",
+    "chargingProfileKind": "Absolute",
+    "chargingSchedule": {
+      "chargingRateUnit": "A",
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 10.0,
+          "numberPhases": 3
+        }
+      ],
+      "duration": 3600,
+      "startSchedule": null,
+      "minChargingRate": null
+    },
+    "transactionId": 23268,
+    "recurrencyKind": null,
+    "validFrom": null,
+    "validTo": null
+  }
+}
+================================================================================
+
+[2025-11-06 00:38:43.883] RESPONSE: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:45.884] REQUEST: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "duration": 3600,
+  "chargingRateUnit": null
+}
+================================================================================
+
+[2025-11-06 00:38:46.124] RESPONSE: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "chargingSchedule": {
+    "chargingRateUnit": "A",
+    "chargingSchedulePeriod": [
+      {
+        "limit": 6.0,
+        "numberPhases": 3,
+        "startPeriod": 0
+      }
+    ],
+    "duration": 3600,
+    "startSchedule": "2025-11-05T23:38:45Z"
+  },
+  "connectorId": 1,
+  "scheduleStart": "2025-11-05T23:38:45Z",
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:46.125] REQUEST: RemoteStopTransaction
+--------------------------------------------------------------------------------
+{
+  "transactionId": 23268
+}
+================================================================================
+
+[2025-11-06 00:38:46.156] RESPONSE: RemoteStopTransaction
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:48.157] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:38:48.412] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:50.706] REQUEST: RemoteStartTransaction
+--------------------------------------------------------------------------------
+{
+  "idTag": "SetChargingProfile",
+  "connectorId": 1,
+  "chargingProfile": null
+}
+================================================================================
+
+[2025-11-06 00:38:50.990] RESPONSE: RemoteStartTransaction
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:52.268] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:38:52.433] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:52.434] REQUEST: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "csChargingProfiles": {
+    "chargingProfileId": 347,
+    "stackLevel": 0,
+    "chargingProfilePurpose": "TxProfile",
+    "chargingProfileKind": "Absolute",
+    "chargingSchedule": {
+      "chargingRateUnit": "A",
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 16.0,
+          "numberPhases": 3
+        }
+      ],
+      "duration": 3600,
+      "startSchedule": null,
+      "minChargingRate": null
+    },
+    "transactionId": 32092,
+    "recurrencyKind": null,
+    "validFrom": null,
+    "validTo": null
+  }
+}
+================================================================================
+
+[2025-11-06 00:38:52.678] RESPONSE: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:54.678] REQUEST: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "duration": 3600,
+  "chargingRateUnit": null
+}
+================================================================================
+
+[2025-11-06 00:38:54.930] RESPONSE: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "chargingSchedule": {
+    "chargingRateUnit": "A",
+    "chargingSchedulePeriod": [
+      {
+        "limit": 6.0,
+        "numberPhases": 3,
+        "startPeriod": 0
+      }
+    ],
+    "duration": 3600,
+    "startSchedule": "2025-11-05T23:38:54Z"
+  },
+  "connectorId": 1,
+  "scheduleStart": "2025-11-05T23:38:54Z",
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:54.931] REQUEST: RemoteStopTransaction
+--------------------------------------------------------------------------------
+{
+  "transactionId": 32092
+}
+================================================================================
+
+[2025-11-06 00:38:54.958] RESPONSE: RemoteStopTransaction
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:56.959] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:38:57.215] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:59.512] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:38:59.777] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:38:59.778] REQUEST: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "connectorId": 0,
+  "csChargingProfiles": {
+    "chargingProfileId": 841,
+    "stackLevel": 0,
+    "chargingProfilePurpose": "TxDefaultProfile",
+    "chargingProfileKind": "Absolute",
+    "chargingSchedule": {
+      "chargingRateUnit": "A",
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 0.0,
+          "numberPhases": 3
+        }
+      ],
+      "duration": null,
+      "startSchedule": null,
+      "minChargingRate": null
+    },
+    "transactionId": null,
+    "recurrencyKind": null,
+    "validFrom": null,
+    "validTo": null
+  }
+}
+================================================================================
+
+[2025-11-06 00:39:00.015] RESPONSE: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:02.015] REQUEST: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "duration": 3600,
+  "chargingRateUnit": null
+}
+================================================================================
+
+[2025-11-06 00:39:02.405] RESPONSE: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "chargingSchedule": {
+    "chargingRateUnit": "A",
+    "chargingSchedulePeriod": [
+      {
+        "limit": 6.0,
+        "numberPhases": 3,
+        "startPeriod": 0
+      }
+    ],
+    "duration": 3600,
+    "startSchedule": "2025-11-05T23:39:02Z"
+  },
+  "connectorId": 1,
+  "scheduleStart": "2025-11-05T23:39:02Z",
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:02.406] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": 0,
+  "chargingProfilePurpose": "TxDefaultProfile",
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:39:02.549] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:04.550] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:39:04.795] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:04.795] REQUEST: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "connectorId": 0,
+  "csChargingProfiles": {
+    "chargingProfileId": 60,
+    "stackLevel": 0,
+    "chargingProfilePurpose": "TxDefaultProfile",
+    "chargingProfileKind": "Absolute",
+    "chargingSchedule": {
+      "chargingRateUnit": "A",
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 6.0,
+          "numberPhases": 3
+        }
+      ],
+      "duration": null,
+      "startSchedule": null,
+      "minChargingRate": null
+    },
+    "transactionId": null,
+    "recurrencyKind": null,
+    "validFrom": null,
+    "validTo": null
+  }
+}
+================================================================================
+
+[2025-11-06 00:39:05.032] RESPONSE: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:07.033] REQUEST: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "duration": 3600,
+  "chargingRateUnit": null
+}
+================================================================================
+
+[2025-11-06 00:39:07.322] RESPONSE: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "chargingSchedule": {
+    "chargingRateUnit": "A",
+    "chargingSchedulePeriod": [
+      {
+        "limit": 6.0,
+        "numberPhases": 3,
+        "startPeriod": 0
+      }
+    ],
+    "duration": 3600,
+    "startSchedule": "2025-11-05T23:39:07Z"
+  },
+  "connectorId": 1,
+  "scheduleStart": "2025-11-05T23:39:07Z",
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:07.322] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": 0,
+  "chargingProfilePurpose": "TxDefaultProfile",
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:39:07.481] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:09.484] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:39:09.810] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:09.810] REQUEST: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "connectorId": 0,
+  "csChargingProfiles": {
+    "chargingProfileId": 525,
+    "stackLevel": 0,
+    "chargingProfilePurpose": "TxDefaultProfile",
+    "chargingProfileKind": "Absolute",
+    "chargingSchedule": {
+      "chargingRateUnit": "A",
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 10.0,
+          "numberPhases": 3
+        }
+      ],
+      "duration": null,
+      "startSchedule": null,
+      "minChargingRate": null
+    },
+    "transactionId": null,
+    "recurrencyKind": null,
+    "validFrom": null,
+    "validTo": null
+  }
+}
+================================================================================
+
+[2025-11-06 00:39:10.047] RESPONSE: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:12.048] REQUEST: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "duration": 3600,
+  "chargingRateUnit": null
+}
+================================================================================
+
+[2025-11-06 00:39:12.339] RESPONSE: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "chargingSchedule": {
+    "chargingRateUnit": "A",
+    "chargingSchedulePeriod": [
+      {
+        "limit": 6.0,
+        "numberPhases": 3,
+        "startPeriod": 0
+      }
+    ],
+    "duration": 3600,
+    "startSchedule": "2025-11-05T23:39:12Z"
+  },
+  "connectorId": 1,
+  "scheduleStart": "2025-11-05T23:39:12Z",
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:12.340] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": 0,
+  "chargingProfilePurpose": "TxDefaultProfile",
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:39:12.490] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:14.494] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": null,
+  "chargingProfilePurpose": null,
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:39:14.729] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:14.729] REQUEST: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "connectorId": 0,
+  "csChargingProfiles": {
+    "chargingProfileId": 769,
+    "stackLevel": 0,
+    "chargingProfilePurpose": "TxDefaultProfile",
+    "chargingProfileKind": "Absolute",
+    "chargingSchedule": {
+      "chargingRateUnit": "A",
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 16.0,
+          "numberPhases": 3
+        }
+      ],
+      "duration": null,
+      "startSchedule": null,
+      "minChargingRate": null
+    },
+    "transactionId": null,
+    "recurrencyKind": null,
+    "validFrom": null,
+    "validTo": null
+  }
+}
+================================================================================
+
+[2025-11-06 00:39:14.963] RESPONSE: SetChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:16.964] REQUEST: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "connectorId": 1,
+  "duration": 3600,
+  "chargingRateUnit": null
+}
+================================================================================
+
+[2025-11-06 00:39:17.255] RESPONSE: GetCompositeSchedule
+--------------------------------------------------------------------------------
+{
+  "chargingSchedule": {
+    "chargingRateUnit": "A",
+    "chargingSchedulePeriod": [
+      {
+        "limit": 6.0,
+        "numberPhases": 3,
+        "startPeriod": 0
+      }
+    ],
+    "duration": 3600,
+    "startSchedule": "2025-11-05T23:39:16Z"
+  },
+  "connectorId": 1,
+  "scheduleStart": "2025-11-05T23:39:16Z",
+  "status": "Accepted"
+}
+================================================================================
+
+[2025-11-06 00:39:17.256] REQUEST: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "id": null,
+  "connectorId": 0,
+  "chargingProfilePurpose": "TxDefaultProfile",
+  "stackLevel": null
+}
+================================================================================
+
+[2025-11-06 00:39:17.411] RESPONSE: ClearChargingProfile
+--------------------------------------------------------------------------------
+{
+  "status": "Accepted"
+}
+================================================================================
+
