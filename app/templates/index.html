@@ -1320,6 +1320,91 @@
                 container.appendChild(btn);
             }
 
+            // Add "B All Tests" button to B section
+            const categoryBContainer = document.getElementById('category-b-buttons');
+            if (categoryBContainer) {
+                const allTestsBtn = document.createElement('button');
+                allTestsBtn.textContent = 'B All Tests (B.2-B.5)';
+                allTestsBtn.style.backgroundColor = '#17a2b8';
+                allTestsBtn.style.color = '#fff';
+                allTestsBtn.style.fontWeight = 'bold';
+                allTestsBtn.dataset.stepKey = 'b_all_tests';
+                allTestsBtn.onclick = async () => {
+                    const r = await fetch('/api/discovered_charge_points');
+                    const responseData = await r.json();
+                    const backendActiveCpId = responseData.active_charge_point_id;
+
+                    if (!backendActiveCpId) {
+                        showStatusMessage("Please connect a wallbox first. No active wallbox detected.", true);
+                        return;
+                    }
+
+                    // Show running state
+                    allTestsBtn.classList.remove('btn-success', 'btn-failure');
+                    allTestsBtn.classList.add('btn-running', 'disabled');
+
+                    // Disable other buttons during test
+                    document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
+                        if (otherBtn !== allTestsBtn) {
+                            otherBtn.classList.add('disabled');
+                        }
+                    });
+
+                    try {
+                        const response = await fetch('/api/test/b_all_tests', { method: 'POST' });
+                        const result = await response.json();
+
+                        if (!response.ok) throw new Error(result.error || 'Unknown error');
+
+                        // Show status message with log file location
+                        if (result.log_file) {
+                            showStatusMessage(`B All Tests completed! Log saved to: ${result.log_file}`);
+
+                            // Show detailed results popup
+                            const b2Result = result.test_results.b2 || 'NOT RUN';
+                            const b3Result = result.test_results.b3 || 'NOT RUN';
+                            const b4Result = result.test_results.b4 || 'NOT RUN';
+                            const b5Result = result.test_results.b5 || 'NOT RUN';
+
+                            let message = `B All Tests Completed!\n\n`;
+                            message += `Results:\n`;
+                            message += `  B.2 Autonomous Start: ${b2Result}\n`;
+                            message += `  B.3 Tap to Charge: ${b3Result}\n`;
+                            message += `  B.4 Anonymous Remote Start: ${b4Result}\n`;
+                            message += `  B.5 Plug and Charge: ${b5Result}\n\n`;
+                            message += `Total: 4 tests completed\n\n`;
+                            message += `Log file: ${result.log_file}`;
+
+                            alert(message);
+
+                            // Update button color based on results
+                            const allPassed = b2Result === 'PASSED' && b3Result === 'PASSED' &&
+                                            b4Result === 'PASSED' && b5Result === 'PASSED';
+                            allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
+                        } else {
+                            showStatusMessage(result.status || 'Tests completed!');
+                        }
+                    } catch (e) {
+                        showStatusMessage(`Failed: ${e.message}`, true);
+                        allTestsBtn.classList.add('btn-failure');
+                    } finally {
+                        // Fetch test results to update UI
+                        await fetchChargePoints();
+
+                        // Remove running state
+                        allTestsBtn.classList.remove('btn-running', 'disabled');
+
+                        // Re-enable other buttons
+                        document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
+                            if (otherBtn !== allTestsBtn) {
+                                otherBtn.classList.remove('disabled');
+                            }
+                        });
+                    }
+                };
+                categoryBContainer.appendChild(allTestsBtn);
+            }
+
             // Add "C.1 and C.2 Tests" button to C section
             const categoryCContainer = document.getElementById('category-c-buttons');
             if (categoryCContainer) {

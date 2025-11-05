@@ -486,6 +486,15 @@ def run_c_all_tests():
             f.write(f"Charging levels tested: disable (0A), low (6A), medium (10A), high (16A)\n")
             f.write("-" * 80 + "\n\n")
 
+            # Write configuration details (from A.3) if available
+            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
+            if config_details:
+                f.write("CHARGE POINT CONFIGURATION (A.3 Result)\n")
+                f.write("-" * 80 + "\n")
+                import json
+                f.write(json.dumps(config_details, indent=2))
+                f.write("\n" + "-" * 80 + "\n\n")
+
             # Get verification results if available
             if charge_point_id in VERIFICATION_RESULTS:
                 f.write("VERIFICATION RESULTS\n")
@@ -522,6 +531,176 @@ def run_c_all_tests():
     except Exception as e:
         logging.exception("Error running C.1 and C.2 Tests")
         return jsonify({"error": f"Failed to run C.1 and C.2 Tests: {e}"}), 500
+
+@app.route("/api/test/b_all_tests", methods=["POST"])
+def run_b_all_tests():
+    """B All Tests - Run B.2 through B.5 tests sequentially and write comprehensive log to file."""
+    import os
+    from datetime import datetime
+    from dataclasses import asdict, is_dataclass
+
+    active_charge_point_id = get_active_charge_point_id()
+
+    if not active_charge_point_id:
+        return jsonify({"error": "No active charge point selected."}), 400
+
+    charge_point_id = active_charge_point_id
+
+    logging.info(f"API call to run B All Tests (B.2-B.5) for charge point '{charge_point_id}'")
+    if charge_point_id not in CHARGE_POINTS:
+        return jsonify({"error": "Charge point not connected."}), 404
+
+    ocpp_handler = CHARGE_POINTS.get(charge_point_id, {}).get("ocpp_handler")
+    if not ocpp_handler:
+        return jsonify({"error": "Charge point handler not found. The charge point may not have fully booted."}), 404
+
+    if ocpp_handler.test_lock.locked():
+        return jsonify({"error": "A test is already running for this charge point."}), 429
+
+    # Prepare log file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = "/home/ocpp/logs"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"b_all_tests_{charge_point_id}_{timestamp}.log")
+
+    # Message log storage
+    message_log = []
+
+    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str):
+        """Helper to log OCPP messages."""
+        # Convert dataclass to dict if needed
+        if is_dataclass(payload):
+            payload_dict = asdict(payload)
+        elif isinstance(payload, dict):
+            payload_dict = payload
+        else:
+            payload_dict = {"raw": str(payload)}
+
+        message_log.append({
+            "timestamp": timestamp_str,
+            "type": msg_type,
+            "action": action,
+            "payload": payload_dict
+        })
+
+    # Wrap send_and_wait to capture messages
+    original_send_and_wait = ocpp_handler.send_and_wait
+
+    async def wrapped_send_and_wait(action: str, payload: Any, timeout: int = 30):
+        """Wrapper to log all OCPP requests and responses."""
+        request_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        log_message("REQUEST", action, payload, request_timestamp)
+
+        response = await original_send_and_wait(action, payload, timeout)
+
+        response_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        log_message("RESPONSE", action, response, response_timestamp)
+
+        return response
+
+    async def run_tests_with_logging():
+        """Run B.2 through B.5 tests sequentially."""
+        async with ocpp_handler.test_lock:
+            # Temporarily replace send_and_wait
+            ocpp_handler.send_and_wait = wrapped_send_and_wait
+
+            try:
+                ocpp_logic = ocpp_handler.ocpp_logic
+                test_steps = ocpp_logic.test_steps
+
+                # Run B.2 - Autonomous Start
+                logging.info(f"📋 Starting B.2 Autonomous Start test...")
+                await test_steps.run_b2_autonomous_start_test()
+                await asyncio.sleep(2)
+
+                # Run B.3 - Tap to Charge
+                logging.info(f"📋 Starting B.3 Tap to Charge test...")
+                await test_steps.run_b3_tap_to_charge_test()
+                await asyncio.sleep(2)
+
+                # Run B.4 - Anonymous Remote Start
+                logging.info(f"📋 Starting B.4 Anonymous Remote Start test...")
+                await test_steps.run_b4_anonymous_remote_start_test(params=None)
+                await asyncio.sleep(2)
+
+                # Run B.5 - Plug and Charge
+                logging.info(f"📋 Starting B.5 Plug and Charge test...")
+                await test_steps.run_b5_plug_and_charge_test(params=None)
+                await asyncio.sleep(2)
+
+            finally:
+                # Restore original send_and_wait
+                ocpp_handler.send_and_wait = original_send_and_wait
+
+    try:
+        # Run tests (B.2, B.3, B.4, B.5 = 4 tests)
+        future = asyncio.run_coroutine_threadsafe(run_tests_with_logging(), app.loop)
+        future.result(timeout=600)  # 10 minutes timeout for all tests
+
+        # Write comprehensive log file
+        with open(log_file, "w") as f:
+            f.write("=" * 80 + "\n")
+            f.write("OCPP 1.6J - B All Tests (B.2-B.5) - Comprehensive Log\n")
+            f.write("=" * 80 + "\n")
+            f.write(f"Charge Point ID: {charge_point_id}\n")
+            f.write(f"Test Start Time: {timestamp}\n")
+            f.write(f"Server: OCPP Test Server\n")
+            f.write("=" * 80 + "\n\n")
+
+            # Get test results
+            test_results = CHARGE_POINTS[charge_point_id].get("test_results", {})
+            b2_result = test_results.get("run_b2_autonomous_start_test", "NOT RUN")
+            b3_result = test_results.get("run_b3_tap_to_charge_test", "NOT RUN")
+            b4_result = test_results.get("run_b4_anonymous_remote_start_test", "NOT RUN")
+            b5_result = test_results.get("run_b5_plug_and_charge_test", "NOT RUN")
+
+            f.write("TEST RESULTS SUMMARY\n")
+            f.write("-" * 80 + "\n")
+            f.write(f"B.2 Autonomous Start Test: {b2_result}\n")
+            f.write(f"B.3 Tap to Charge Test: {b3_result}\n")
+            f.write(f"B.4 Anonymous Remote Start Test: {b4_result}\n")
+            f.write(f"B.5 Plug and Charge Test: {b5_result}\n")
+            f.write("-" * 80 + "\n\n")
+
+            # Write configuration details (from A.3) if available
+            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
+            if config_details:
+                f.write("CHARGE POINT CONFIGURATION (A.3 Result)\n")
+                f.write("-" * 80 + "\n")
+                import json
+                f.write(json.dumps(config_details, indent=2))
+                f.write("\n" + "-" * 80 + "\n\n")
+
+            # Write all OCPP messages
+            f.write("OCPP MESSAGE LOG\n")
+            f.write("=" * 80 + "\n\n")
+
+            import json
+            for msg in message_log:
+                f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                f.write("-" * 80 + "\n")
+                f.write(json.dumps(msg['payload'], indent=2))
+                f.write("\n" + "=" * 80 + "\n\n")
+
+        logging.info(f"✅ B All Tests completed. Log written to: {log_file}")
+
+        return jsonify({
+            "status": f"B All Tests completed for {charge_point_id}",
+            "log_file": log_file,
+            "test_results": {
+                "b2": b2_result,
+                "b3": b3_result,
+                "b4": b4_result,
+                "b5": b5_result
+            }
+        })
+
+    except concurrent.futures.TimeoutError:
+        logging.error(f"API call for 'B All Tests' on {charge_point_id} timed out.")
+        return jsonify({"error": "B All Tests timed out."}), 504
+    except Exception as e:
+        logging.exception("Error running B All Tests")
+        return jsonify({"error": f"Failed to run B All Tests: {e}"}), 500
 
 @app.route("/api/rfid_status")
 def get_rfid_status():
