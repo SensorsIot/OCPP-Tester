@@ -1161,17 +1161,18 @@ class OcppTestSteps:
                 limit = medium_value
 
         profile = SetChargingProfileRequest(
-            connectorId=1, 
+            connectorId=1,
             csChargingProfiles=ChargingProfile(
-                chargingProfileId=random.randint(1, 1000), 
-                transactionId=transaction_id, 
-                stackLevel=stack_level, 
-                chargingProfilePurpose=purpose, 
-                chargingProfileKind=kind, 
+                chargingProfileId=random.randint(1, 1000),
+                transactionId=transaction_id,
+                stackLevel=stack_level,
+                chargingProfilePurpose=purpose,
+                chargingProfileKind=kind,
                 chargingSchedule=ChargingSchedule(
-                    duration=duration,
                     chargingRateUnit=charging_unit,
-                    chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=limit, numberPhases=number_phases)]
+                    chargingSchedulePeriod=[ChargingSchedulePeriod(startPeriod=0, limit=limit, numberPhases=number_phases)],
+                    duration=duration,
+                    startSchedule=datetime.now(timezone.utc).isoformat()
                 )
             )
         )
@@ -1362,7 +1363,8 @@ class OcppTestSteps:
                             limit=limit,
                             numberPhases=number_phases
                         )
-                    ]
+                    ],
+                    startSchedule=datetime.now(timezone.utc).isoformat()
                 )
             )
         )
