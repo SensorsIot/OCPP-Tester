@@ -69,3 +69,6 @@ simulator_control.py
 server.log
 Erata.txt
 index.html
+
+# Test execution logs
+logs/
