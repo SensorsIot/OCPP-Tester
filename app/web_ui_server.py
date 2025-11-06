@@ -407,6 +407,19 @@ def run_test_step(step_name):
             f.write(f"Server: OCPP Test Server\n")
             f.write("=" * 80 + "\n\n")
 
+            import json
+
+            # For A.3 test, write GetConfiguration response at the top
+            if step_name == "run_a3_change_configuration_test":
+                # Find GetConfiguration response in message log
+                for msg in message_log:
+                    if msg['action'] == 'GetConfiguration' and msg['type'] == 'RESPONSE':
+                        f.write("RAW GETCONFIGURATION RESPONSE\n")
+                        f.write("=" * 80 + "\n")
+                        f.write(json.dumps(msg['payload'], indent=2))
+                        f.write("\n" + "=" * 80 + "\n\n")
+                        break
+
             # Get test results
             test_results = CHARGE_POINTS[charge_point_id].get("test_results", {})
             result = test_results.get(step_name, "NOT RUN")
@@ -419,17 +432,15 @@ def run_test_step(step_name):
             # Write configuration details (from A.3) if available
             config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
             if config_details:
-                f.write("CHARGE POINT CONFIGURATION (A.3 Result)\n")
+                f.write("CHARGE POINT CONFIGURATION (A.3 Result - Formatted Summary)\n")
                 f.write("-" * 80 + "\n")
-                import json
                 f.write(json.dumps(config_details, indent=2))
                 f.write("\n" + "-" * 80 + "\n\n")
 
             # Write all OCPP messages
-            f.write("OCPP MESSAGE LOG\n")
+            f.write("OCPP MESSAGE LOG (All Messages)\n")
             f.write("=" * 80 + "\n\n")
 
-            import json
             for msg in message_log:
                 f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
                 f.write("-" * 80 + "\n")
@@ -449,6 +460,70 @@ def run_test_step(step_name):
     except Exception as e:
         logging.exception("Error running test step")
         return jsonify({"error": f"Failed to run step '{step_name}': {e}"}), 500
+
+@app.route("/api/test/get_configuration", methods=["POST"])
+def get_configuration():
+    """Call GetConfiguration and store results in CHARGE_POINTS."""
+    active_charge_point_id = get_active_charge_point_id()
+
+    if not active_charge_point_id:
+        return jsonify({"error": "No active charge point selected."}), 400
+
+    charge_point_id = active_charge_point_id
+
+    if charge_point_id not in CHARGE_POINTS:
+        return jsonify({"error": "Charge point not connected."}), 404
+
+    ocpp_handler = CHARGE_POINTS.get(charge_point_id, {}).get("ocpp_handler")
+    if not ocpp_handler:
+        return jsonify({"error": "Charge point handler not found."}), 404
+
+    if not app.loop or not app.loop.is_running():
+        return jsonify({"error": "Server loop not available"}), 500
+
+    async def call_get_configuration():
+        """Call GetConfiguration and store the results."""
+        from app.messages import GetConfigurationRequest
+
+        logging.info("📋 Retrieving charge point configuration...")
+        config_response = await ocpp_handler.send_and_wait(
+            "GetConfiguration",
+            GetConfigurationRequest(key=[]),
+            timeout=30
+        )
+
+        # Store configuration in CHARGE_POINTS for log file
+        if config_response and config_response.get("configurationKey"):
+            config_dict = {}
+            for config_item in config_response["configurationKey"]:
+                key = config_item.get("key", "")
+                value = config_item.get("value", "")
+                readonly = config_item.get("readonly", False)
+
+                if value:
+                    config_dict[key] = f"{value} (RO)" if readonly else value
+                else:
+                    config_dict[key] = "No value" + (" (RO)" if readonly else "")
+
+            # Add unknown keys
+            if config_response.get("unknownKey"):
+                for key in config_response["unknownKey"]:
+                    config_dict[key] = "N/A (Not Supported)"
+
+            CHARGE_POINTS[charge_point_id]["configuration_details"] = config_dict
+            logging.info(f"✅ Retrieved {len(config_dict)} configuration keys")
+            return {"success": True, "config_keys": len(config_dict)}
+        else:
+            logging.warning("⚠️ No configuration returned from charge point")
+            return {"success": False, "error": "No configuration returned"}
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(call_get_configuration(), app.loop)
+        result = future.result(timeout=35)
+        return jsonify(result), 200
+    except Exception as e:
+        logging.exception("Error calling GetConfiguration")
+        return jsonify({"error": f"Failed to get configuration: {e}"}), 500
 
 @app.route("/api/test/c_all_tests", methods=["POST"])
 def run_c_all_tests():
@@ -519,6 +594,7 @@ def run_c_all_tests():
     async def run_tests_with_logging():
         """Run C.1 and C.2 tests with all charging rate values."""
         from app.core import get_charging_value
+        from app.messages import GetConfigurationRequest
 
         async with ocpp_handler.test_lock:
             # Temporarily replace send_and_wait
@@ -527,6 +603,35 @@ def run_c_all_tests():
             try:
                 ocpp_logic = ocpp_handler.ocpp_logic
                 test_steps = ocpp_logic.test_steps
+
+                # Get charge point configuration first
+                logging.info("📋 Retrieving charge point configuration...")
+                config_response = await ocpp_handler.send_and_wait(
+                    "GetConfiguration",
+                    GetConfigurationRequest(key=[]),
+                    timeout=30
+                )
+
+                # Store configuration in CHARGE_POINTS for log file
+                if config_response and config_response.get("configurationKey"):
+                    config_dict = {}
+                    for config_item in config_response["configurationKey"]:
+                        key = config_item.get("key", "")
+                        value = config_item.get("value", "")
+                        readonly = config_item.get("readonly", False)
+
+                        if value:
+                            config_dict[key] = f"{value} (RO)" if readonly else value
+                        else:
+                            config_dict[key] = "No value" + (" (RO)" if readonly else "")
+
+                    # Add unknown keys
+                    if config_response.get("unknownKey"):
+                        for key in config_response["unknownKey"]:
+                            config_dict[key] = "N/A (Not Supported)"
+
+                    CHARGE_POINTS[charge_point_id]["configuration_details"] = config_dict
+                    logging.info(f"✅ Retrieved {len(config_dict)} configuration keys")
 
                 # Test levels to iterate through
                 test_levels = ["disable", "low", "medium", "high"]
@@ -571,6 +676,80 @@ def run_c_all_tests():
             f.write(f"Server: OCPP Test Server\n")
             f.write("=" * 80 + "\n\n")
 
+            import json
+
+            # Get GetConfiguration response from charge point configuration
+            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
+            if config_details:
+                f.write("CHARGE POINT CONFIGURATION (from GetConfiguration)\n")
+                f.write("=" * 80 + "\n")
+                # Display as a formatted list
+                for key, value in sorted(config_details.items()):
+                    f.write(f"{key}: {value}\n")
+                f.write("=" * 80 + "\n\n")
+
+            # Extract and display test parameters at the top
+            f.write("TEST PARAMETERS\n")
+            f.write("=" * 80 + "\n")
+            f.write("Test Levels: disable, low, medium, high\n")
+            f.write("Tests Run: 8 total (4 C.1 iterations + 4 C.2 iterations)\n\n")
+
+            # Extract SetChargingProfile requests to show actual parameters
+            c1_requests = []
+            c2_requests = []
+            for msg in message_log:
+                if msg['action'] == 'SetChargingProfile' and msg['type'] == 'REQUEST':
+                    profile = msg['payload'].get('csChargingProfiles', {})
+                    purpose = profile.get('chargingProfilePurpose', 'Unknown')
+                    schedule = profile.get('chargingSchedule', {})
+                    unit = schedule.get('chargingRateUnit', 'N/A')
+                    periods = schedule.get('chargingSchedulePeriod', [])
+                    limit = periods[0].get('limit') if periods else 'N/A'
+
+                    param_info = {
+                        'connectorId': msg['payload'].get('connectorId'),
+                        'purpose': purpose,
+                        'stackLevel': profile.get('stackLevel', 0),
+                        'kind': profile.get('chargingProfileKind', 'N/A'),
+                        'unit': unit,
+                        'limit': limit,
+                        'duration': schedule.get('duration', 'N/A'),
+                        'numberPhases': periods[0].get('numberPhases') if periods else 'N/A'
+                    }
+
+                    if purpose == 'TxProfile':
+                        c1_requests.append(param_info)
+                    elif purpose == 'TxDefaultProfile':
+                        c2_requests.append(param_info)
+
+            # Display C.1 parameters
+            f.write("C.1 Test (TxProfile) Parameters:\n")
+            f.write("-" * 80 + "\n")
+            for i, params in enumerate(c1_requests, 1):
+                f.write(f"Iteration {i}:\n")
+                f.write(f"  Connector ID: {params['connectorId']}\n")
+                f.write(f"  Stack Level: {params['stackLevel']}\n")
+                f.write(f"  Profile Kind: {params['kind']}\n")
+                f.write(f"  Charging Rate Unit: {params['unit']}\n")
+                f.write(f"  Power Limit: {params['limit']} {params['unit']}\n")
+                f.write(f"  Duration: {params['duration']} seconds\n")
+                f.write(f"  Number of Phases: {params['numberPhases']}\n\n")
+
+            # Display C.2 parameters
+            f.write("C.2 Test (TxDefaultProfile) Parameters:\n")
+            f.write("-" * 80 + "\n")
+            for i, params in enumerate(c2_requests, 1):
+                f.write(f"Iteration {i}:\n")
+                f.write(f"  Connector ID: {params['connectorId']}\n")
+                f.write(f"  Stack Level: {params['stackLevel']}\n")
+                f.write(f"  Profile Kind: {params['kind']}\n")
+                f.write(f"  Charging Rate Unit: {params['unit']}\n")
+                f.write(f"  Power Limit: {params['limit']} {params['unit']}\n")
+                f.write(f"  Duration: {params['duration']}\n")
+                f.write(f"  Number of Phases: {params['numberPhases']}\n\n")
+
+            f.write("=" * 80 + "\n\n")
+
             # Get test results
             test_results = CHARGE_POINTS[charge_point_id].get("test_results", {})
             c1_result = test_results.get("run_c1_set_charging_profile_test", "NOT RUN")
@@ -580,17 +759,7 @@ def run_c_all_tests():
             f.write("-" * 80 + "\n")
             f.write(f"C.1 SetChargingProfile Test (4 iterations): {c1_result}\n")
             f.write(f"C.2 TxDefaultProfile Test (4 iterations): {c2_result}\n")
-            f.write(f"Charging levels tested: disable (0A), low (6A), medium (10A), high (16A)\n")
             f.write("-" * 80 + "\n\n")
-
-            # Write configuration details (from A.3) if available
-            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
-            if config_details:
-                f.write("CHARGE POINT CONFIGURATION (A.3 Result)\n")
-                f.write("-" * 80 + "\n")
-                import json
-                f.write(json.dumps(config_details, indent=2))
-                f.write("\n" + "-" * 80 + "\n\n")
 
             # Get verification results if available
             if charge_point_id in VERIFICATION_RESULTS:
@@ -857,6 +1026,16 @@ def combine_logs():
             outfile.write(f"Combined Log Created: {timestamp}\n")
             outfile.write(f"Number of Individual Tests: {len(log_files)}\n")
             outfile.write("=" * 80 + "\n\n")
+
+            # Add GetConfiguration results if available
+            config_details = CHARGE_POINTS[active_charge_point_id].get("configuration_details", {})
+            if config_details:
+                outfile.write("CHARGE POINT CONFIGURATION (from GetConfiguration)\n")
+                outfile.write("=" * 80 + "\n")
+                # Display as a formatted list
+                for key, value in sorted(config_details.items()):
+                    outfile.write(f"{key}: {value}\n")
+                outfile.write("=" * 80 + "\n\n")
 
             # Append each log file
             for idx, log_file in enumerate(log_files, 1):

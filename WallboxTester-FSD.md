@@ -1,257 +1,498 @@
-# WallboxTester - Functional Specification Document (FSD)
+# WallboxTester - Functional Specification Document
 
-## 1. Overview
+## 1. System Overview
 
 ### 1.1 Purpose
-This document specifies the functional requirements and test procedures for the WallboxTester OCPP 1.6-J test server implementation. The system provides comprehensive testing capabilities for electric vehicle charge points using the Open Charge Point Protocol (OCPP) version 1.6-J.
+WallboxTester is an OCPP 1.6-J compliant test server for validating electric vehicle charge point implementations. It provides comprehensive protocol testing, transaction management, and smart charging profile verification.
 
-### 1.2 System Architecture
-The WallboxTester is a Python-based OCPP server that provides:
-- WebSocket-based OCPP 1.6-J server implementation
-- Web UI for test management and monitoring
-- EV simulator integration for automated testing
-- Real-time logging and status monitoring
-- Comprehensive test suite execution
+### 1.2 Architecture
+- **WebSocket Server**: OCPP 1.6-J message handling on port 8887
+- **Web UI Server**: Flask-based REST API and web interface on port 5000
+- **Test Engine**: Automated test execution with verification
+- **EV Simulator Integration**: External EV state simulation for realistic testing
+- **Real-time Logging**: WebSocket-streamed logs with OCPP message capture
 
-### 1.3 Key Components
-- **OCPP Server**: WebSocket server handling charge point connections
-- **Test Engine**: Automated test execution and validation
-- **EV Simulator**: External EV state simulation for testing
-- **Web Interface**: Real-time monitoring and control
-- **Transaction Management**: Complete transaction lifecycle handling
+### 1.3 Key Capabilities
+- 20+ individual OCPP tests covering all protocol aspects
+- 2 automated test sequences with combined logging
+- Real-time visual feedback with 7 button states
+- GetConfiguration integration for comprehensive test documentation
+- Smart charging profile verification with GetCompositeSchedule
+- RFID test mode for authorization flow testing
 
-## Test Categories and Test Cases
+## 2. Test Categories
 
-### **A. Core Communication & Status**
+### A. Core Communication & Status (6 tests)
 
-#### A.1: Initial Registration
-Tests that the charge point has registered itself with the server by triggering a BootNotification.
+#### A.1: ChangeConfiguration
+Tests configuration modification via OCPP ChangeConfiguration command.
+- Modifies HeartbeatInterval parameter
+- Validates accepted/rejected/not-supported responses
 
-#### A.2: Get Configuration
-Retrieves and analyzes all OCPP configuration keys from the charge point, categorizing them as Core, Optional, or Vendor-specific.
+#### A.2: Get All Configuration
+Retrieves all configuration keys using GetConfiguration with empty key array.
+- May be limited by GetConfigurationMaxKeys parameter
+- Returns all available configuration parameters
 
-#### A.3: Change Configuration
-Tests the ability to modify charge point configuration by changing the HeartbeatInterval to 30 seconds.
+#### A.3: Get OCPP Standard Keys
+Retrieves 35 OCPP 1.6-J standard configuration parameters.
+- Explicitly requests each standard key
+- Includes Core, Local Auth List, and Smart Charging profiles
+- Displays results in UI Parameter Info section
 
 #### A.4: Check Initial State
-Verifies charge point status detection and EV state transitions (A→B→C→A) with transaction handling.
+Tests EV state transitions using EV simulator.
+- State A → Available (disconnected)
+- State B → Preparing (connected)
+- State C → Charging (charging)
+- State E → Faulted/Finishing (error)
 
 #### A.5: Trigger All Messages
-Tests TriggerMessage functionality for StatusNotification, MeterValues, BootNotification, and other OCPP messages.
+Tests TriggerMessage functionality for all supported message types.
+- Requires RemoteTrigger feature profile
+- Tests StatusNotification, MeterValues, BootNotification triggers
 
-#### A.6: Meter Values
-Triggers StatusNotification and MeterValues messages to test data acquisition capabilities.
+#### A.6: Status and Meter Value Acquisition
+Triggers and waits for MeterValues messages.
+- Validates real-time metering data
+- Tests MeterValueSampleInterval configuration
 
-### **B. Authorization & Transaction Management**
+### B. Authorization & Transaction Management (8 tests)
 
 #### B.1: Reset Transaction Management
-Resets the wallbox to a clean state by clearing all active transactions and setting connector availability to Operative.
+Resets transaction state and checks for offline authorization issues.
+- Validates clean transaction environment
+- Warns if offline authorization detected
 
 #### B.2: Autonomous Start
-Tests autonomous transaction initiation without manual authorization. Configures the wallbox for automatic start when an EV connects.
+Tests autonomous transaction initiation without remote commands.
+- EV connects and starts charging without RemoteStartTransaction
+- Validates autonomous charging capability
 
 #### B.3: RFID Tap-to-Charge
-Tests standard RFID card authorization flow with online authorization. Uses interactive modal with test mode for accepting any RFID card.
+Tests standard OCPP 1.6-J authorization flow.
+- User taps RFID card → Authorization → EV plugs in → Transaction starts
+- Interactive modal with countdown and real-time status
+- RFID test mode: first card accepted, subsequent cards invalid
 
 #### B.4: Anonymous Remote Start
-Tests remote transaction start without RFID card requirement. Initiates charging session remotely without user identification.
+Tests RemoteStartTransaction without ID tag.
+- Free charging or external payment scenarios
+- No user identification required
+- Informational modal during execution
 
 #### B.5: Plug-and-Charge
-Tests plug-and-charge functionality where charging starts automatically when EV is connected, without RFID or remote start.
+Tests automated charging with pre-authorized ID tag.
+- Transaction starts automatically when EV connects
+- No manual authorization required
 
 #### B.6: Clear RFID Cache
-Clears the local authorization list (RFID memory) using OCPP `ClearCache` command. May return "Rejected" if wallbox doesn't support local lists.
+Clears authorization cache using ClearCache command.
+- Removes locally stored RFID cards
+- Returns "NotSupported" if feature unavailable
 
 #### B.7: Send RFID List
-Sends local authorization list with RFID cards (TEST_CARD_001, TEST_CARD_002, TEST_CARD_003) using `SendLocalList`. Returns "NotSupported" if feature unavailable.
+Sends local authorization list using SendLocalList command.
+- Adds TEST_CARD_001, TEST_CARD_002, TEST_CARD_003
+- Returns "NotSupported" if feature unavailable
 
 #### B.8: Get RFID List Version
-Retrieves version of local authorization list using `GetLocalListVersion`. Returns -1 if wallbox doesn't support local authorization lists.
+Retrieves local authorization list version.
+- Uses GetLocalListVersion command
+- Returns -1 if feature unavailable
 
-### **X. System Control**
+### C. Smart Charging Profile (4 tests + automated sequence)
+
+#### C.1: SetChargingProfile
+Sets TxProfile charging profile to limit power on active transaction.
+- Supports all charging rate values (disable/low/medium/high)
+- Automatic verification using GetCompositeSchedule
+- Compares expected vs actual profile parameters
+- Displays verification results in modal
+
+#### C.2: TxDefaultProfile
+Sets default charging profile for future transactions.
+- Applies at charge point level (connectorId=0)
+- Supports all charging rate values
+- Automatic verification using GetCompositeSchedule
+- No transaction required
+
+#### C.3: GetCompositeSchedule
+Retrieves current composite charging schedule.
+- Configurable connector, duration, and charging rate unit
+- Interactive modal for parameter selection
+- Displays charging schedule details
+
+#### C.4: ClearChargingProfile
+Removes charging profiles from charge point.
+- Clears TxDefaultProfile types
+- Validates profile removal
+
+### X. System Control (2 tests)
 
 #### X.1: Reboot Wallbox
-Performs emergency wallbox reboot using OCPP Reset Hard command. Forces termination of all active transactions and reboots the charge point.
+Sends OCPP Reset command to reboot charge point.
+- Hard reset terminates all transactions
+- Forces charge point reboot
 
-### **C. Smart Charging Profile**
+#### X.2: Dump All Configuration
+Exports complete configuration to log file.
+- Comprehensive configuration documentation
+- Includes all GetConfiguration results
 
-#### C.1: SetChargingProfile (TxProfile) [AUTONOMOUS]
-Sets transaction-specific charging profiles with configurable power/current limits, units (W/A), duration, and profile parameters. **Fully autonomous**: Automatically starts transaction if needed, tests profile application, then cleans up (stops transaction, clears profile, resets EV to state A). Can run independently without manual setup. **Includes verification**: After setting the profile, the test automatically verifies the profile was applied correctly by calling GetCompositeSchedule and comparing expected vs actual values (charging rate unit and power limit). Results are displayed in a popup showing OK/NOT OK status for each parameter.
+## 3. Automated Test Sequences
 
-#### C.2: TxDefaultProfile [AUTONOMOUS]
-Sets default charging profiles that apply to future transactions at both charge point and connector levels. **Fully autonomous**: Tests profile creation, then clears the TxDefaultProfile at completion. No transaction required, no manual cleanup needed. **Includes verification**: After setting the profile, the test automatically verifies the profile was applied correctly by calling GetCompositeSchedule (at charge point level, connectorId=0) and comparing expected vs actual values (charging rate unit and power limit). Results are displayed in a popup showing OK/NOT OK status for each parameter.
+### 3.1 B All Tests
+Runs B.2 → B.3 → B.4 → B.5 sequentially.
 
-#### C.3: GetCompositeSchedule [AUTONOMOUS]
-Retrieves and displays the current composite charging schedule from the charge point to verify active profile application. Shows charging rate unit, periods, limits, and phases. **Read-only operation** - no side effects, no cleanup needed.
+**Features:**
+- Frontend-driven execution (supports B.3 modal)
+- GetConfiguration called at start
+- Creates combined log file with:
+  - Charge point configuration
+  - All 4 test results
+  - Complete OCPP message history
+- Result summary popup
+- 10-minute timeout
+- Button color: Green (all passed) / Red (any failed)
 
-#### C.4: ClearChargingProfile [AUTONOMOUS]
-Removes specific charging profiles from the charge point (specifically TxDefaultProfile types). **Cleanup operation by nature** - already autonomous, no additional cleanup needed.
+**Log Structure:**
+```
+CHARGE POINT CONFIGURATION (from GetConfiguration)
+================================================================================
+[All configuration keys with values and readonly indicators]
+================================================================================
 
-#### C.5: Cleanup [AUTONOMOUS]
-Comprehensive cleanup test that stops any active transactions, clears all charging profiles, and resets EV simulator state to 'A' (unplugged). Returns PARTIAL status if any step fails. **Master cleanup** for full environment reset.
+TEST RESULTS SUMMARY
+================================================================================
+B.2: Autonomous Start - PASSED/FAILED
+B.3: Tap to Charge - PASSED/FAILED
+B.4: Anonymous Remote Start - PASSED/FAILED
+B.5: Plug and Charge - PASSED/FAILED
+================================================================================
 
-### **D. Advanced Charging Control**
+OCPP MESSAGES
+================================================================================
+[Timestamped request/response pairs for all tests]
+================================================================================
+```
 
-#### D.1: Set Live Charging Power
-Sets charging profiles for active transactions to control power dynamically during charging.
+### 3.2 C All Tests (C.1 and C.2 Tests)
+Runs C.1 test 4 times + C.2 test 4 times (8 total iterations).
 
-#### D.2: Set Default Charging Profile
-Establishes default charging profiles for future transactions.
+**Charging Rate Values:**
+- disable: 0A / 0W
+- low: 6A / 4000W
+- medium: 10A / 8000W
+- high: 16A / 11000W
 
-#### D.3: Smart Charging Capability Test
-Comprehensive test that sets a temporary profile and immediately requests the composite schedule to verify smart charging functionality.
+**Features:**
+- Backend-driven execution (single API call)
+- GetConfiguration called at start
+- Creates comprehensive log file with:
+  - Charge point configuration
+  - Test parameters for all iterations
+  - Test results summary
+  - Verification results for all iterations
+  - Complete OCPP message history
+- 8-minute timeout
+- Result popup shows all iterations
 
-#### D.4: Clear Default Charging Profile
-Removes default charging profiles from the charge point.
+**Log Structure:**
+```
+CHARGE POINT CONFIGURATION (from GetConfiguration)
+================================================================================
+[All configuration keys]
+================================================================================
 
-#### D.5: Set Profile 5000W
-Sets a specific 5000W charging profile for testing high-power scenarios.
+TEST PARAMETERS
+================================================================================
+Test Levels: disable, low, medium, high
+Number of Test Runs: 8
 
-#### D.6: Set High Charging Profile
-Sets maximum power charging profiles for testing wallbox limits.
+C.1 Iteration 1 (disable):
+  Connector ID: 1
+  Stack Level: 0
+  Profile Kind: Absolute
+  Charging Rate Unit: A
+  Limit: 0
+  Duration: 3600
+  Number of Phases: 1
 
-### **E. Extended Transaction Tests**
+[... all 8 iterations ...]
+================================================================================
 
-#### E.1: Real-World Transaction Test
-Comprehensive real-world transaction simulation with multiple charging states and profile changes.
+TEST RESULTS SUMMARY
+================================================================================
+C.1 (disable) - 0A: PASSED/FAILED
+C.1 (low) - 6A: PASSED/FAILED
+C.1 (medium) - 10A: PASSED/FAILED
+C.1 (high) - 16A: PASSED/FAILED
+C.2 (disable) - 0A: PASSED/FAILED
+C.2 (low) - 6A: PASSED/FAILED
+C.2 (medium) - 10A: PASSED/FAILED
+C.2 (high) - 16A: PASSED/FAILED
+================================================================================
 
-#### E.2-E.8: Extended Charging Profile Tests
-Various charging profile tests with different amperage settings (6A, 10A, 16A) and transaction management.
+VERIFICATION RESULTS FOR C.1 (disable) - 0A
+================================================================================
+Profile Purpose: Expected TxProfile, Got TxProfile - OK
+Stack Level: Expected 0, Got 0 - OK
+[... all verification parameters ...]
+================================================================================
 
-#### E.10: Get Composite Schedule
-Extended composite schedule testing for complex charging scenarios.
+[... all 8 verification sections ...]
 
-#### E.11: Clear All Profiles
-Comprehensive clearing of all charging profiles from the charge point.
+OCPP MESSAGES
+================================================================================
+[Timestamped request/response pairs for all 8 test iterations]
+================================================================================
+```
 
-## Automated Reactions 🤖
+## 4. Verification System
 
-These messages can be handled automatically by a test script. The central system's reaction is predictable and does not require human input.
+### 4.1 C.1 and C.2 Verification
+After SetChargingProfile succeeds, GetCompositeSchedule automatically verifies profile application.
 
-- **BootNotification:** Can be handled automatically by the test system. Upon receiving this message, the central system should send a `BootNotification.conf` response with the correct configuration.
-- **StartTransaction:** Can be handled automatically. The central system should validate the message and send a `StartTransaction.conf` with a unique `transactionId`.
-- **Heartbeat:** This message automatically updates the central system's record of the wallbox's status and last seen time. The system's response is an automated `Heartbeat.conf`.
-- **StatusNotification:** Automatically updates the wallbox's status within the central system. The central system updates its internal state to reflect the status change (e.g., `Charging`, `Faulted`).
-- **MeterValues:** This message automatically updates the meter values in the central system's database for the ongoing transaction.
-- **StopTransaction:** Can be handled automatically. The central system finalizes the transaction record and sends a `StopTransaction.conf` in response.
-- **Authorize:** Automatically handled using predefined valid ID tags (`test_id_1`, `test_id_2`). Returns `Accepted` for valid tags, `Invalid` for others.
+**C.1 Verification (connectorId=1):**
+- Profile Purpose: TxProfile
+- Stack Level: 0
+- Profile Kind: Absolute
+- Transaction ID: Must match active transaction
+- Charging Rate Unit: W or A
+- Power Limit: Expected value
+- Duration: Expected seconds
+- Number of Phases: 1 or 3
 
-## Implementation Details
+**C.2 Verification (connectorId=0):**
+- Profile Purpose: TxDefaultProfile
+- Stack Level: 0
+- Profile Kind: Absolute
+- Transaction ID: null (no transaction required)
+- Charging Rate Unit: W or A
+- Power Limit: Expected value
+- Duration: null (no duration limit)
+- Number of Phases: 1 or 3
 
-This section details the recent feature implementations and bug fixes for the Wallbox Tester.
+**Result Display:**
+- Verification Results Modal with comparison table
+- Color-coded status: Green (OK), Red (NOT OK), Blue (INFO)
+- Icons: ✓ (OK), ✗ (NOT OK), ℹ (INFO)
+- API endpoint: `/api/verification_results?test=C1` or `?test=C2`
 
-### 1. Expanded Test Suite
+### 4.2 Test Pass/Fail Logic
+Tests now validate actual implementation, not just command acceptance:
+- C.1 FAILS if GetCompositeSchedule shows incorrect values
+- C.2 FAILS if GetCompositeSchedule shows incorrect values
+- Verification failures logged as errors with ❌ indicators
 
-- **A.4 and A.5 Test Integration**: Added comprehensive A.4 (Check Initial State) and A.5 (Trigger All Messages) tests to the frontend control panel.
-- **A.6 Meter Values Test**: Renamed and integrated the former B.1 test as A.6 for better categorization.
-- **B.3 RFID Authorization**: Enhanced RFID card testing with real-time popup interface and first-card-accepted, subsequent-invalid logic.
-- **X.1 Reboot Wallbox**: Added emergency wallbox reboot functionality (formerly "Brutal Stop") with proper UI placement and red styling.
-- **Transaction ID Handling Fix**: Fixed A.4 test to properly handle wallbox-assigned transaction IDs per OCPP 1.6 specification.
+## 5. Visual Feedback System
 
-### 2. Enhanced Charging Profile Management
+### 5.1 Button States
+- **Default (Blue)**: Not run yet
+- **Success (Green)**: Test PASSED
+- **Failure (Red)**: Test FAILED
+- **Running (Grey + wait cursor)**: Currently executing
+- **Skipped (Yellow)**: Test SKIPPED
+- **Partial (Orange)**: Partial success
+- **Not Supported (Grey)**: Feature not supported
+- **Disabled (Grey + opacity)**: No wallbox connected
 
-- **OCPP-Compliant UI**: Updated charging profile modal to hide irrelevant fields for TxDefaultProfile (C.4) per OCPP standard:
-  - Profile Purpose field hidden (fixed as TxDefaultProfile)
-  - Duration field hidden (TxDefaultProfile should not have duration)
-- **Charging Rate Unit Selection**: Added support for both W (Watts) and A (Amperes) in the charging profile modal:
-  - User-selectable charging rate unit dropdown
-  - Backend integration for unit-specific profile creation
-  - Smart defaults with fallback to server configuration
-- **Dynamic Parameters**: Enhanced modal allows configuration of `stackLevel`, `chargingProfilePurpose`, `chargingProfileKind`, `chargingRateUnit`, `limit`, and `duration`.
+### 5.2 Real-time Updates
+- Button colors update every 3 seconds via polling
+- Colors persist across page refreshes
+- Active test tracking prevents color changes during execution
+- Clear Test Results button resets all colors to default
 
-### 3. Transaction Management Improvements
+## 6. Real-time Monitoring
 
-- **Robust Transaction Detection**: Improved transaction lifecycle handling with proper OCPP flow management:
-  - RemoteStartTransaction → Authorize → StartTransaction sequence
-  - Proper handling of wallbox-assigned transaction IDs
-  - Enhanced state transition monitoring (A→B→C→A)
-- **EV State Integration**: Better coordination with EV simulator for realistic testing scenarios.
+### 6.1 WebSocket Streaming
+**Log Stream** (`/logs`):
+- Colored console output (Info/Error/Warning/Debug)
+- Transaction ID highlighting (purple)
+- OCPP message formatting
+- Auto-scroll with 400px container
 
-### 4. UI/UX Enhancements
+**EV Status Stream** (`/ev-status`):
+- Real-time EV state (A/B/C/E)
+- Wallbox advertised current (A)
+- CP Voltage (V)
+- CP Duty Cycle (%)
+- PP Voltage (V)
+- Error status
 
-- **Test Organization**: Reorganized tests into logical categories (A: Communication, B: Transactions, C: Smart Charging).
-- **Server Controls**: Added dedicated server control area with properly styled Reboot Wallbox and Shutdown Server buttons.
-- **Real-time Feedback**: Enhanced status messages and progress tracking for all test operations.
-- **OCPP-Compliant Interface**: Modal interfaces now respect OCPP 1.6 standard requirements and constraints.
+### 6.2 Live Data Display
+**Current Charging:**
+- Real-time power (W) and current (A)
+- Parsed from transaction MeterValues
+- Updates every 3 seconds
+- Multi-phase support
 
-### 5. RFID Management System (Experimental)
+**Active Transaction:**
+- Current transaction ID
+- Transaction start time
+- Energy delivered
+- MeterValues history
 
-- **OCPP 1.6-J Standard Implementation**: Added complete RFID authorization list management:
-  - `ClearCache` command to clear local RFID memory
-  - `SendLocalList` command to send RFID cards to wallbox
-  - `GetLocalListVersion` command for list synchronization
-- **Enhanced RFID Testing**: Improved B.3 RFID Authorization with real-time card detection and status tracking.
-- **Graceful Unsupported Handling**: Proper handling of wallboxes that don't support local authorization lists (return version -1).
-- **Frontend Integration**: Added B.4, B.5, B.6 tests to Control Panel with experimental flagging.
+**Wallbox Discovery:**
+- Automatic detection of connecting wallboxes
+- Active wallbox indicator
+- Connection status
+- Click to switch active wallbox
+- 2-second polling interval
 
-### 6. Code Quality and Maintenance
+## 7. EV Simulator Integration
 
-- **Logging Cleanup**: Reduced excessive auto-detection and protocol warnings to appropriate debug levels.
-- **Comment Cleanup**: Removed redundant and obvious comments while preserving essential OCPP protocol documentation.
-- **Error Handling**: Improved graceful shutdown and error recovery mechanisms.
-- **OCPP Compliance**: Ensured all implementations follow OCPP 1.6-J specification requirements.
+### 7.1 Display Section
+Visible when simulator is active, shows:
+- EV State (A/B/C/E)
+- Wallbox advertised current
+- CP Voltage
+- CP Duty Cycle
+- PP Voltage
+- Error status
 
-### 7. Test Result Visual Feedback System
+### 7.2 Control Buttons
+- Set State A (Disconnected)
+- Set State B (Connected)
+- Set State C (Charging)
+- Set State E (Error)
 
-- **Enhanced Button States**: Added comprehensive visual feedback for all test result states:
-  - Green (`btn-success`): Test passed
-  - Red (`btn-failure`): Test failed
-  - Yellow (`btn-skipped`): Test skipped
-  - Orange (`btn-partial`): Test partially completed
-  - Grey (`btn-not-supported`): Feature not supported by wallbox
-  - Grey with wait cursor (`btn-running`): Test currently executing
-- **Consistent Handling**: Unified test result handling across B.6, B.7, and B.8 for "NotSupported" responses
-- **Real-time Updates**: Polling mechanism updates button colors every 3 seconds based on server-side test results
-- **User Experience**: Clear visual distinction between test failures (red) and unsupported features (grey)
+### 7.3 Integration
+- WebSocket connection for real-time updates
+- Status polling every 3 seconds
+- Used by tests for state transitions
+- Base URL: `EV_SIMULATOR_BASE_URL` environment variable
 
-### 8. C Section Smart Charging Enhancements
+## 8. RFID Test Mode
 
-- **C.1 Automatic Transaction Management**: Enhanced SetChargingProfile test to automatically start transactions when none exist
-  - Sends RemoteStartTransaction if no active transaction detected
-  - Waits up to 15 seconds for transaction to start before proceeding
-  - Sets EV state to 'C' (charging) automatically
-  - **Autonomous cleanup**: Stops transaction, clears profile, and resets EV to state A after test
-  - Fully self-contained - no manual setup or cleanup required
-- **C.2 TxDefaultProfile Autonomy**: Enhanced to clean up after itself
-  - Sets default charging profile for future transactions
-  - **Autonomous cleanup**: Clears TxDefaultProfile at end of test
-  - Can run independently without affecting other tests
-- **C.3 & C.4 Already Autonomous**: GetCompositeSchedule and ClearChargingProfile are read-only/cleanup operations
-  - C.3 only queries current schedule (no side effects)
-  - C.4 clears profiles (cleanup operation by nature)
-- **C.5 Cleanup Test**: Comprehensive cleanup test for resetting entire test environment
-  - Stops any active transactions using RemoteStopTransaction
-  - Clears all charging profiles from wallbox
-  - Resets EV simulator state to 'A' (unplugged)
-  - Returns PARTIAL status if any cleanup step fails (vs full FAILED)
-  - Provides clear status messages with emoji indicators for each step
-- **Full Test Autonomy**: All C section tests are now fully autonomous
-  - Each test can run independently without manual setup
-  - Tests clean up their own state after completion
-  - No dependencies between tests - can run in any order
-- **Test Sequence Improvement**: Corrected C section test ordering in documentation to match implementation (C.1: TxProfile, C.2: TxDefaultProfile, C.3: GetCompositeSchedule, C.4: Clear, C.5: Cleanup)
+### 8.1 Purpose
+Allows any RFID card to be accepted during B.3 Tap-to-Charge test.
 
-### 9. Charging Profile Verification System
+### 8.2 Behavior
+- First card: Always ACCEPTED
+- Subsequent cards: Always INVALID
+- Tracks card presentation order
+- Clears accepted_rfid to detect new card taps
+- Automatically enabled/disabled by B.3 test
 
-- **Automated Verification for C.1 and C.2**: Enhanced smart charging tests with automatic verification using GetCompositeSchedule
-  - After SetChargingProfile command succeeds, automatically calls GetCompositeSchedule to verify profile application
-  - 2-second delay before verification to allow wallbox processing time
-  - Compares expected vs actual values for charging rate unit and power limit
-  - C.1 uses `connectorId=1` for transaction-specific verification
-  - C.2 uses `connectorId=0` for charge point level verification
-- **Verification Results Storage**: Added VERIFICATION_RESULTS global dictionary in core.py
-  - Stores verification data keyed by charge_point_id
-  - Contains test name and array of verification results (parameter, expected, actual, status)
-- **REST API Endpoint**: Added `/api/verification_results` endpoint
-  - Returns verification results for the active charge point
-  - Used by frontend to fetch and display verification data
-- **Interactive Popup Display**: Enhanced UI with verification results modal
-  - Automatically displays after C.1 or C.2 tests complete successfully
-  - Shows table with Parameter, Expected, Actual, and Status columns
-  - Green "OK" status with checkmark for matching values
-  - Red "NOT OK" status with X for mismatched values
-  - Styled modal with professional table layout and color-coded status indicators
-- **User Experience**: Provides immediate feedback on profile application success
-  - Confirms wallbox correctly applied the charging profile
-  - Helps diagnose configuration issues if values don't match
-  - Only shown when test passes (PASSED status)
+### 8.3 API Endpoints
+- `/api/enable_rfid_test_mode` - Enable test mode
+- `/api/disable_rfid_test_mode` - Disable test mode
+- `/api/rfid_status` - Get current status
+
+## 9. Configuration Features
+
+### 9.1 Charging Rate Unit
+Toggle between W (Watts) and A (Amperes):
+- Auto-detection from `ChargingScheduleAllowedChargingRateUnit`
+- Manual override available
+- Affects C.1 and C.2 test defaults
+- API endpoint: `/api/charging_rate_unit`
+
+### 9.2 Default Values
+- C.1/C.2 default to "medium" (10A or 8000W)
+- Configurable via modal dialogs
+- Stored in server configuration
+
+## 10. Log File System
+
+### 10.1 Individual Test Logs
+Location: `/home/ocpp/logs/{test_name}_{charge_point_id}_{timestamp}.log`
+
+Contents:
+- Test name and timestamp
+- Test parameters
+- OCPP message log (request/response pairs)
+- Test result (PASSED/FAILED/SKIPPED)
+
+### 10.2 Combined Test Logs
+**B All Tests**: `b_all_tests_{charge_point_id}_{timestamp}.log`
+- GetConfiguration results
+- 4 test results summary
+- Complete OCPP messages for all tests
+
+**C All Tests**: `c_all_tests_{charge_point_id}_{timestamp}.log`
+- GetConfiguration results
+- Test parameters for all iterations
+- Test results summary (8 iterations)
+- Verification results for all iterations
+- Complete OCPP messages for all tests
+
+### 10.3 Log Format
+All logs use standardized format:
+```
+[YYYY-MM-DD HH:MM:SS.mmm] REQUEST - Action
+{"key": "value"}
+
+[YYYY-MM-DD HH:MM:SS.mmm] RESPONSE - Action
+{"key": "value"}
+```
+
+## 11. API Endpoints
+
+### 11.1 Test Execution
+- `POST /api/test/<step_name>` - Run individual test
+- `POST /api/test/b_all_tests` - Run B All Tests
+- `POST /api/test/c_all_tests` - Run C All Tests
+- `POST /api/test/get_configuration` - Call GetConfiguration
+- `POST /api/test/combine_logs` - Combine multiple log files
+
+### 11.2 System Control
+- `GET/POST /api/charging_rate_unit` - Get/set charging rate unit
+- `GET /api/charge_points` - Get all charge points
+- `POST /api/set_active_charge_point` - Set active charge point
+- `POST /api/clear_test_results` - Clear all test results
+- `POST /api/shutdown` - Shutdown server
+
+### 11.3 EV Simulator
+- `GET /api/ev_status` - Get EV simulator status
+- `POST /api/set_ev_state` - Set EV state
+
+### 11.4 RFID Test Mode
+- `POST /api/enable_rfid_test_mode` - Enable RFID test mode
+- `POST /api/disable_rfid_test_mode` - Disable RFID test mode
+- `GET /api/rfid_status` - Get RFID test mode status
+
+### 11.5 Data Retrieval
+- `GET /api/verification_results?test=C1|C2` - Get verification results
+- `GET /api/transactions` - Get transaction history
+- `GET /api/test/get_latest_log?test_name=<name>` - Get latest log file
+
+## 12. OCPP Message Handling
+
+### 12.1 Automated Reactions
+These messages are handled automatically:
+- **BootNotification**: Sends BootNotification.conf with configuration
+- **StartTransaction**: Validates and sends StartTransaction.conf with transaction ID
+- **Heartbeat**: Updates last seen time, sends Heartbeat.conf
+- **StatusNotification**: Updates connector status in global state
+- **MeterValues**: Updates transaction meter values
+- **StopTransaction**: Finalizes transaction, sends StopTransaction.conf
+- **Authorize**: Returns Accepted for valid tags, Invalid for others
+
+### 12.2 Test-Initiated Messages
+Tests can send these OCPP commands:
+- **GetConfiguration**: Retrieve configuration parameters
+- **ChangeConfiguration**: Modify configuration parameters
+- **RemoteStartTransaction**: Start charging session remotely
+- **RemoteStopTransaction**: Stop charging session remotely
+- **SetChargingProfile**: Set charging power limits
+- **GetCompositeSchedule**: Verify applied charging profiles
+- **ClearChargingProfile**: Remove charging profiles
+- **Reset**: Reboot charge point
+- **TriggerMessage**: Request specific message types
+- **ClearCache**: Clear local authorization cache
+- **SendLocalList**: Send RFID authorization list
+- **GetLocalListVersion**: Get authorization list version
+
+## 13. System Statistics
+
+- **Total Individual Tests**: 20 (A: 6, B: 8, C: 4, X: 2)
+- **Automated Sequences**: 2 (B All Tests, C All Tests)
+- **Total Test Iterations**: 12 (B: 4 tests, C: 8 iterations)
+- **API Endpoints**: 20+
+- **WebSocket Streams**: 3 (logs, ev-status, ocpp)
+- **Modal Dialogs**: 6
+- **Button States**: 7
+- **Log File Types**: 3

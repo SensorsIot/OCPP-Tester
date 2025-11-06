@@ -1138,7 +1138,6 @@ class OcppTestSteps:
             "ClearChargingProfile",
             ClearChargingProfileRequest()
         )
-        logger.info(f"ClearChargingProfile response: {clear_response}")
 
         # Get values from params or use defaults, with proper type conversion
         stack_level = int(params.get("stackLevel", 0))
@@ -1176,7 +1175,6 @@ class OcppTestSteps:
                 )
             )
         )
-        logger.info(f"Sending SetChargingProfile message: {asdict(profile)}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile, timeout=30)
         self._check_cancellation()
 
@@ -1240,9 +1238,11 @@ class OcppTestSteps:
                     if unit_match and limit_match:
                         logger.info(f"   ✓ Verification passed: {limit}{charging_unit} profile applied correctly")
                     else:
-                        logger.warning(f"   ⚠️ Verification warning: Expected {limit}{charging_unit}, got {actual_limit}{actual_unit}")
+                        logger.error(f"   ❌ Verification FAILED: Expected {limit}{charging_unit}, got {actual_limit}{actual_unit}")
+                        test_passed = False
                 else:
-                    logger.warning("   ⚠️ No charging schedule returned")
+                    logger.error("   ❌ No charging schedule returned - verification FAILED")
+                    test_passed = False
                     verification_results = [{
                         "parameter": "Charging Schedule",
                         "expected": "Present",
@@ -1250,7 +1250,8 @@ class OcppTestSteps:
                         "status": "NOT OK"
                     }]
             else:
-                logger.warning(f"   ⚠️ GetCompositeSchedule failed: {verify_response}")
+                logger.error(f"   ❌ GetCompositeSchedule failed: {verify_response} - verification FAILED")
+                test_passed = False
                 verification_results = [{
                     "parameter": "GetCompositeSchedule",
                     "expected": "Accepted",
@@ -1344,7 +1345,6 @@ class OcppTestSteps:
             "ClearChargingProfile",
             ClearChargingProfileRequest()
         )
-        logger.info(f"ClearChargingProfile response: {clear_response}")
 
         # Send single TxDefaultProfile with configured stackLevel
         profile = SetChargingProfileRequest(
@@ -1366,7 +1366,6 @@ class OcppTestSteps:
                 )
             )
         )
-        logger.info(f"Sending SetChargingProfile message: {asdict(profile)}")
         success = await self.handler.send_and_wait("SetChargingProfile", profile)
         self._check_cancellation()
 
@@ -1433,9 +1432,11 @@ class OcppTestSteps:
                     if unit_match and limit_match:
                         logger.info(f"   ✓ Verification passed: {limit}{charging_unit} profile applied correctly")
                     else:
-                        logger.warning(f"   ⚠️ Verification warning: Expected {limit}{charging_unit}, got {actual_limit}{actual_unit}")
+                        logger.error(f"   ❌ Verification FAILED: Expected {limit}{charging_unit}, got {actual_limit}{actual_unit}")
+                        test_passed = False
                 else:
-                    logger.warning("   ⚠️ No charging schedule returned")
+                    logger.error("   ❌ No charging schedule returned - verification FAILED")
+                    test_passed = False
                     verification_results = [{
                         "parameter": "Charging Schedule",
                         "expected": "Present",
@@ -1443,7 +1444,8 @@ class OcppTestSteps:
                         "status": "NOT OK"
                     }]
             else:
-                logger.warning(f"   ⚠️ GetCompositeSchedule failed: {verify_response}")
+                logger.error(f"   ❌ GetCompositeSchedule failed: {verify_response} - verification FAILED")
+                test_passed = False
                 verification_results = [{
                     "parameter": "GetCompositeSchedule",
                     "expected": "Accepted",
@@ -1609,7 +1611,6 @@ class OcppTestSteps:
             "ClearChargingProfile",
             ClearChargingProfileRequest()
         )
-        logger.info(f"ClearChargingProfile response: {clear_response}")
 
         profile = SetChargingProfileRequest(
             connectorId=0,
@@ -1653,7 +1654,6 @@ class OcppTestSteps:
             "ClearChargingProfile",
             ClearChargingProfileRequest()
         )
-        logger.info(f"ClearChargingProfile response: {clear_response}")
 
         # Use configured charging values - "high" for default profile
         high_value, charging_unit = get_charging_value("high")
@@ -1967,7 +1967,6 @@ class OcppTestSteps:
             "ClearChargingProfile",
             ClearChargingProfileRequest()
         )
-        logger.info(f"ClearChargingProfile response: {clear_response}")
 
         # Use configured charging rate unit
         rate_unit = ChargingRateUnitType.A if charging_unit == "A" else ChargingRateUnitType.W
@@ -2068,7 +2067,6 @@ class OcppTestSteps:
             "ClearChargingProfile",
             ClearChargingProfileRequest()
         )
-        logger.info(f"ClearChargingProfile response: {clear_response}")
 
         # Use configured charging rate unit
         rate_unit = ChargingRateUnitType.A if charging_unit == "A" else ChargingRateUnitType.W

@@ -1342,6 +1342,7 @@
                     // Show running state
                     allTestsBtn.classList.remove('btn-success', 'btn-failure');
                     allTestsBtn.classList.add('btn-running', 'disabled');
+                    allTestsBtn.style.backgroundColor = '#6c757d';  // Override inline style to grey
 
                     // Disable other buttons during test
                     document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
@@ -1353,35 +1354,63 @@
                     const logFiles = [];
 
                     try {
+                        // Get charge point configuration first by calling GetConfiguration
+                        showStatusMessage('Retrieving charge point configuration...');
+                        try {
+                            const configResponse = await fetch('/api/test/get_configuration', { method: 'POST' });
+                            if (configResponse.ok) {
+                                const configData = await configResponse.json();
+                                console.log('Configuration retrieved:', configData.config_keys, 'keys');
+                            } else {
+                                console.warn('Failed to retrieve configuration:', configResponse.status);
+                            }
+                        } catch (e) {
+                            console.warn('Failed to retrieve configuration:', e);
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+
                         // Run B.2
                         showStatusMessage('Running B.2: Autonomous Start...');
                         const b2Response = await fetch('/api/test/run_b2_autonomous_start_test', { method: 'POST' });
+                        if (!b2Response.ok) throw new Error(`B.2 failed: ${b2Response.status}`);
                         const b2Result = await b2Response.json();
                         if (b2Result.log_file) logFiles.push(b2Result.log_file);
-                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        await new Promise(resolve => setTimeout(resolve, 3000));
 
                         // Run B.3 with modal
                         showStatusMessage('Running B.3: Tap to Charge... (RFID modal will appear)');
                         await openTapToChargeModal();
+                        // Wait a bit for log file to be written
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                         // Get the most recent B.3 log file after modal closes
-                        const b3LogResponse = await fetch('/api/test/get_latest_log?test_name=run_b3_tap_to_charge_test');
-                        const b3LogResult = await b3LogResponse.json();
-                        if (b3LogResult.log_file) logFiles.push(b3LogResult.log_file);
-                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        try {
+                            const b3LogResponse = await fetch('/api/test/get_latest_log?test_name=run_b3_tap_to_charge_test');
+                            if (b3LogResponse.ok) {
+                                const b3LogResult = await b3LogResponse.json();
+                                if (b3LogResult.log_file) logFiles.push(b3LogResult.log_file);
+                            } else {
+                                console.warn('B.3 log file not found, continuing without it');
+                            }
+                        } catch (e) {
+                            console.warn('Failed to fetch B.3 log file:', e);
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 3000));
 
                         // Run B.4
                         showStatusMessage('Running B.4: Anonymous Remote Start...');
                         const b4Response = await fetch('/api/test/run_b4_anonymous_remote_start_test', { method: 'POST' });
+                        if (!b4Response.ok) throw new Error(`B.4 failed: ${b4Response.status}`);
                         const b4Result = await b4Response.json();
                         if (b4Result.log_file) logFiles.push(b4Result.log_file);
-                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        await new Promise(resolve => setTimeout(resolve, 3000));
 
                         // Run B.5
                         showStatusMessage('Running B.5: Plug and Charge...');
                         const b5Response = await fetch('/api/test/run_b5_plug_and_charge_test', { method: 'POST' });
+                        if (!b5Response.ok) throw new Error(`B.5 failed: ${b5Response.status}`);
                         const b5Result = await b5Response.json();
                         if (b5Result.log_file) logFiles.push(b5Result.log_file);
-                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        await new Promise(resolve => setTimeout(resolve, 2000));
 
                         // Combine log files
                         showStatusMessage('Combining log files...');
@@ -1426,10 +1455,12 @@
                         const allPassed = b2TestResult === 'PASSED' && b3TestResult === 'PASSED' &&
                                         b4TestResult === 'PASSED' && b5TestResult === 'PASSED';
                         allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
+                        allTestsBtn.style.backgroundColor = allPassed ? '#17a2b8' : '#dc3545';  // Cyan or red
 
                     } catch (e) {
                         showStatusMessage(`Failed: ${e.message}`, true);
                         allTestsBtn.classList.add('btn-failure');
+                        allTestsBtn.style.backgroundColor = '#dc3545';  // Red for failure
                     } finally {
                         // Remove running state
                         allTestsBtn.classList.remove('btn-running', 'disabled');
@@ -1467,6 +1498,7 @@
                     // Show running state
                     allTestsBtn.classList.remove('btn-success', 'btn-failure');
                     allTestsBtn.classList.add('btn-running', 'disabled');
+                    allTestsBtn.style.backgroundColor = '#6c757d';  // Override inline style to grey
 
                     // Disable other buttons during test
                     document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
@@ -1502,12 +1534,14 @@
                             // Update button color based on results
                             const allPassed = c1Result === 'PASSED' && c2Result === 'PASSED';
                             allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
+                            allTestsBtn.style.backgroundColor = allPassed ? '#28a745' : '#dc3545';  // Green or red
                         } else {
                             showStatusMessage(result.status || 'Tests completed!');
                         }
                     } catch (e) {
                         showStatusMessage(`Failed: ${e.message}`, true);
                         allTestsBtn.classList.add('btn-failure');
+                        allTestsBtn.style.backgroundColor = '#dc3545';  // Red for failure
                     } finally {
                         // Fetch test results to update UI
                         await fetchChargePoints();

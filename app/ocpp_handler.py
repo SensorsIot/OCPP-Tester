@@ -82,9 +82,8 @@ def create_ocpp_message(message_type_id: int, unique_id: str, payload: Any, acti
         message = [message_type_id, unique_id, action, payload_to_send]
     else:
         message = [message_type_id, unique_id, payload_to_send]
-    # logger.debug(f"\n\n------------OCPP Call ({charge_point_id})----------")
     json_message = json.dumps(message)
-    # logger.debug(f"RAW ({charge_point_id}) >> {json_message}")
+    logger.info(f"📤 SENT ({charge_point_id}) >> {json_message}")
     return json_message
 
 def _filter_payload(payload_cls: Type, data: Dict) -> Dict:
@@ -195,12 +194,11 @@ class OCPPHandler:
 
     async def process_message(self, raw: str):
         active_cp_id = get_active_charge_point_id() # Ensure we get the latest global value
-        # logger.debug(f"🔍 Processing message from {self.charge_point_id}")
+        logger.info(f"📥 RECV ({self.charge_point_id}) << {raw}")
 
         try:
             msg = json.loads(raw)
             message_type_id, unique_id = msg[0], msg[1]
-            # logger.debug(f"✅ Parsed OCPP message type {message_type_id}")
         except (json.JSONDecodeError, IndexError) as e:
             logger.error(f"❌ Failed to parse OCPP message: {raw}, error: {e}")
             return
