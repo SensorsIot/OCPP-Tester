@@ -5,18 +5,9 @@ Entry point for the OCPP server.
 - Single WebSocket server with path routing:
     /logs        -> UI log stream
     /ev-status   -> UI EV status stream
-    /{cpid}      -> OCPP connection for charge point `cpid`
+    /{cpid}      -> OCPP connection for charge point
 - Flask (via uvicorn) HTTP server for the web UI + REST API
 - EV simulator connection wait + periodic status polling with backoff
-
-Erata:
-    - 2025-08-24: Modified `run_a5_trigger_message_test` to request a `StatusNotification` instead of a `Heartbeat`.
-
-Post-Reset Handling (E.9 Brutal Stop aftermath):
-    - Accept StopTransaction(s) with reasons like "HardReset" / "PowerLoss"
-    - If some vendors don't send StopTransaction after reset, treat those transactions as implicitly closed on reconnect
-    - Clean CSMS state appropriately
-    - (Optional) Send ChangeAvailability(Unavailable) per connector to block new sessions while reconciling state, then flip back to Operative
 """
 
 import argparse
@@ -47,13 +38,8 @@ from app.ocpp_server_logic import OcppServerLogic
 
 from app.web_ui_server import app as flask_app, attach_loop, attach_ev_status_streamer
 
-
-
-
 import re
 
-
-# ---------- Colored logging formatter ----------
 class ColoredFormatter(logging.Formatter):
     GREEN = "\033[92m"
     BLUE = "\033[94m"
@@ -106,29 +92,23 @@ class ColoredFormatter(logging.Formatter):
 
 logger = logging.getLogger(__name__)
 
-# ---------- File logging formatter for disk logging ----------
 class FileLogFormatter(logging.Formatter):
     def __init__(self):
         super().__init__("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     def format(self, record):
-        # Strip ANSI color codes from the message for clean file logging
         import re
         message = record.getMessage()
-        # Remove ANSI escape sequences
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         clean_message = ansi_escape.sub('', message)
 
-        # Create a copy of the record with cleaned message
         record_copy = logging.makeLogRecord(record.__dict__)
         record_copy.msg = clean_message
         record_copy.args = None
 
         return super().format(record_copy)
 
-# ---------- Per-path WebSocket handlers ----------
 async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: asyncio.Event, ev_sim_manager: EVSimulatorManager):
-    """Handle OCPP charge point connection on /{charge_point_id}."""
     from datetime import datetime, timezone
     from app.core import register_discovered_charge_point, unregister_charge_point
 
@@ -143,7 +123,6 @@ async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: a
         await websocket.close()
         return
 
-    # Register the discovered charge point
     connection_info = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "remote_address": str(websocket.remote_address)
@@ -162,7 +141,6 @@ async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: a
     try:
         await handler.start()
     finally:
-        # Unregister when connection closes
         unregister_charge_point(charge_point_id)
         logger.info(f"🔌 Charge point '{charge_point_id}' disconnected and unregistered")
 
@@ -185,7 +163,6 @@ async def handle_ev_status_stream(websocket: ServerConnection, streamer: EVStatu
 async def ws_router(websocket: ServerConnection,
                     log_streamer: LogStreamer, ev_status_streamer: EVStatusStreamer,
                     ev_refresh_trigger: asyncio.Event, ev_sim_manager: EVSimulatorManager):
-    """Route incoming WS connections based on the request path."""
     path = "unknown"
     try:
         path = websocket.path
@@ -208,7 +185,6 @@ async def ws_router(websocket: ServerConnection,
         except Exception:
             pass
 
-# ---------- HTTP (Flask) via uvicorn ----------
 async def start_http_server():
     config = uvicorn.Config(
         web_ui_server.app,
@@ -219,7 +195,6 @@ async def start_http_server():
     )
     server = uvicorn.Server(config)
 
-    # Store server instance globally for shutdown
     global http_server_instance
     http_server_instance = server
 
@@ -229,45 +204,37 @@ async def start_http_server():
         await server.serve()
     except asyncio.CancelledError:
         logger.info("HTTP server task cancelled, shutting down...")
-        # More graceful shutdown
         if hasattr(server, 'should_exit'):
             server.should_exit = True
         if hasattr(server, 'force_exit'):
             server.force_exit = True
-        # Don't re-raise to avoid error messages
         return
     except Exception as e:
-        # During shutdown, ASGI applications may throw various cancellation errors
         if "CancelledError" in str(e) or "cancelled" in str(e).lower():
             logger.info("HTTP server cancelled during shutdown")
         else:
             logger.error(f"HTTP server error: {e}")
         return
 
-# ---------- Main ----------
 async def main():
     loop = asyncio.get_running_loop()
 
-    # Central logging setup
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
 
-    # Console handler with colors
     console = StreamHandler()
     console.setFormatter(ColoredFormatter())
     root_logger.addHandler(console)
 
-    # Disk logging setup - create logs directory if it doesn't exist
     logs_dir = "logs"
     if not os.path.exists(logs_dir):
         os.makedirs(logs_dir)
 
-    # File handler with rotation (10MB max file size, keep 5 backup files)
     file_handler = RotatingFileHandler(
         os.path.join(logs_dir, "ocpp_commands.log"),
-        maxBytes=10*1024*1024,  # 10MB
+        maxBytes=10*1024*1024,
         backupCount=5
     )
     file_handler.setFormatter(FileLogFormatter())
@@ -276,7 +243,6 @@ async def main():
 
     logger.info(f"📁 Command logging enabled - logs saved to {os.path.join(logs_dir, 'ocpp_commands.log')}")
 
-    # Streamers
     log_streamer = LogStreamer()
     ev_status_streamer = EVStatusStreamer()
     ev_refresh_trigger = asyncio.Event()
@@ -287,17 +253,14 @@ async def main():
 
     logging.getLogger("websockets").setLevel(logging.INFO)
 
-    # Let Flask know our loop (used by /api/test/*)
     web_ui_server.attach_loop(loop)
     web_ui_server.attach_ev_status_streamer(ev_status_streamer)
 
-    # Instantiate the manager for the EV simulator
     ev_sim_manager = EVSimulatorManager(
         status_streamer=ev_status_streamer,
         refresh_trigger=ev_refresh_trigger
     )
 
-    # Start the HTTP server first so the UI is always available
     http_task = asyncio.create_task(start_http_server())
 
     logger.info(f"🚀 Starting WebSocket server on {OCPP_HOST}:{OCPP_PORT} "
@@ -306,7 +269,6 @@ async def main():
     logger.info(f"🖥️  Web UI available at http://{HTTP_HOST}:{HTTP_PORT}")
     logger.info(f"📡 To connect a charge point, use: ws://{OCPP_HOST}:{OCPP_PORT}/YourChargePointID")
 
-    # Log network interface information
     try:
         import socket
         hostname = socket.gethostname()
@@ -324,40 +286,33 @@ async def main():
         max_size=2**22,
     )
 
-    # Start all background tasks and gather them.
     tasks = [
         http_task,
         asyncio.create_task(ev_sim_manager.start()),
     ]
 
-    # Wait for shutdown event
     await shutdown_event.wait()
 
     logger.info("Shutdown event received. Closing servers...")
 
-    # Signal HTTP server to shutdown gracefully
     if 'http_server_instance' in globals():
         try:
             http_server_instance.should_exit = True
             if hasattr(http_server_instance, 'force_exit'):
                 http_server_instance.force_exit = True
             logger.info("HTTP server shutdown signal sent")
-            # Give HTTP server a moment to start shutting down
             await asyncio.sleep(0.5)
         except Exception as e:
             logger.warning(f"Error signaling HTTP server shutdown: {e}")
 
-    # Close WebSocket server
     ws_server.close()
 
-    # Wait for WebSocket server to close with timeout
     try:
         await asyncio.wait_for(ws_server.wait_closed(), timeout=5.0)
         logger.info("WebSocket server closed successfully")
     except asyncio.TimeoutError:
         logger.warning("WebSocket server close timed out after 5 seconds")
 
-    # Cancel all running tasks (both tracked and untracked)
     all_tasks = [t for t in asyncio.all_tasks() if not t.done()]
     logger.info(f"Cancelling {len(all_tasks)} pending tasks...")
 
@@ -365,14 +320,11 @@ async def main():
         if not task.done():
             task.cancel()
 
-    # Wait for all tasks to complete with shorter timeout to avoid hanging
     if all_tasks:
         try:
-            # Suppress CancelledError and other expected exceptions during shutdown
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
                 warnings.simplefilter("ignore", asyncio.CancelledError)
-                # Use wait() instead of wait_for() to avoid timeout cancellation issues
                 done, pending = await asyncio.wait(
                     all_tasks,
                     timeout=2.0,
@@ -383,18 +335,15 @@ async def main():
                 else:
                     logger.info("All tasks cancelled successfully")
         except (asyncio.CancelledError, Exception):
-            # Ignore all exceptions during shutdown - they're expected
             logger.info("Task cancellation completed")
     else:
         logger.info("No pending tasks to cancel")
 
-    # Close EV simulator manager if it exists
     try:
         await ev_sim_manager.stop()
     except Exception as e:
         logger.warning(f"Error stopping EV simulator manager: {e}")
 
-    # Close all streamer clients
     try:
         await log_streamer.close_all_clients()
         await ev_status_streamer.close_all_clients()
@@ -402,35 +351,27 @@ async def main():
     except Exception as e:
         logger.warning(f"Error closing streamers: {e}")
 
-    # Final cleanup - ensure no tasks are left
     final_tasks = [t for t in asyncio.all_tasks() if not t.done()]
     if final_tasks:
         logger.info(f"Force cancelling {len(final_tasks)} remaining tasks")
         for task in final_tasks:
             task.cancel()
-        # Give them a moment to cancel, but don't wait if we're one of the tasks being cancelled
         try:
-            # Only wait if we're not being cancelled ourselves
             current_task = asyncio.current_task()
             if current_task not in final_tasks:
                 await asyncio.wait(final_tasks, timeout=1.0)
         except Exception:
-            # Ignore any exceptions during final cleanup
             pass
 
     logger.info("Server shut down gracefully.")
-
-    # Stop the event loop
     loop.stop()
 
 if __name__ == "__main__":
-    # Parse command line arguments
     parser = argparse.ArgumentParser(description="OCPP Server with auto-detection")
     parser.add_argument("--unit", choices=["W", "A"],
                        help="Override charging rate unit (W=Watts, A=Amperes). If not specified, auto-detection will be attempted.")
     args = parser.parse_args()
 
-    # Set override unit if specified
     if args.unit:
         from app.core import SERVER_SETTINGS
         SERVER_SETTINGS["charging_rate_unit"] = args.unit
@@ -440,16 +381,13 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    # Initialize shutdown event
     shutdown_event = asyncio.Event()
     set_shutdown_event(shutdown_event)
 
-    # Track if shutdown has been initiated using a class to avoid nonlocal issues
     class ShutdownState:
         initiated = False
         count = 0
 
-    # Set up signal handler for graceful shutdown
     def handle_sigint(sig, frame):
         ShutdownState.count += 1
 

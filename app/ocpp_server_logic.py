@@ -39,20 +39,17 @@ class OcppServerLogic:
         self.charge_point_id = ocpp_handler.charge_point_id
         self.refresh_trigger = refresh_trigger
         self.initial_status_received = initial_status_received
-        # Used to wait for specific messages triggered by a test step
         self.pending_triggered_message_events: Dict[str, asyncio.Event] = {}
 
         self.message_handlers = OcppMessageHandlers(self)
         self.test_steps = OcppTestSteps(self)
 
     def _check_cancellation(self):
-        """Checks if a cancellation has been requested and raises CancelledError if so."""
         if self.handler._cancellation_event.is_set():
             logger.info(f"Cancellation requested for {self.charge_point_id}. Aborting test.")
             raise asyncio.CancelledError("Test cancelled by user.")
 
     def _set_test_result(self, step_name: str, result: str):
-        """Stores the result of a test step in the global state."""
         if self.charge_point_id not in CHARGE_POINTS:
             return
         if "test_results" not in CHARGE_POINTS[self.charge_point_id]:
@@ -62,11 +59,8 @@ class OcppServerLogic:
         logger.debug(f"Stored test result for {self.charge_point_id} - {step_name}: {result}")
 
     async def _set_ev_state(self, state: str):
-        """Helper to set EV state and trigger a UI refresh."""
         if not SERVER_SETTINGS.get("ev_simulator_available"):
             logger.info(f"Skipping EV state change to '{state}'; simulator is disabled.")
-            # In a real EV scenario, we might log this as an intended action
-            # that requires manual intervention.
             return
         set_url = f"{EV_SIMULATOR_BASE_URL}/api/set_state"
         logger.info(f"Setting EV simulator state to '{state}'...")
@@ -77,24 +71,16 @@ class OcppServerLogic:
                         logger.error(f"Failed to set EV state. Simulator returned {resp.status}")
                         return
                     logger.info(f"Successfully requested EV state change to '{state}'.")
-                    # Give the simulator a moment to process the state change
                     await asyncio.sleep(0.2)
-                    # Trigger a poll to update the UI
                     if self.refresh_trigger:
                         self.refresh_trigger.set()
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logger.error(f"Error while setting EV simulator state: {e}")
 
     async def periodic_health_checks(self):
-        """Periodically checks connection health. This is now a passive task."""
         while True:
             self._check_cancellation()
             await asyncio.sleep(60)
-            # This check is now passive. The server will rely on the charge
-            # point sending heartbeats on its own based on the interval set
-            # in the BootNotification response. A more robust implementation
-            # could check the `last_heartbeat` timestamp here and close the
-            # connection if it's too old. For now, we just wait.
             logger.debug(f"Passive health check for {self.charge_point_id}. Waiting for next heartbeat.")
 
     async def _wait_for_status(self, status: str):
@@ -102,7 +88,6 @@ class OcppServerLogic:
             self._check_cancellation()
             await asyncio.sleep(0.1)
 
-    # --- Delegated Message Handlers ---
     async def handle_boot_notification(self, charge_point_id: str, payload: BootNotificationRequest) -> BootNotificationResponse:
         return await self.message_handlers.handle_boot_notification(charge_point_id, payload)
 
@@ -136,7 +121,6 @@ class OcppServerLogic:
     async def handle_unknown_action(self, charge_point_id: str, payload: dict):
         return await self.message_handlers.handle_unknown_action(charge_point_id, payload)
 
-    # --- Delegated Test Steps ---
     async def run_a1_initial_registration(self):
         return await self.test_steps.run_a1_initial_registration()
 

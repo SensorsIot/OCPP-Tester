@@ -28,12 +28,8 @@ EV_SIMULATOR_CHARGE_POINT_ID = _env("EV_SIMULATOR_CHARGE_POINT_ID", "Wallbox001"
 EV_STATUS_POLL_INTERVAL = int(_env("EV_STATUS_POLL_INTERVAL", "5"))
 EV_WAIT_MAX_BACKOFF = int(_env("EV_WAIT_MAX_BACKOFF", "30"))
 
-
 CHARGE_POINTS: Dict[str, Dict[str, Any]] = {}
-
 TRANSACTIONS: Dict[int, Dict[str, Any]] = {}
-
-# Store verification results for each charge point
 VERIFICATION_RESULTS: Dict[str, Dict[str, Any]] = {}
 
 _active_charge_point_id: Optional[str] = None
@@ -72,11 +68,9 @@ def register_discovered_charge_point(cp_id: str, connection_info: Dict[str, Any]
     return False
 
 def unregister_charge_point(cp_id: str):
-    """Mark a charge point as disconnected."""
     if cp_id in _discovered_charge_points:
         _discovered_charge_points[cp_id]["status"] = "disconnected"
 
-        # If this was the active charge point, clear it
         if _active_charge_point_id == cp_id:
             set_active_charge_point_id(None)
             logger.info(f"🔍 AUTODISCOVERY: Active charge point {cp_id} disconnected, cleared selection")
@@ -104,68 +98,44 @@ def set_shutdown_event(event: asyncio.Event):
     global _shutdown_event
     _shutdown_event = event
 
-# A dictionary to store the latest status from the EV simulator.
 EV_SIMULATOR_STATE: Dict[str, Any] = {}
 
-# This dictionary will hold server-wide settings that can be changed at runtime.
 SERVER_SETTINGS = {
-    "use_simulator": False,  # Controlled by UI/config: True if EV simulator mode is active
-    "ev_simulator_available": False,  # Tracks if the simulator service is reachable
+    "use_simulator": False,
+    "ev_simulator_available": False,
     "ev_simulator_charge_point_id": EV_SIMULATOR_CHARGE_POINT_ID,
-    "charging_rate_unit": "W",  # "W" for Watts or "A" for Amperes - default setting
-    "charging_rate_unit_auto_detected": False,  # True if unit was auto-detected from charge point
-    "auto_detection_completed": False,  # True when auto-detection attempt has finished (success or failure) - start as False to enable auto-detection
-    "enforce_ocpp_compliance": False,  # Set to True to reject protocol violations (strict mode)
-    "ocpp_host": OCPP_HOST,  # OCPP WebSocket host
-    "ocpp_port": OCPP_PORT,  # OCPP WebSocket port
+    "charging_rate_unit": "W",
+    "charging_rate_unit_auto_detected": False,
+    "auto_detection_completed": False,
+    "enforce_ocpp_compliance": False,
+    "ocpp_host": OCPP_HOST,
+    "ocpp_port": OCPP_PORT,
 }
 
-# Predefined charging power/current values for tests
-# Based on actual Actec wallbox capabilities: 130A max @ 230V = ~30kW max
 CHARGING_RATE_CONFIG = {
-    "power_values_w": [4100, 8000, 10000, 11000],  # Watts for low, medium, c_default, high
-    "current_values_a": [6, 10, 10, 16],           # Amperes for low, medium, c_default, high
+    "power_values_w": [4100, 8000, 10000, 11000],
+    "current_values_a": [6, 10, 10, 16],
     "test_value_mapping": {
-        "disable": {"W": 0, "A": 0},           # 0W or 0A (disable charging)
-        "c_default": {"W": 10000, "A": 10},    # C.1 and C.2 default: 10000W or 10A
-        "low": {"W": 4100, "A": 6},            # Low power: 4100W or 6A
-        "medium": {"W": 8000, "A": 10},        # Medium power: 8000W or 10A
-        "high": {"W": 11000, "A": 16}          # High power: 11000W or 16A
+        "disable": {"W": 0, "A": 0},
+        "c_default": {"W": 10000, "A": 10},
+        "low": {"W": 4100, "A": 6},
+        "medium": {"W": 8000, "A": 10},
+        "high": {"W": 11000, "A": 16}
     }
 }
 
 def get_charging_value(test_level: str) -> tuple[float, str]:
-    """
-    Get the appropriate charging value and unit based on current configuration.
-
-    Args:
-        test_level: "disable", "low", "medium", or "high"
-
-    Returns:
-        tuple of (value, unit) e.g., (6000, "W") or (8, "A")
-    """
-    unit = SERVER_SETTINGS.get("charging_rate_unit", "A") # Default to A
+    unit = SERVER_SETTINGS.get("charging_rate_unit", "A")
     value = CHARGING_RATE_CONFIG["test_value_mapping"][test_level][unit]
     return float(value), unit
 
 def get_charging_rate_unit() -> str:
-    """Get the current charging rate unit (W or A)."""
-    return SERVER_SETTINGS.get("charging_rate_unit", "A") # Default to A
+    return SERVER_SETTINGS.get("charging_rate_unit", "A")
 
 def get_current_charging_values(charge_point_id: str) -> tuple[float, float]:
-    """
-    Extract current power and current from the latest meter values for a charge point.
-
-    Args:
-        charge_point_id: The ID of the charge point
-
-    Returns:
-        tuple of (current_power_w, current_current_a) - returns (0.0, 0.0) if no data
-    """
     current_power_w = 0.0
     current_current_a = 0.0
 
-    # Find the active transaction for this charge point
     active_transaction = None
     for transaction_id, transaction_data in TRANSACTIONS.items():
         if (transaction_data.get("charge_point_id") == charge_point_id and
@@ -180,11 +150,9 @@ def get_current_charging_values(charge_point_id: str) -> tuple[float, float]:
     if not meter_values:
         return (current_power_w, current_current_a)
 
-    # Get the latest meter value entry
     latest_meter_value = meter_values[-1]
     sampled_values = latest_meter_value.sampledValue
 
-    # Extract power and current values
     for sv in sampled_values:
         measurand = sv.measurand or ""
         value = sv.value or "0"
@@ -195,7 +163,6 @@ def get_current_charging_values(charge_point_id: str) -> tuple[float, float]:
             if measurand == "Power.Active.Import":
                 current_power_w = numeric_value
             elif measurand == "Current.Import" and sv.phase == "L1-N":
-                # Use L1-N phase current as representative current
                 current_current_a = numeric_value
         except (ValueError, TypeError):
             continue
@@ -203,10 +170,6 @@ def get_current_charging_values(charge_point_id: str) -> tuple[float, float]:
     return (current_power_w, current_current_a)
 
 async def auto_detect_charging_rate_unit(ocpp_handler) -> None:
-    """
-    Auto-detect the charging rate unit supported by the charge point.
-    Reads ChargingScheduleAllowedChargingRateUnit from GetConfiguration response.
-    """
     import logging
     from app.messages import GetConfigurationRequest
 
@@ -215,10 +178,6 @@ async def auto_detect_charging_rate_unit(ocpp_handler) -> None:
     try:
         logger.info("🔍 Auto-detecting charging rate unit from charge point configuration...")
 
-        # Request all configuration keys since this charge point has GetConfigurationMaxKeys=1
-        # and may not handle specific key requests properly
-        # Use a longer timeout since configuration requests can be slow
-        # Add extra buffer time to avoid race conditions with timing precision
         response = await ocpp_handler.send_and_wait(
             "GetConfiguration",
             GetConfigurationRequest(key=[]),
@@ -226,9 +185,8 @@ async def auto_detect_charging_rate_unit(ocpp_handler) -> None:
         )
 
         if response:
-            # Try to process the configuration response
             if process_configuration_response(response):
-                return  # Successfully detected
+                return
 
         logger.info("ℹ️ ChargingScheduleAllowedChargingRateUnit not found, keeping default unit 'A'")
         SERVER_SETTINGS["auto_detection_completed"] = True
@@ -239,10 +197,6 @@ async def auto_detect_charging_rate_unit(ocpp_handler) -> None:
         SERVER_SETTINGS["auto_detection_completed"] = True
 
 def process_configuration_response(response_payload: dict) -> bool:
-    """
-    Process a GetConfiguration response and extract charging rate unit.
-    Returns True if detection was successful, False otherwise.
-    """
     import logging
     logger = logging.getLogger(__name__)
 
@@ -254,12 +208,11 @@ def process_configuration_response(response_payload: dict) -> bool:
         value = key_value.get("value")
 
         if key == "ChargingScheduleAllowedChargingRateUnit":
-            # Map charge point responses to our internal units
             unit_mapping = {
-                "Power": "W",  # Power means Watts
-                "Current": "A",  # Current means Amperes
-                "W": "W",      # Direct mapping
-                "A": "A"       # Direct mapping
+                "Power": "W",
+                "Current": "A",
+                "W": "W",
+                "A": "A"
             }
 
             mapped_unit = unit_mapping.get(value)

@@ -26,14 +26,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# RFID card detection system
 RFID_CARDS = {
-    "first_card": "Accepted",   # Always accepted
-    "second_card": "Invalid"    # Always invalid
+    "first_card": "Accepted",
+    "second_card": "Invalid"
 }
-VALID_ID_TAGS = ["50600020100021"]  # Real RFID card ID
+VALID_ID_TAGS = ["50600020100021"]
 
-# Track card presentation order during testing
 rfid_test_state = {
     "active": False,
     "cards_presented": [],
@@ -56,20 +54,15 @@ class OcppMessageHandlers:
         self.initial_status_received = ocpp_server_logic.initial_status_received
 
     async def handle_boot_notification(self, charge_point_id: str, payload: BootNotificationRequest) -> BootNotificationResponse:
-        logger.debug(f"🥾 BOOT NOTIFICATION HANDLER called for {charge_point_id}")
-
         if "BootNotification" in self.pending_triggered_message_events:
-            logger.debug("📍 Detected a triggered BootNotification message, setting event.")
             self.pending_triggered_message_events["BootNotification"].set()
 
         logger.info(f"🔌 Received BootNotification from {charge_point_id}: {payload}")
-        logger.debug(f"🔍 Vendor: {payload.chargePointVendor}, Model: {payload.chargePointModel}")
 
         if charge_point_id not in CHARGE_POINTS:
-            logger.debug(f"📋 Creating new entry for charge point {charge_point_id}")
             CHARGE_POINTS[charge_point_id] = {}
         else:
-            logger.debug(f"📋 Updating existing entry for charge point {charge_point_id}")
+            logger.debug(f"Updating existing entry for charge point {charge_point_id}")
         boot_time = datetime.now(timezone.utc).isoformat()
         CHARGE_POINTS[charge_point_id].update({
             "model": payload.chargePointModel,
@@ -81,7 +74,6 @@ class OcppMessageHandlers:
         if self.initial_status_received and not self.initial_status_received.is_set():
             self.initial_status_received.set()
 
-
         return BootNotificationResponse(
             status="Accepted",
             currentTime=datetime.now(timezone.utc).isoformat(),
@@ -91,12 +83,9 @@ class OcppMessageHandlers:
     async def handle_authorize(self, charge_point_id: str, payload: AuthorizeRequest) -> AuthorizeResponse:
         logger.info(f"📡 OCPP: Authorize request from {charge_point_id} for idTag: {payload.idTag}")
 
-        # Check if RFID test is active
         if rfid_test_state["active"]:
-            # During RFID test: First card = Accepted, subsequent cards = Invalid
             card_count = len(rfid_test_state["cards_presented"])
 
-            # Add this card to the presented list if not already there
             if payload.idTag not in rfid_test_state["cards_presented"]:
                 rfid_test_state["cards_presented"].append(payload.idTag)
                 card_count = len(rfid_test_state["cards_presented"])
@@ -109,16 +98,13 @@ class OcppMessageHandlers:
                     status = "Invalid"
                     logger.info(f"    🎫 RFID Test - Card #{card_count} (SUBSEQUENT): {payload.idTag} → Status: {status}")
             else:
-                # Card already presented, maintain same status
                 card_index = rfid_test_state["cards_presented"].index(payload.idTag) + 1
                 status = "Accepted" if card_index == 1 else "Invalid"
                 logger.info(f"    🎫 RFID Test - Repeat Card #{card_index}: {payload.idTag} → Status: {status}")
 
-        # Check predefined RFID cards
         elif payload.idTag in RFID_CARDS:
             status = RFID_CARDS[payload.idTag]
             logger.info(f"    🎫 RFID Card: {payload.idTag} → Status: {status}")
-        # Fallback to old system for backward compatibility
         elif payload.idTag in VALID_ID_TAGS:
             status = "Accepted"
             logger.info(f"    ✅ Legacy ID Tag: {payload.idTag} → Status: {status}")
@@ -128,7 +114,6 @@ class OcppMessageHandlers:
 
         logger.info(f"    ✅ Authorization {status} for idTag: {payload.idTag}")
 
-        # Store accepted RFID in charge point data for test detection
         if status == "Accepted":
             if charge_point_id in CHARGE_POINTS:
                 CHARGE_POINTS[charge_point_id]["accepted_rfid"] = payload.idTag
@@ -266,18 +251,15 @@ class OcppMessageHandlers:
         transaction_data = None
         transaction_key = None
 
-        # First try to find the transaction using the CP's transactionId as the key
         if payload.transactionId:
             transaction_data = TRANSACTIONS.get(payload.transactionId)
             transaction_key = payload.transactionId
             if transaction_data:
                 logger.debug(f"Found transaction {payload.transactionId} by its CP ID for StopTransaction.")
 
-        # If not found by transaction ID (or if transaction ID is empty), try to get current status
         if not transaction_data:
             if not payload.transactionId:
                 logger.info(f"StopTransaction received with empty transaction ID. Requesting status and meter values from {charge_point_id}...")
-                # Send TriggerMessage to get current status and meter values which might contain transaction ID
                 try:
                     from app.messages import TriggerMessageRequest, MessageTrigger
 
@@ -289,7 +271,6 @@ class OcppMessageHandlers:
                     )
                     logger.debug(f"TriggerMessage for StatusNotification response: {status_response}")
 
-                    # Then trigger MeterValues which often contains the correct transaction ID
                     meter_response = await self.ocpp_server_logic.handler.send_and_wait(
                         "TriggerMessage",
                         TriggerMessageRequest(requestedMessage=MessageTrigger.MeterValues, connectorId=1),
@@ -297,12 +278,10 @@ class OcppMessageHandlers:
                     )
                     logger.debug(f"TriggerMessage for MeterValues response: {meter_response}")
 
-                    # Give the wallbox a moment to send the updates
                     await asyncio.sleep(2)
                 except Exception as e:
                     logger.warning(f"Failed to trigger status/meter updates: {e}")
 
-            # Now search by charge point ID for any ongoing transaction
             for tid, tdata in TRANSACTIONS.items():
                 if tdata.get("charge_point_id") == charge_point_id and tdata.get("status") == "Ongoing":
                     transaction_data = tdata
@@ -311,39 +290,32 @@ class OcppMessageHandlers:
                     break
 
         if transaction_data and transaction_key:
-            # Update transaction with stop information
             transaction_data.update({
                 "stop_time": payload.timestamp,
                 "meter_stop": payload.meterStop,
                 "status": "Completed",
                 "reason": payload.reason
             })
-            # Ensure cp_transaction_id is set
             if transaction_data.get("cp_transaction_id") is None:
                 transaction_data["cp_transaction_id"] = payload.transactionId
 
-            # Remove the transaction from the TRANSACTIONS dictionary
             del TRANSACTIONS[transaction_key]
             logger.info(f"Transaction {transaction_key} removed from active transactions.")
 
-            # Clear the active transaction ID
             set_active_transaction_id(None)
-            await asyncio.sleep(0.1) # Add a small delay
+            await asyncio.sleep(0.1)
             return StopTransactionResponse()
         else:
             if not payload.transactionId:
                 logger.info(f"StopTransaction received with empty transaction ID from {charge_point_id}. No active transaction found. Acknowledging stop.")
             else:
                 logger.info(f"StopTransaction received for transaction (CP ID: {payload.transactionId}) not found in active records. Acknowledging stop.")
-            # Clear the active transaction ID even if not found, as the transaction is ending from CP's perspective
             set_active_transaction_id(None)
-            await asyncio.sleep(0.1) # Add a small delay
-            return StopTransactionResponse() # Still send a response even if not found internally
+            await asyncio.sleep(0.1)
+            return StopTransactionResponse()
 
     async def handle_meter_values(self, charge_point_id: str, payload: MeterValuesRequest) -> MeterValuesResponse:
-        # Check if this was a triggered message we were waiting for
         if "MeterValues" in self.pending_triggered_message_events:
-            # The context should be 'Trigger' if it was triggered.
             is_triggered = any(
                 sv.context == "Trigger" for mv in payload.meterValue for sv in mv.sampledValue
             )
@@ -352,52 +324,43 @@ class OcppMessageHandlers:
                 self.pending_triggered_message_events["MeterValues"].set()
 
         logger.debug(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId}")
-        
-        # Auto-detection will be handled by unsolicited GetConfiguration response processing
-        # to avoid blocking the message processing loop
 
         if payload.transactionId is not None:
             logger.debug(f"Extracting transaction ID from MeterValues.req: {payload.transactionId}")
-            # Find the transaction using the CP's transactionId as the key
             transaction_data = TRANSACTIONS.get(payload.transactionId)
 
             if transaction_data:
-                # Found by CP's transactionId
                 logger.debug(f"Found transaction {payload.transactionId} by its CP ID.")
-                
-                # Ensure cp_transaction_id is set (it should be, but for safety)
+
                 if transaction_data.get("cp_transaction_id") is None:
                     transaction_data["cp_transaction_id"] = payload.transactionId
-                
+
                 if "meter_values" not in transaction_data:
                     transaction_data["meter_values"] = []
                 transaction_data["meter_values"].extend(payload.meterValue)
                 set_active_transaction_id(payload.transactionId)
 
             else:
-                # Transaction not found by our assigned ID, wallbox is using its own transaction ID
-                # This is a protocol deviation but some wallboxes do this
                 logger.warning(f"⚠️  OCPP PROTOCOL VIOLATION: Wallbox using its own transaction ID {payload.transactionId}")
                 logger.warning(f"    Expected: Wallbox should use Central System assigned transaction ID")
                 logger.warning(f"    Actual: Wallbox ignoring assigned ID and using {payload.transactionId}")
 
-                # Check if we should enforce strict OCPP compliance
                 strict_compliance = SERVER_SETTINGS.get("enforce_ocpp_compliance", False)
                 if strict_compliance:
                     logger.error(f"❌ REJECTING: MeterValues with non-assigned transaction ID due to strict compliance mode")
-                    return MeterValuesResponse()  # Reject by not processing
+                    return MeterValuesResponse()
 
                 logger.info(f"🔧 ADAPTING: Processing MeterValues despite protocol violation (pragmatic mode)")
                 TRANSACTIONS[payload.transactionId] = {
                     "charge_point_id": charge_point_id,
-                    "id_tag": "unknown", # idTag is not available in MeterValues.req
+                    "id_tag": "unknown",
                     "start_time": payload.meterValue[0].timestamp if payload.meterValue else datetime.now(timezone.utc).isoformat(),
                     "meter_start": payload.meterValue[0].sampledValue[0].value if payload.meterValue and payload.meterValue[0].sampledValue else 0,
                     "connector_id": payload.connectorId,
                     "status": "Ongoing",
                     "remote_started": False,
-                    "cp_transaction_id": payload.transactionId, # Store the CP's transaction ID
-                    "cs_internal_transaction_id": None # CS internal ID not known from MeterValues
+                    "cp_transaction_id": payload.transactionId,
+                    "cs_internal_transaction_id": None
                 }
                 if "meter_values" not in TRANSACTIONS[payload.transactionId]:
                     TRANSACTIONS[payload.transactionId]["meter_values"] = []
@@ -418,9 +381,8 @@ class OcppMessageHandlers:
                 if sv.phase: details_parts.append(f"phase: {sv.phase}")
                 details = f" ({', '.join(details_parts)})" if details_parts else ""
 
-                log_message = f"    - {measurand}: {sv.value}{unit}{details}"
-                logger.debug(log_message)
-            
+                logger.debug(f"    - {measurand}: {sv.value}{unit}{details}")
+
         return MeterValuesResponse()
 
     async def handle_unknown_action(self, charge_point_id: str, payload: dict):
@@ -428,7 +390,6 @@ class OcppMessageHandlers:
         return None
 
     async def _trigger_get_configuration(self):
-        """Send GetConfiguration without waiting for response - fire and forget."""
         try:
             from app.ocpp_handler import create_ocpp_message
             import uuid
