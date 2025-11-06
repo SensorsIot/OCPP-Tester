@@ -2245,40 +2245,51 @@
     let tapToChargeTestActive = false;
     let initialTransactionIds = new Set();
     let initialAcceptedRfid = null;
+    let tapToChargeModalResolver = null;  // Store resolver for Promise
 
     async function openTapToChargeModal() {
-        // Check if wallbox is connected
-        try {
-            const r = await fetch('/api/discovered_charge_points');
-            const responseData = await r.json();
-
-            if (!responseData.active_charge_point_id) {
-                showStatusMessage("Please connect a wallbox first. No active wallbox detected.", true);
-                return;
-            }
-
-            // Enable RFID test mode and clear accepted_rfid to detect ANY card tap
+        // Return a Promise that resolves when the modal closes
+        return new Promise(async (resolve, reject) => {
             try {
-                const rfidResponse = await fetch('/api/enable_rfid_test_mode', { method: 'POST' });
-                if (rfidResponse.ok) {
-                    console.log('✅ B.3: RFID test mode enabled - any card will be accepted');
+                // Store the resolver so closeTapToChargeModal can call it
+                tapToChargeModalResolver = resolve;
+
+                // Check if wallbox is connected
+                const r = await fetch('/api/discovered_charge_points');
+                const responseData = await r.json();
+
+                if (!responseData.active_charge_point_id) {
+                    showStatusMessage("Please connect a wallbox first. No active wallbox detected.", true);
+                    tapToChargeModalResolver = null;
+                    reject(new Error("No active wallbox"));
+                    return;
                 }
+
+                // Enable RFID test mode and clear accepted_rfid to detect ANY card tap
+                try {
+                    const rfidResponse = await fetch('/api/enable_rfid_test_mode', { method: 'POST' });
+                    if (rfidResponse.ok) {
+                        console.log('✅ B.3: RFID test mode enabled - any card will be accepted');
+                    }
+                } catch (e) {
+                    console.error('Failed to enable RFID test mode:', e);
+                }
+
+                const modal = document.getElementById('tapToChargeModal');
+
+                // Reset modal state (wait for it to capture existing transactions)
+                await resetTapToChargeModal();
+
+                modal.style.display = 'block';
+
+                // Start the test automatically
+                startTapToChargeTest();
             } catch (e) {
-                console.error('Failed to enable RFID test mode:', e);
+                showStatusMessage(`Failed to check wallbox connection: ${e.message}`, true);
+                tapToChargeModalResolver = null;
+                reject(e);
             }
-
-            const modal = document.getElementById('tapToChargeModal');
-
-            // Reset modal state (wait for it to capture existing transactions)
-            await resetTapToChargeModal();
-
-            modal.style.display = 'block';
-
-            // Start the test automatically
-            startTapToChargeTest();
-        } catch (e) {
-            showStatusMessage(`Failed to check wallbox connection: ${e.message}`, true);
-        }
+        });
     }
 
     async function resetTapToChargeModal() {
@@ -2447,6 +2458,13 @@
         fetch('/api/disable_rfid_test_mode', { method: 'POST' })
             .then(() => console.log('🔒 B.3: RFID test mode disabled'))
             .catch(e => console.error('Failed to disable RFID test mode:', e));
+
+        // Resolve the Promise so B All Tests can continue
+        if (tapToChargeModalResolver) {
+            console.log('✅ Resolving B.3 modal promise - test complete');
+            tapToChargeModalResolver();
+            tapToChargeModalResolver = null;
+        }
     }
 
     // Close modal when clicking outside
