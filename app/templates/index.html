@@ -1350,47 +1350,87 @@
                         }
                     });
 
+                    const logFiles = [];
+
                     try {
-                        const response = await fetch('/api/test/b_all_tests', { method: 'POST' });
-                        const result = await response.json();
+                        // Run B.2
+                        showStatusMessage('Running B.2: Autonomous Start...');
+                        const b2Response = await fetch('/api/test/run_b2_autonomous_start_test', { method: 'POST' });
+                        const b2Result = await b2Response.json();
+                        if (b2Result.log_file) logFiles.push(b2Result.log_file);
+                        await new Promise(resolve => setTimeout(resolve, 2000));
 
-                        if (!response.ok) throw new Error(result.error || 'Unknown error');
+                        // Run B.3 with modal
+                        showStatusMessage('Running B.3: Tap to Charge... (RFID modal will appear)');
+                        await openTapToChargeModal();
+                        // Get the most recent B.3 log file after modal closes
+                        const b3LogResponse = await fetch('/api/test/get_latest_log?test_name=run_b3_tap_to_charge_test');
+                        const b3LogResult = await b3LogResponse.json();
+                        if (b3LogResult.log_file) logFiles.push(b3LogResult.log_file);
+                        await new Promise(resolve => setTimeout(resolve, 2000));
 
-                        // Show status message with log file location
-                        if (result.log_file) {
-                            showStatusMessage(`B All Tests completed! Log saved to: ${result.log_file}`);
+                        // Run B.4
+                        showStatusMessage('Running B.4: Anonymous Remote Start...');
+                        const b4Response = await fetch('/api/test/run_b4_anonymous_remote_start_test', { method: 'POST' });
+                        const b4Result = await b4Response.json();
+                        if (b4Result.log_file) logFiles.push(b4Result.log_file);
+                        await new Promise(resolve => setTimeout(resolve, 2000));
 
-                            // Show detailed results popup
-                            const b2Result = result.test_results.b2 || 'NOT RUN';
-                            const b3Result = result.test_results.b3 || 'NOT RUN';
-                            const b4Result = result.test_results.b4 || 'NOT RUN';
-                            const b5Result = result.test_results.b5 || 'NOT RUN';
+                        // Run B.5
+                        showStatusMessage('Running B.5: Plug and Charge...');
+                        const b5Response = await fetch('/api/test/run_b5_plug_and_charge_test', { method: 'POST' });
+                        const b5Result = await b5Response.json();
+                        if (b5Result.log_file) logFiles.push(b5Result.log_file);
+                        await new Promise(resolve => setTimeout(resolve, 1000));
 
-                            let message = `B All Tests Completed!\n\n`;
-                            message += `Results:\n`;
-                            message += `  B.2 Autonomous Start: ${b2Result}\n`;
-                            message += `  B.3 Tap to Charge: ${b3Result}\n`;
-                            message += `  B.4 Anonymous Remote Start: ${b4Result}\n`;
-                            message += `  B.5 Plug and Charge: ${b5Result}\n\n`;
-                            message += `Total: 4 tests completed\n\n`;
-                            message += `Log file: ${result.log_file}`;
+                        // Combine log files
+                        showStatusMessage('Combining log files...');
+                        const combineResponse = await fetch('/api/test/combine_logs', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                log_files: logFiles,
+                                test_name: 'b_all_tests'
+                            })
+                        });
+                        const combineResult = await combineResponse.json();
 
-                            alert(message);
+                        // Fetch updated results
+                        await fetchChargePoints();
 
-                            // Update button color based on results
-                            const allPassed = b2Result === 'PASSED' && b3Result === 'PASSED' &&
-                                            b4Result === 'PASSED' && b5Result === 'PASSED';
-                            allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
-                        } else {
-                            showStatusMessage(result.status || 'Tests completed!');
-                        }
+                        // Get test results from charge point data
+                        const cpResponse = await fetch('/api/charge_points');
+                        const cpData = await cpResponse.json();
+                        const activeCP = cpData.charge_points[backendActiveCpId];
+                        const testResults = activeCP?.test_results || {};
+
+                        const b2TestResult = testResults['run_b2_autonomous_start_test'] || 'NOT RUN';
+                        const b3TestResult = testResults['run_b3_tap_to_charge_test'] || 'NOT RUN';
+                        const b4TestResult = testResults['run_b4_anonymous_remote_start_test'] || 'NOT RUN';
+                        const b5TestResult = testResults['run_b5_plug_and_charge_test'] || 'NOT RUN';
+
+                        showStatusMessage(`B All Tests completed! Log saved to: ${combineResult.combined_log_file}`);
+
+                        let message = `B All Tests Completed!\n\n`;
+                        message += `Results:\n`;
+                        message += `  B.2 Autonomous Start: ${b2TestResult}\n`;
+                        message += `  B.3 Tap to Charge: ${b3TestResult}\n`;
+                        message += `  B.4 Anonymous Remote Start: ${b4TestResult}\n`;
+                        message += `  B.5 Plug and Charge: ${b5TestResult}\n\n`;
+                        message += `Total: 4 tests completed\n\n`;
+                        message += `Combined log file: ${combineResult.combined_log_file}`;
+
+                        alert(message);
+
+                        // Update button color based on results
+                        const allPassed = b2TestResult === 'PASSED' && b3TestResult === 'PASSED' &&
+                                        b4TestResult === 'PASSED' && b5TestResult === 'PASSED';
+                        allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
+
                     } catch (e) {
                         showStatusMessage(`Failed: ${e.message}`, true);
                         allTestsBtn.classList.add('btn-failure');
                     } finally {
-                        // Fetch test results to update UI
-                        await fetchChargePoints();
-
                         // Remove running state
                         allTestsBtn.classList.remove('btn-running', 'disabled');
 

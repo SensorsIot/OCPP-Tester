@@ -799,6 +799,92 @@ def run_b_all_tests():
         logging.exception("Error running B All Tests")
         return jsonify({"error": f"Failed to run B All Tests: {e}"}), 500
 
+@app.route("/api/test/get_latest_log", methods=["GET"])
+def get_latest_log():
+    """Get the latest log file for a specific test."""
+    import os
+    import glob
+
+    test_name = request.args.get('test_name')
+    if not test_name:
+        return jsonify({"error": "test_name parameter required"}), 400
+
+    active_charge_point_id = get_active_charge_point_id()
+    if not active_charge_point_id:
+        return jsonify({"error": "No active charge point"}), 400
+
+    log_dir = "/home/ocpp/logs"
+    pattern = f"{log_dir}/{test_name}_{active_charge_point_id}_*.log"
+
+    log_files = glob.glob(pattern)
+    if not log_files:
+        return jsonify({"error": f"No log files found for {test_name}"}), 404
+
+    # Get the most recent log file
+    latest_log = max(log_files, key=os.path.getmtime)
+
+    return jsonify({"log_file": latest_log})
+
+@app.route("/api/test/combine_logs", methods=["POST"])
+def combine_logs():
+    """Combine multiple log files into one comprehensive log."""
+    import os
+    from datetime import datetime
+
+    data = request.get_json(silent=True) or {}
+    log_files = data.get('log_files', [])
+    test_name = data.get('test_name', 'combined_tests')
+
+    if not log_files:
+        return jsonify({"error": "No log files provided"}), 400
+
+    active_charge_point_id = get_active_charge_point_id()
+    if not active_charge_point_id:
+        return jsonify({"error": "No active charge point"}), 400
+
+    # Create combined log file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = "/home/ocpp/logs"
+    os.makedirs(log_dir, exist_ok=True)
+    combined_log_file = os.path.join(log_dir, f"{test_name}_{active_charge_point_id}_{timestamp}.log")
+
+    try:
+        with open(combined_log_file, "w") as outfile:
+            outfile.write("=" * 80 + "\n")
+            outfile.write(f"OCPP 1.6J - {test_name.upper()} - Combined Comprehensive Log\n")
+            outfile.write("=" * 80 + "\n")
+            outfile.write(f"Charge Point ID: {active_charge_point_id}\n")
+            outfile.write(f"Combined Log Created: {timestamp}\n")
+            outfile.write(f"Number of Individual Tests: {len(log_files)}\n")
+            outfile.write("=" * 80 + "\n\n")
+
+            # Append each log file
+            for idx, log_file in enumerate(log_files, 1):
+                if not os.path.exists(log_file):
+                    outfile.write(f"WARNING: Log file not found: {log_file}\n\n")
+                    continue
+
+                outfile.write("\n" + "=" * 80 + "\n")
+                outfile.write(f"TEST #{idx}: {os.path.basename(log_file)}\n")
+                outfile.write("=" * 80 + "\n\n")
+
+                with open(log_file, "r") as infile:
+                    outfile.write(infile.read())
+
+                outfile.write("\n\n")
+
+        logging.info(f"✅ Combined log file created: {combined_log_file}")
+
+        return jsonify({
+            "status": "success",
+            "combined_log_file": combined_log_file,
+            "individual_logs": log_files
+        })
+
+    except Exception as e:
+        logging.exception("Error combining log files")
+        return jsonify({"error": f"Failed to combine logs: {e}"}), 500
+
 @app.route("/api/rfid_status")
 def get_rfid_status():
     """Get current RFID test status for real-time updates in the UI."""
