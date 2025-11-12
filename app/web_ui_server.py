@@ -12,19 +12,113 @@ from flask import Flask, jsonify, request, render_template
 
 from app.ocpp_server_logic import OcppServerLogic
 from app.ocpp_test_steps import OcppTestSteps
-from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, VERIFICATION_RESULTS, get_active_charge_point_id, set_active_charge_point_id, get_active_transaction_id, get_shutdown_event, set_shutdown_event, EV_SIMULATOR_BASE_URL, OCPP_PORT, get_current_charging_values
+from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, VERIFICATION_RESULTS, get_active_charge_point_id, set_active_charge_point_id, get_active_transaction_id, get_shutdown_event, set_shutdown_event, EV_SIMULATOR_BASE_URL, OCPP_PORT, get_current_charging_values, OCPP_MESSAGE_TIMEOUT
 from app.streamers import EVStatusStreamer
+
+# OCPP 1.6-J Command Descriptions
+async def ensure_status_known(ocpp_handler, charge_point_id: str) -> None:
+    """Get current status by triggering StatusNotification."""
+    from app.core import CHARGE_POINTS, OCPP_MESSAGE_TIMEOUT
+    from app.messages import TriggerMessageRequest
+    import asyncio
+
+    logging.info(f"Getting current status for {charge_point_id}...")
+    try:
+        trigger_response = await ocpp_handler.send_and_wait(
+            "TriggerMessage",
+            TriggerMessageRequest(requestedMessage="StatusNotification", connectorId=1),
+            timeout=OCPP_MESSAGE_TIMEOUT
+        )
+        if trigger_response and trigger_response.get("status") == "Accepted":
+            logging.info("StatusNotification trigger accepted, waiting for response...")
+            await asyncio.sleep(2)  # Wait for StatusNotification to arrive
+            cp_status = CHARGE_POINTS.get(charge_point_id, {}).get("status")
+            logging.info(f"Current status: {cp_status}")
+        else:
+            logging.warning(f"StatusNotification trigger failed: {trigger_response}")
+    except Exception as e:
+        logging.warning(f"Failed to trigger StatusNotification: {e}")
+
+def get_connection_status(charge_point_id: str) -> dict:
+    """Detect and return the current connection status for the charge point."""
+    from app.core import SERVER_SETTINGS, CHARGE_POINTS
+
+    # Check if EV simulator is available and in use
+    ev_sim_available = SERVER_SETTINGS.get("ev_simulator_available", False)
+    ev_sim_in_use = CHARGE_POINTS.get(charge_point_id, {}).get("use_simulator", False)
+
+    # Check if a real EV is connected (look at charge point status)
+    cp_status = CHARGE_POINTS.get(charge_point_id, {}).get("status")
+
+    # Determine connection type
+    if ev_sim_available and ev_sim_in_use:
+        connection_type = "EV Simulator Connected"
+        details = "Using simulated EV for testing"
+    elif cp_status in ["Preparing", "Charging", "SuspendedEV", "SuspendedEVSE", "Finishing"]:
+        connection_type = "Real EV Connected"
+        details = f"Real EV detected (Status: {cp_status})"
+    elif cp_status == "Available":
+        connection_type = "No EV Connected"
+        details = "Charge point available, waiting for EV"
+    elif cp_status == "Unavailable":
+        connection_type = "Charge Point Unavailable"
+        details = "Charge point is unavailable"
+    elif cp_status == "Faulted":
+        connection_type = "Charge Point Faulted"
+        details = "Charge point has a fault condition"
+    else:
+        connection_type = "Unknown"
+        details = f"Status: {cp_status or 'Not reported'}"
+
+    return {
+        "type": connection_type,
+        "details": details,
+        "status": cp_status or "Unknown"
+    }
+
+OCPP_COMMAND_DESCRIPTIONS = {
+    "BootNotification": "Charge point sends its identification and registration information to the server",
+    "Heartbeat": "Periodic signal from charge point to indicate it's online and operational",
+    "StatusNotification": "Charge point reports its current operational status and connector state",
+    "Authorize": "Request to verify if an ID tag (RFID card) is authorized to start charging",
+    "StartTransaction": "Notification that a charging transaction has started",
+    "StopTransaction": "Notification that a charging transaction has stopped",
+    "MeterValues": "Periodic energy consumption and power measurements from the charge point",
+    "DataTransfer": "Custom vendor-specific data exchange between charge point and server",
+
+    "GetConfiguration": "Request all or specific configuration parameters from the charge point",
+    "ChangeConfiguration": "Modify a specific configuration parameter on the charge point",
+    "GetCompositeSchedule": "Retrieve the calculated charging schedule currently active on the charge point",
+    "SetChargingProfile": "Send a charging profile (power/current limits over time) to the charge point",
+    "ClearChargingProfile": "Remove one or more charging profiles from the charge point",
+    "RemoteStartTransaction": "Command the charge point to start a charging session remotely",
+    "RemoteStopTransaction": "Command the charge point to stop an ongoing charging session",
+    "TriggerMessage": "Request the charge point to send a specific OCPP message immediately",
+    "Reset": "Command the charge point to reboot (soft or hard reset)",
+    "UnlockConnector": "Command the charge point to unlock a specific connector",
+    "GetDiagnostics": "Request the charge point to upload diagnostic log files",
+    "UpdateFirmware": "Command the charge point to download and install new firmware",
+    "ReserveNow": "Reserve a charge point for a specific ID tag",
+    "CancelReservation": "Cancel an existing reservation",
+    "ClearCache": "Clear the authorization cache (RFID list) on the charge point",
+    "SendLocalList": "Send or update the local authorization list (RFID cards) on the charge point",
+    "GetLocalListVersion": "Get the version number of the local authorization list",
+}
+
+def get_ocpp_description(action: str) -> str:
+    """Get the description for an OCPP command."""
+    return OCPP_COMMAND_DESCRIPTIONS.get(action, "OCPP command")
 
 app = Flask(__name__)
 app.loop: Optional[asyncio.AbstractEventLoop] = None
 app.ev_status_streamer: Optional[EVStatusStreamer] = None
 
 def attach_loop(loop: asyncio.AbstractEventLoop):
-    """Called from main.py to allow scheduling async test functions."""
+    """Called from ocpp-tester.py to allow scheduling async test functions."""
     app.loop = loop
 
 def attach_ev_status_streamer(streamer: EVStatusStreamer):
-    """Called from main.py to allow the API to broadcast EV status updates."""
+    """Called from ocpp-tester.py to allow the API to broadcast EV status updates."""
     app.ev_status_streamer = streamer
 
 @app.route("/")
@@ -339,15 +433,15 @@ def run_test_step(step_name):
 
     # Prepare log file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = "/home/ocpp/logs"
+    log_dir = "/home/ocpp-tester/logs"
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f"{step_name}_{charge_point_id}_{timestamp}.log")
 
     # Message log storage
     message_log = []
 
-    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str):
-        """Helper to log OCPP messages."""
+    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None):
+        """Helper to log OCPP messages with full OCPP message format."""
         if is_dataclass(payload):
             payload_dict = asdict(payload)
         elif isinstance(payload, dict):
@@ -355,32 +449,72 @@ def run_test_step(step_name):
         else:
             payload_dict = {"raw": str(payload)}
 
+        # Build full OCPP message array
+        if msg_type == "REQUEST":
+            # CALL format: [2, message_id, action, payload]
+            full_ocpp_message = [2, message_id, action, payload_dict]
+        elif msg_type == "RESPONSE":
+            # CALLRESULT format: [3, message_id, payload]
+            full_ocpp_message = [3, message_id, payload_dict]
+        elif msg_type == "RECEIVED":
+            # CALL format from charge point: [2, message_id, action, payload]
+            full_ocpp_message = [2, message_id, action, payload_dict]
+        else:
+            full_ocpp_message = None
+
         message_log.append({
             "timestamp": timestamp_str,
             "type": msg_type,
             "action": action,
-            "payload": payload_dict
+            "payload": payload_dict,
+            "message_id": message_id,
+            "full_ocpp_message": full_ocpp_message
         })
 
     # Wrap send_and_wait to capture messages
     original_send_and_wait = ocpp_handler.send_and_wait
+    import uuid
 
-    async def wrapped_send_and_wait(action: str, payload: Any, timeout: int = 30):
+    async def wrapped_send_and_wait(action: str, payload: Any, timeout: int = OCPP_MESSAGE_TIMEOUT):
         """Wrapper to log all OCPP requests and responses."""
+        # Generate message ID (same as what send_and_wait will generate)
+        message_id = str(uuid.uuid4())
+
         request_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        log_message("REQUEST", action, payload, request_timestamp)
+        log_message("REQUEST", action, payload, request_timestamp, message_id)
 
         response = await original_send_and_wait(action, payload, timeout)
 
         response_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        log_message("RESPONSE", action, response, response_timestamp)
+
+        # Check if timeout occurred (response is None)
+        if response is None:
+            log_message("RESPONSE_TIMEOUT", action, {"error": f"Timeout after {timeout}s - no response received from charge point"}, response_timestamp, message_id)
+        else:
+            log_message("RESPONSE", action, response, response_timestamp, message_id)
 
         return response
 
     async def run_test_with_lock():
         async with ocpp_handler.test_lock:
-            # Temporarily replace send_and_wait
+            # Set up wrappers BEFORE getting status so all messages are logged
             ocpp_handler.send_and_wait = wrapped_send_and_wait
+            ocpp_handler.incoming_message_logger = log_message
+
+            # Get current status (this will now be logged)
+            await ensure_status_known(ocpp_handler, charge_point_id)
+
+            # Log the detected status as a manual entry for summary
+            status_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            cp_status = CHARGE_POINTS.get(charge_point_id, {}).get("status", "Unknown")
+            message_log.append({
+                "timestamp": status_timestamp,
+                "type": "STATUS_DETECTED",
+                "action": "StatusNotification",
+                "payload": {"connectorId": 1, "status": cp_status},
+                "message_id": None,
+                "full_ocpp_message": None
+            })
 
             try:
                 # Pass params to the test method if it accepts them
@@ -390,8 +524,9 @@ def run_test_step(step_name):
                 else:
                     await method()
             finally:
-                # Restore original send_and_wait
+                # Restore original send_and_wait and clear logger
                 ocpp_handler.send_and_wait = original_send_and_wait
+                ocpp_handler.incoming_message_logger = None
 
     try:
         future = asyncio.run_coroutine_threadsafe(run_test_with_lock(), app.loop)
@@ -405,12 +540,62 @@ def run_test_step(step_name):
             f.write(f"Charge Point ID: {charge_point_id}\n")
             f.write(f"Test Start Time: {timestamp}\n")
             f.write(f"Server: OCPP Test Server\n")
+
+            # Add connection status detection using the status we captured at test start
+            # Find the STATUS_DETECTED entry in message_log
+            detected_status = None
+            for msg in message_log:
+                if msg['type'] == 'STATUS_DETECTED':
+                    detected_status = msg['payload']['status']
+                    break
+
+            # If we found detected status, use it; otherwise query current status
+            if detected_status:
+                from app.core import SERVER_SETTINGS
+                ev_sim_available = SERVER_SETTINGS.get("ev_simulator_available", False)
+                ev_sim_in_use = CHARGE_POINTS.get(charge_point_id, {}).get("use_simulator", False)
+
+                if ev_sim_available and ev_sim_in_use:
+                    connection_type = "EV Simulator Connected"
+                    details = "Using simulated EV for testing"
+                elif detected_status in ["Preparing", "Charging", "SuspendedEV", "SuspendedEVSE", "Finishing"]:
+                    connection_type = "Real EV Connected"
+                    details = f"Real EV detected (Status: {detected_status})"
+                elif detected_status == "Available":
+                    connection_type = "No EV Connected"
+                    details = "Charge point available, waiting for EV"
+                elif detected_status == "Unavailable":
+                    connection_type = "Charge Point Unavailable"
+                    details = "Charge point is unavailable"
+                elif detected_status == "Faulted":
+                    connection_type = "Charge Point Faulted"
+                    details = "Charge point has a fault condition"
+                else:
+                    connection_type = "Unknown"
+                    details = f"Status: {detected_status or 'Not reported'}"
+
+                f.write(f"Connection Type: {connection_type}\n")
+                f.write(f"Details: {details}\n")
+            else:
+                # Fallback to querying current status if no STATUS_DETECTED entry found
+                conn_status = get_connection_status(charge_point_id)
+                f.write(f"Connection Type: {conn_status['type']}\n")
+                f.write(f"Details: {conn_status['details']}\n")
+
             f.write("=" * 80 + "\n\n")
 
             import json
 
-            # For A.3 test, write GetConfiguration response at the top
-            if step_name == "run_a3_change_configuration_test":
+            # Write configuration summary at the top for ALL tests
+            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
+            if config_details:
+                f.write("CHARGE POINT CONFIGURATION SUMMARY\n")
+                f.write("=" * 80 + "\n")
+                f.write(json.dumps(config_details, indent=2))
+                f.write("\n" + "=" * 80 + "\n\n")
+
+            # For A.3 test, also write raw GetConfiguration response
+            if step_name == "run_a3_check_single_parameters":
                 # Find GetConfiguration response in message log
                 for msg in message_log:
                     if msg['action'] == 'GetConfiguration' and msg['type'] == 'RESPONSE':
@@ -422,36 +607,206 @@ def run_test_step(step_name):
 
             # Get test results
             test_results = CHARGE_POINTS[charge_point_id].get("test_results", {})
-            result = test_results.get(step_name, "NOT RUN")
+            result_data = test_results.get(step_name, "NOT RUN")
 
-            f.write("TEST RESULT\n")
-            f.write("-" * 80 + "\n")
-            f.write(f"{step_name}: {result}\n")
+            # Handle both old string format and new dict format
+            if isinstance(result_data, dict):
+                result = result_data.get("result", "NOT RUN")
+                reason = result_data.get("reason")
+            else:
+                result = result_data
+                reason = None
+
+            f.write(f"TEST RESULT: {result}\n")
+            if reason:
+                f.write(f"Reason: {reason}\n")
             f.write("-" * 80 + "\n\n")
-
-            # Write configuration details (from A.3) if available
-            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
-            if config_details:
-                f.write("CHARGE POINT CONFIGURATION (A.3 Result - Formatted Summary)\n")
-                f.write("-" * 80 + "\n")
-                f.write(json.dumps(config_details, indent=2))
-                f.write("\n" + "-" * 80 + "\n\n")
 
             # Write all OCPP messages
             f.write("OCPP MESSAGE LOG (All Messages)\n")
             f.write("=" * 80 + "\n\n")
 
+            # If no messages and test was skipped, add explanation
+            if not message_log and result == "SKIPPED":
+                f.write("ℹ️  TEST SKIPPED - No OCPP messages were sent\n")
+                f.write("=" * 80 + "\n\n")
+
+            # Build a map of message_id -> REQUEST for matching RESPONSE
+            request_map = {}
             for msg in message_log:
-                f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                if msg.get('type') == 'REQUEST':
+                    msg_id = msg.get('message_id')
+                    if msg_id:
+                        request_map[msg_id] = msg
+
+            for msg in message_log:
+                # Skip STATUS_DETECTED messages - don't log them
+                if msg['type'] == 'STATUS_DETECTED':
+                    continue
+
+                # For REQUEST: show action and description
+                # For RECEIVED: show action (message from charge point)
+                # For RESPONSE_TIMEOUT: show error message
+                # For RESPONSE: show which REQUEST it belongs to
+                if msg['type'] == 'REQUEST':
+                    # Add specific details for certain actions
+                    if msg['action'] == 'TriggerMessage' and 'requestedMessage' in msg['payload']:
+                        req_msg = msg['payload']['requestedMessage']
+                        f.write(f"[{msg['timestamp']}] {msg['type']}: Trigger {req_msg}\n")
+                    elif msg['action'] == 'ChangeConfiguration' and 'key' in msg['payload']:
+                        key_name = msg['payload']['key']
+                        f.write(f"[{msg['timestamp']}] {msg['type']}: {key_name}\n")
+                    else:
+                        f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                elif msg['type'] == 'RECEIVED':
+                    f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                elif msg['type'] == 'RESPONSE_TIMEOUT':
+                    f.write(f"[{msg['timestamp']}] ⏱️  TIMEOUT ERROR\n")
+                    f.write(f"ERROR: {msg['payload'].get('error', 'Timeout occurred')}\n")
+                elif msg['type'] == 'RESPONSE':
+                    # Show which REQUEST this RESPONSE belongs to
+                    msg_id = msg.get('message_id')
+                    if msg_id and msg_id in request_map:
+                        req_action = request_map[msg_id].get('action')
+                        req_payload = request_map[msg_id].get('payload', {})
+                        if req_action == 'TriggerMessage' and 'requestedMessage' in req_payload:
+                            req_msg = req_payload['requestedMessage']
+                            f.write(f"[{msg['timestamp']}] {msg['type']} to: Trigger {req_msg}\n")
+                        elif req_action == 'ChangeConfiguration' and 'key' in req_payload:
+                            key_name = req_payload['key']
+                            f.write(f"[{msg['timestamp']}] {msg['type']} to: {key_name}\n")
+                        else:
+                            f.write(f"[{msg['timestamp']}] {msg['type']} to: {req_action}\n")
+                    else:
+                        f.write(f"[{msg['timestamp']}] {msg['type']}\n")
+                else:
+                    f.write(f"[{msg['timestamp']}] {msg['type']}\n")
+
+                # Write message details
                 f.write("-" * 80 + "\n")
-                f.write(json.dumps(msg['payload'], indent=2))
+                # Write full OCPP message if available, otherwise just payload
+                if msg.get('full_ocpp_message'):
+                    f.write(json.dumps(msg['full_ocpp_message'], indent=2))
+                else:
+                    f.write(json.dumps(msg['payload'], indent=2))
                 f.write("\n" + "=" * 80 + "\n\n")
 
         logging.info(f"✅ {step_name} completed. Log written to: {log_file}")
 
+        # Create summary log file
+        summary_log_file = log_file.replace(".txt", "_summary.txt")
+        with open(summary_log_file, "w", encoding="utf-8") as f:
+            # Header
+            f.write("=" * 80 + "\n")
+            f.write(f"TEST SUMMARY: {step_name}\n")
+            f.write(f"Charge Point: {charge_point_id}\n")
+            f.write(f"Timestamp: {timestamp}\n")
+            f.write("=" * 80 + "\n\n")
+
+            # Configuration summary (always show for ALL B tests)
+            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
+
+            # Show configuration for all B tests (B.1 through B.8)
+            if config_details and step_name.startswith("run_b"):
+                f.write("CONFIGURATION SUMMARY\n")
+                f.write("-" * 80 + "\n")
+                for key, value in sorted(config_details.items()):
+                    f.write(f"{key}: {value}\n")
+                f.write("-" * 80 + "\n\n")
+
+            # Test result
+            test_results = CHARGE_POINTS[charge_point_id].get("test_results", {})
+            result_data = test_results.get(step_name, "NOT RUN")
+            if isinstance(result_data, dict):
+                result = result_data.get("result", "NOT RUN")
+                reason = result_data.get("reason")
+            else:
+                result = result_data
+                reason = None
+
+            f.write(f"TEST RESULT: {result}\n")
+            if reason:
+                f.write(f"Reason: {reason}\n")
+            f.write("-" * 80 + "\n\n")
+
+            # Key OCPP messages (full JSON format)
+            f.write("KEY OCPP MESSAGES\n")
+            f.write("=" * 80 + "\n\n")
+
+            # Write all messages with full JSON
+            import json
+
+            # Build a map to identify TriggerMessage responses (to skip them)
+            trigger_response_ids = set()
+            for msg in message_log:
+                if msg.get('type') == 'REQUEST' and msg.get('action') == 'TriggerMessage':
+                    msg_id = msg.get('message_id')
+                    if msg_id:
+                        trigger_response_ids.add(msg_id)
+
+            # Write messages in chronological order
+            for msg in message_log:
+                # Skip STATUS_DETECTED messages
+                if msg.get('type') == 'STATUS_DETECTED':
+                    continue
+
+                msg_type = msg.get('type', 'MESSAGE')
+                action = msg.get('action', 'Unknown')
+                timestamp = msg.get('timestamp', 'N/A')
+                msg_id = msg.get('message_id')
+
+                # Skip RESPONSE for TriggerMessage (the "Accepted" acknowledgment)
+                if msg_type == 'RESPONSE' and msg_id in trigger_response_ids:
+                    continue
+
+                # For B tests: filter out periodic Heartbeat and StatusNotification
+                if step_name.startswith("run_b"):
+                    if msg_type == 'RECEIVED' and action in ['Heartbeat', 'StatusNotification']:
+                        continue
+                    # Also filter TriggerMessage for StatusNotification
+                    if msg_type == 'REQUEST' and action == 'TriggerMessage':
+                        payload = msg.get('payload', {})
+                        if payload.get('requestedMessage') == 'StatusNotification':
+                            continue
+
+                # Write message header
+                if msg_type == 'REQUEST':
+                    payload = msg.get('payload', {})
+                    if action == 'TriggerMessage' and 'requestedMessage' in payload:
+                        req_msg = payload['requestedMessage']
+                        f.write(f"[{timestamp}] {msg_type}: Trigger {req_msg}\n")
+                    elif action == 'ChangeConfiguration' and 'key' in payload:
+                        key_name = payload['key']
+                        f.write(f"[{timestamp}] {msg_type}: {key_name}\n")
+                    else:
+                        f.write(f"[{timestamp}] {msg_type}: {action}\n")
+                elif msg_type == 'RECEIVED':
+                    f.write(f"[{timestamp}] {msg_type}: {action}\n")
+                elif msg_type == 'RESPONSE_TIMEOUT':
+                    f.write(f"[{timestamp}] ⏱️  TIMEOUT ERROR\n")
+                    f.write(f"ERROR: {msg['payload'].get('error', 'Timeout occurred')}\n")
+                elif msg_type == 'RESPONSE':
+                    f.write(f"[{timestamp}] {msg_type}\n")
+                else:
+                    f.write(f"[{timestamp}] {msg_type}\n")
+
+                # Write full JSON
+                f.write("-" * 80 + "\n")
+                if msg.get('full_ocpp_message'):
+                    f.write(json.dumps(msg['full_ocpp_message'], indent=2))
+                else:
+                    f.write(json.dumps(msg.get('payload', {}), indent=2))
+                f.write("\n" + "=" * 80 + "\n\n")
+
+            if not message_log:
+                f.write("No OCPP messages were exchanged during this test.\n\n")
+
+        logging.info(f"✅ Summary log written to: {summary_log_file}")
+
         return jsonify({
             "status": f"Test step '{step_name}' completed for {charge_point_id}.",
-            "log_file": log_file
+            "log_file": log_file,
+            "summary_log_file": summary_log_file
         })
 
     except concurrent.futures.TimeoutError:
@@ -489,7 +844,7 @@ def get_configuration():
         config_response = await ocpp_handler.send_and_wait(
             "GetConfiguration",
             GetConfigurationRequest(key=[]),
-            timeout=30
+            timeout=OCPP_MESSAGE_TIMEOUT
         )
 
         # Store configuration in CHARGE_POINTS for log file
@@ -552,15 +907,15 @@ def run_c_all_tests():
 
     # Prepare log file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = "/home/ocpp/logs"
+    log_dir = "/home/ocpp-tester/logs"
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f"c_all_tests_{charge_point_id}_{timestamp}.log")
 
     # Message log storage
     message_log = []
 
-    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str):
-        """Helper to log OCPP messages."""
+    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None):
+        """Helper to log OCPP messages with full OCPP message format."""
         # Convert dataclass to dict if needed
         if is_dataclass(payload):
             payload_dict = asdict(payload)
@@ -569,25 +924,49 @@ def run_c_all_tests():
         else:
             payload_dict = {"raw": str(payload)}
 
+        # Build full OCPP message array
+        if msg_type == "REQUEST":
+            # CALL format: [2, message_id, action, payload]
+            full_ocpp_message = [2, message_id, action, payload_dict]
+        elif msg_type == "RESPONSE":
+            # CALLRESULT format: [3, message_id, payload]
+            full_ocpp_message = [3, message_id, payload_dict]
+        elif msg_type == "RECEIVED":
+            # CALL format from charge point: [2, message_id, action, payload]
+            full_ocpp_message = [2, message_id, action, payload_dict]
+        else:
+            full_ocpp_message = None
+
         message_log.append({
             "timestamp": timestamp_str,
             "type": msg_type,
             "action": action,
-            "payload": payload_dict
+            "payload": payload_dict,
+            "message_id": message_id,
+            "full_ocpp_message": full_ocpp_message
         })
 
     # Wrap send_and_wait to capture messages
     original_send_and_wait = ocpp_handler.send_and_wait
+    import uuid
 
-    async def wrapped_send_and_wait(action: str, payload: Any, timeout: int = 30):
+    async def wrapped_send_and_wait(action: str, payload: Any, timeout: int = OCPP_MESSAGE_TIMEOUT):
         """Wrapper to log all OCPP requests and responses."""
+        # Generate message ID (same as what send_and_wait will generate)
+        message_id = str(uuid.uuid4())
+
         request_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        log_message("REQUEST", action, payload, request_timestamp)
+        log_message("REQUEST", action, payload, request_timestamp, message_id)
 
         response = await original_send_and_wait(action, payload, timeout)
 
         response_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        log_message("RESPONSE", action, response, response_timestamp)
+
+        # Check if timeout occurred (response is None)
+        if response is None:
+            log_message("RESPONSE_TIMEOUT", action, {"error": f"Timeout after {timeout}s - no response received from charge point"}, response_timestamp, message_id)
+        else:
+            log_message("RESPONSE", action, response, response_timestamp, message_id)
 
         return response
 
@@ -597,7 +976,22 @@ def run_c_all_tests():
         from app.messages import GetConfigurationRequest
 
         async with ocpp_handler.test_lock:
-            # Temporarily replace send_and_wait
+            # Get current status BEFORE wrapping (so TriggerMessage isn't logged)
+            await ensure_status_known(ocpp_handler, charge_point_id)
+
+            # Log the detected status as a manual entry
+            status_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            cp_status = CHARGE_POINTS.get(charge_point_id, {}).get("status", "Unknown")
+            message_log.append({
+                "timestamp": status_timestamp,
+                "type": "STATUS_DETECTED",
+                "action": "StatusNotification",
+                "payload": {"connectorId": 1, "status": cp_status},
+                "message_id": None,
+                "full_ocpp_message": None
+            })
+
+            # Now wrap send_and_wait for actual test messages
             ocpp_handler.send_and_wait = wrapped_send_and_wait
 
             try:
@@ -609,7 +1003,7 @@ def run_c_all_tests():
                 config_response = await ocpp_handler.send_and_wait(
                     "GetConfiguration",
                     GetConfigurationRequest(key=[]),
-                    timeout=30
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
 
                 # Store configuration in CHARGE_POINTS for log file
@@ -674,6 +1068,48 @@ def run_c_all_tests():
             f.write(f"Charge Point ID: {charge_point_id}\n")
             f.write(f"Test Start Time: {timestamp}\n")
             f.write(f"Server: OCPP Test Server\n")
+
+            # Add connection status detection using the status we captured at test start
+            # Find the STATUS_DETECTED entry in message_log
+            detected_status = None
+            for msg in message_log:
+                if msg['type'] == 'STATUS_DETECTED':
+                    detected_status = msg['payload']['status']
+                    break
+
+            # If we found detected status, use it; otherwise query current status
+            if detected_status:
+                from app.core import SERVER_SETTINGS
+                ev_sim_available = SERVER_SETTINGS.get("ev_simulator_available", False)
+                ev_sim_in_use = CHARGE_POINTS.get(charge_point_id, {}).get("use_simulator", False)
+
+                if ev_sim_available and ev_sim_in_use:
+                    connection_type = "EV Simulator Connected"
+                    details = "Using simulated EV for testing"
+                elif detected_status in ["Preparing", "Charging", "SuspendedEV", "SuspendedEVSE", "Finishing"]:
+                    connection_type = "Real EV Connected"
+                    details = f"Real EV detected (Status: {detected_status})"
+                elif detected_status == "Available":
+                    connection_type = "No EV Connected"
+                    details = "Charge point available, waiting for EV"
+                elif detected_status == "Unavailable":
+                    connection_type = "Charge Point Unavailable"
+                    details = "Charge point is unavailable"
+                elif detected_status == "Faulted":
+                    connection_type = "Charge Point Faulted"
+                    details = "Charge point has a fault condition"
+                else:
+                    connection_type = "Unknown"
+                    details = f"Status: {detected_status or 'Not reported'}"
+
+                f.write(f"Connection Type: {connection_type}\n")
+                f.write(f"Details: {details}\n")
+            else:
+                # Fallback to querying current status if no STATUS_DETECTED entry found
+                conn_status = get_connection_status(charge_point_id)
+                f.write(f"Connection Type: {conn_status['type']}\n")
+                f.write(f"Details: {conn_status['details']}\n")
+
             f.write("=" * 80 + "\n\n")
 
             import json
@@ -755,10 +1191,9 @@ def run_c_all_tests():
             c1_result = test_results.get("run_c1_set_charging_profile_test", "NOT RUN")
             c2_result = test_results.get("run_c2_tx_default_profile_test", "NOT RUN")
 
-            f.write("TEST RESULTS SUMMARY\n")
-            f.write("-" * 80 + "\n")
-            f.write(f"C.1 SetChargingProfile Test (4 iterations): {c1_result}\n")
-            f.write(f"C.2 TxDefaultProfile Test (4 iterations): {c2_result}\n")
+            f.write("TEST RESULTS\n")
+            f.write(f"C.1: {c1_result}\n")
+            f.write(f"C.2: {c2_result}\n")
             f.write("-" * 80 + "\n\n")
 
             # Get verification results if available
@@ -773,11 +1208,46 @@ def run_c_all_tests():
             f.write("OCPP MESSAGE LOG\n")
             f.write("=" * 80 + "\n\n")
 
+            # If no messages, add explanation (shouldn't happen for C tests, but handle it)
+            if not message_log:
+                f.write("ℹ️  No OCPP messages were sent during this test\n")
+                f.write("=" * 80 + "\n\n")
+
             import json
             for msg in message_log:
-                f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                # Skip STATUS_DETECTED messages - don't log them
+                if msg['type'] == 'STATUS_DETECTED':
+                    continue
+
+                # For REQUEST: show action and description
+                # For RECEIVED: show action (message from charge point)
+                # For RESPONSE_TIMEOUT: show error message
+                # For RESPONSE: only show timestamp and type
+                if msg['type'] == 'REQUEST':
+                    # Add specific details for certain actions
+                    if msg['action'] == 'TriggerMessage' and 'requestedMessage' in msg['payload']:
+                        req_msg = msg['payload']['requestedMessage']
+                        f.write(f"[{msg['timestamp']}] {msg['type']}: Trigger {req_msg}\n")
+                    elif msg['action'] == 'ChangeConfiguration' and 'key' in msg['payload']:
+                        key_name = msg['payload']['key']
+                        f.write(f"[{msg['timestamp']}] {msg['type']}: {key_name}\n")
+                    else:
+                        f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                elif msg['type'] == 'RECEIVED':
+                    f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                elif msg['type'] == 'RESPONSE_TIMEOUT':
+                    f.write(f"[{msg['timestamp']}] ⏱️  TIMEOUT ERROR\n")
+                    f.write(f"ERROR: {msg['payload'].get('error', 'Timeout occurred')}\n")
+                else:
+                    f.write(f"[{msg['timestamp']}] {msg['type']}\n")
+
+                # Write message details
                 f.write("-" * 80 + "\n")
-                f.write(json.dumps(msg['payload'], indent=2))
+                # Write full OCPP message if available, otherwise just payload
+                if msg.get('full_ocpp_message'):
+                    f.write(json.dumps(msg['full_ocpp_message'], indent=2))
+                else:
+                    f.write(json.dumps(msg['payload'], indent=2))
                 f.write("\n" + "=" * 80 + "\n\n")
 
         logging.info(f"✅ C.1 and C.2 Tests completed. Log written to: {log_file}")
@@ -800,7 +1270,7 @@ def run_c_all_tests():
 
 @app.route("/api/test/b_all_tests", methods=["POST"])
 def run_b_all_tests():
-    """B All Tests - Run B.2 through B.5 tests sequentially and write comprehensive log to file."""
+    """B All Tests - Run B.1 through B.3 tests sequentially and write comprehensive log to file."""
     import os
     from datetime import datetime
     from dataclasses import asdict, is_dataclass
@@ -812,7 +1282,7 @@ def run_b_all_tests():
 
     charge_point_id = active_charge_point_id
 
-    logging.info(f"API call to run B All Tests (B.2-B.5) for charge point '{charge_point_id}'")
+    logging.info(f"API call to run B All Tests (B.1-B.3) for charge point '{charge_point_id}'")
     if charge_point_id not in CHARGE_POINTS:
         return jsonify({"error": "Charge point not connected."}), 404
 
@@ -825,15 +1295,15 @@ def run_b_all_tests():
 
     # Prepare log file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = "/home/ocpp/logs"
+    log_dir = "/home/ocpp-tester/logs"
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f"b_all_tests_{charge_point_id}_{timestamp}.log")
 
     # Message log storage
     message_log = []
 
-    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str):
-        """Helper to log OCPP messages."""
+    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None):
+        """Helper to log OCPP messages with full OCPP message format."""
         # Convert dataclass to dict if needed
         if is_dataclass(payload):
             payload_dict = asdict(payload)
@@ -842,56 +1312,90 @@ def run_b_all_tests():
         else:
             payload_dict = {"raw": str(payload)}
 
+        # Build full OCPP message array
+        if msg_type == "REQUEST":
+            # CALL format: [2, message_id, action, payload]
+            full_ocpp_message = [2, message_id, action, payload_dict]
+        elif msg_type == "RESPONSE":
+            # CALLRESULT format: [3, message_id, payload]
+            full_ocpp_message = [3, message_id, payload_dict]
+        elif msg_type == "RECEIVED":
+            # CALL format from charge point: [2, message_id, action, payload]
+            full_ocpp_message = [2, message_id, action, payload_dict]
+        else:
+            full_ocpp_message = None
+
         message_log.append({
             "timestamp": timestamp_str,
             "type": msg_type,
             "action": action,
-            "payload": payload_dict
+            "payload": payload_dict,
+            "message_id": message_id,
+            "full_ocpp_message": full_ocpp_message
         })
 
     # Wrap send_and_wait to capture messages
     original_send_and_wait = ocpp_handler.send_and_wait
+    import uuid
 
-    async def wrapped_send_and_wait(action: str, payload: Any, timeout: int = 30):
+    async def wrapped_send_and_wait(action: str, payload: Any, timeout: int = OCPP_MESSAGE_TIMEOUT):
         """Wrapper to log all OCPP requests and responses."""
+        # Generate message ID (same as what send_and_wait will generate)
+        message_id = str(uuid.uuid4())
+
         request_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        log_message("REQUEST", action, payload, request_timestamp)
+        log_message("REQUEST", action, payload, request_timestamp, message_id)
 
         response = await original_send_and_wait(action, payload, timeout)
 
         response_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        log_message("RESPONSE", action, response, response_timestamp)
+
+        # Check if timeout occurred (response is None)
+        if response is None:
+            log_message("RESPONSE_TIMEOUT", action, {"error": f"Timeout after {timeout}s - no response received from charge point"}, response_timestamp, message_id)
+        else:
+            log_message("RESPONSE", action, response, response_timestamp, message_id)
 
         return response
 
     async def run_tests_with_logging():
         """Run B.2 through B.5 tests sequentially."""
         async with ocpp_handler.test_lock:
-            # Temporarily replace send_and_wait
+            # Get current status BEFORE wrapping (so TriggerMessage isn't logged)
+            await ensure_status_known(ocpp_handler, charge_point_id)
+
+            # Log the detected status as a manual entry
+            status_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            cp_status = CHARGE_POINTS.get(charge_point_id, {}).get("status", "Unknown")
+            message_log.append({
+                "timestamp": status_timestamp,
+                "type": "STATUS_DETECTED",
+                "action": "StatusNotification",
+                "payload": {"connectorId": 1, "status": cp_status},
+                "message_id": None,
+                "full_ocpp_message": None
+            })
+
+            # Now wrap send_and_wait for actual test messages
             ocpp_handler.send_and_wait = wrapped_send_and_wait
 
             try:
                 ocpp_logic = ocpp_handler.ocpp_logic
                 test_steps = ocpp_logic.test_steps
 
-                # Run B.2 - Autonomous Start
-                logging.info(f"📋 Starting B.2 Autonomous Start test...")
-                await test_steps.run_b2_autonomous_start_test()
+                # Run B.1 - RFID Public Charging
+                logging.info(f"📋 Starting B.1 RFID Public Charging test...")
+                await test_steps.run_b1_rfid_public_charging_test()
                 await asyncio.sleep(2)
 
-                # Run B.3 - Tap to Charge
-                logging.info(f"📋 Starting B.3 Tap to Charge test...")
-                await test_steps.run_b3_tap_to_charge_test()
+                # Run B.2 - Remote Smart Charging
+                logging.info(f"📋 Starting B.2 Remote Smart Charging test...")
+                await test_steps.run_b2_remote_smart_charging_test(params=None)
                 await asyncio.sleep(2)
 
-                # Run B.4 - Anonymous Remote Start
-                logging.info(f"📋 Starting B.4 Anonymous Remote Start test...")
-                await test_steps.run_b4_anonymous_remote_start_test(params=None)
-                await asyncio.sleep(2)
-
-                # Run B.5 - Plug and Charge
-                logging.info(f"📋 Starting B.5 Plug and Charge test...")
-                await test_steps.run_b5_plug_and_charge_test(params=None)
+                # Run B.3 - Offline Local Start
+                logging.info(f"📋 Starting B.3 Offline Local Start test...")
+                await test_steps.run_b3_offline_local_start_test(params=None)
                 await asyncio.sleep(2)
 
             finally:
@@ -911,21 +1415,60 @@ def run_b_all_tests():
             f.write(f"Charge Point ID: {charge_point_id}\n")
             f.write(f"Test Start Time: {timestamp}\n")
             f.write(f"Server: OCPP Test Server\n")
+
+            # Add connection status detection using the status we captured at test start
+            # Find the STATUS_DETECTED entry in message_log
+            detected_status = None
+            for msg in message_log:
+                if msg['type'] == 'STATUS_DETECTED':
+                    detected_status = msg['payload']['status']
+                    break
+
+            # If we found detected status, use it; otherwise query current status
+            if detected_status:
+                from app.core import SERVER_SETTINGS
+                ev_sim_available = SERVER_SETTINGS.get("ev_simulator_available", False)
+                ev_sim_in_use = CHARGE_POINTS.get(charge_point_id, {}).get("use_simulator", False)
+
+                if ev_sim_available and ev_sim_in_use:
+                    connection_type = "EV Simulator Connected"
+                    details = "Using simulated EV for testing"
+                elif detected_status in ["Preparing", "Charging", "SuspendedEV", "SuspendedEVSE", "Finishing"]:
+                    connection_type = "Real EV Connected"
+                    details = f"Real EV detected (Status: {detected_status})"
+                elif detected_status == "Available":
+                    connection_type = "No EV Connected"
+                    details = "Charge point available, waiting for EV"
+                elif detected_status == "Unavailable":
+                    connection_type = "Charge Point Unavailable"
+                    details = "Charge point is unavailable"
+                elif detected_status == "Faulted":
+                    connection_type = "Charge Point Faulted"
+                    details = "Charge point has a fault condition"
+                else:
+                    connection_type = "Unknown"
+                    details = f"Status: {detected_status or 'Not reported'}"
+
+                f.write(f"Connection Type: {connection_type}\n")
+                f.write(f"Details: {details}\n")
+            else:
+                # Fallback to querying current status if no STATUS_DETECTED entry found
+                conn_status = get_connection_status(charge_point_id)
+                f.write(f"Connection Type: {conn_status['type']}\n")
+                f.write(f"Details: {conn_status['details']}\n")
+
             f.write("=" * 80 + "\n\n")
 
             # Get test results
             test_results = CHARGE_POINTS[charge_point_id].get("test_results", {})
-            b2_result = test_results.get("run_b2_autonomous_start_test", "NOT RUN")
-            b3_result = test_results.get("run_b3_tap_to_charge_test", "NOT RUN")
-            b4_result = test_results.get("run_b4_anonymous_remote_start_test", "NOT RUN")
-            b5_result = test_results.get("run_b5_plug_and_charge_test", "NOT RUN")
+            b1_result = test_results.get("run_b1_rfid_public_charging_test", "NOT RUN")
+            b2_result = test_results.get("run_b2_remote_smart_charging_test", "NOT RUN")
+            b3_result = test_results.get("run_b3_offline_local_start_test", "NOT RUN")
 
-            f.write("TEST RESULTS SUMMARY\n")
-            f.write("-" * 80 + "\n")
-            f.write(f"B.2 Autonomous Start Test: {b2_result}\n")
-            f.write(f"B.3 Tap to Charge Test: {b3_result}\n")
-            f.write(f"B.4 Anonymous Remote Start Test: {b4_result}\n")
-            f.write(f"B.5 Plug and Charge Test: {b5_result}\n")
+            f.write("TEST RESULTS\n")
+            f.write(f"B.1: {b1_result}\n")
+            f.write(f"B.2: {b2_result}\n")
+            f.write(f"B.3: {b3_result}\n")
             f.write("-" * 80 + "\n\n")
 
             # Write configuration details (from A.3) if available
@@ -941,11 +1484,46 @@ def run_b_all_tests():
             f.write("OCPP MESSAGE LOG\n")
             f.write("=" * 80 + "\n\n")
 
+            # If no messages, add explanation (shouldn't happen for B tests, but handle it)
+            if not message_log:
+                f.write("ℹ️  No OCPP messages were sent during this test\n")
+                f.write("=" * 80 + "\n\n")
+
             import json
             for msg in message_log:
-                f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                # Skip STATUS_DETECTED messages - don't log them
+                if msg['type'] == 'STATUS_DETECTED':
+                    continue
+
+                # For REQUEST: show action and description
+                # For RECEIVED: show action (message from charge point)
+                # For RESPONSE_TIMEOUT: show error message
+                # For RESPONSE: only show timestamp and type
+                if msg['type'] == 'REQUEST':
+                    # Add specific details for certain actions
+                    if msg['action'] == 'TriggerMessage' and 'requestedMessage' in msg['payload']:
+                        req_msg = msg['payload']['requestedMessage']
+                        f.write(f"[{msg['timestamp']}] {msg['type']}: Trigger {req_msg}\n")
+                    elif msg['action'] == 'ChangeConfiguration' and 'key' in msg['payload']:
+                        key_name = msg['payload']['key']
+                        f.write(f"[{msg['timestamp']}] {msg['type']}: {key_name}\n")
+                    else:
+                        f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                elif msg['type'] == 'RECEIVED':
+                    f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
+                elif msg['type'] == 'RESPONSE_TIMEOUT':
+                    f.write(f"[{msg['timestamp']}] ⏱️  TIMEOUT ERROR\n")
+                    f.write(f"ERROR: {msg['payload'].get('error', 'Timeout occurred')}\n")
+                else:
+                    f.write(f"[{msg['timestamp']}] {msg['type']}\n")
+
+                # Write message details
                 f.write("-" * 80 + "\n")
-                f.write(json.dumps(msg['payload'], indent=2))
+                # Write full OCPP message if available, otherwise just payload
+                if msg.get('full_ocpp_message'):
+                    f.write(json.dumps(msg['full_ocpp_message'], indent=2))
+                else:
+                    f.write(json.dumps(msg['payload'], indent=2))
                 f.write("\n" + "=" * 80 + "\n\n")
 
         logging.info(f"✅ B All Tests completed. Log written to: {log_file}")
@@ -982,7 +1560,7 @@ def get_latest_log():
     if not active_charge_point_id:
         return jsonify({"error": "No active charge point"}), 400
 
-    log_dir = "/home/ocpp/logs"
+    log_dir = "/home/ocpp-tester/logs"
     pattern = f"{log_dir}/{test_name}_{active_charge_point_id}_*.log"
 
     log_files = glob.glob(pattern)
@@ -1013,7 +1591,7 @@ def combine_logs():
 
     # Create combined log file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = "/home/ocpp/logs"
+    log_dir = "/home/ocpp-tester/logs"
     os.makedirs(log_dir, exist_ok=True)
     combined_log_file = os.path.join(log_dir, f"{test_name}_{active_charge_point_id}_{timestamp}.log")
 

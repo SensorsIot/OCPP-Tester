@@ -7,7 +7,7 @@ from dataclasses import asdict
 
 import aiohttp
 
-from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, EV_SIMULATOR_BASE_URL, get_active_transaction_id, set_active_transaction_id, get_charging_value, get_charging_rate_unit
+from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, EV_SIMULATOR_BASE_URL, get_active_transaction_id, set_active_transaction_id, get_charging_value, get_charging_rate_unit, OCPP_MESSAGE_TIMEOUT
 from app.messages import (
     BootNotificationRequest, TriggerMessageRequest, GetConfigurationRequest,
     ChangeConfigurationRequest, RemoteStartTransactionRequest, RemoteStopTransactionRequest,
@@ -55,7 +55,7 @@ class OcppTestSteps:
         success = await self.handler.send_and_wait(
             "TriggerMessage",
             TriggerMessageRequest(requestedMessage="BootNotification"),
-            timeout=30
+            timeout=OCPP_MESSAGE_TIMEOUT
         )
         self._check_cancellation()
         if success and success.get("status") == "Accepted":
@@ -68,30 +68,84 @@ class OcppTestSteps:
 
         logger.info(f"--- Step A.1 for {self.charge_point_id} complete. ---")
 
-    async def run_a2_get_configuration_test(self):
-        """A.2: Get All Configuration - Fetches and displays all configuration settings from the charge point using empty key array."""
+    async def run_a2_get_all_parameters(self):
+        """A.2: Get all parameters - Fetches and displays all configuration settings from the charge point."""
         logger.info(f"--- Step A.2: Running GetConfiguration test for {self.charge_point_id} ---")
-        step_name = "run_a2_get_configuration_test"
+        step_name = "run_a2_get_all_parameters"
         self._check_cancellation()
-        logger.info("  Requesting all configuration keys from charge point...")
-        response = await self.handler.send_and_wait(
-            "GetConfiguration",
-            GetConfigurationRequest(key=[]),
-            timeout=30
-        )
-        self._check_cancellation()
-        if response and response.get("configurationKey"):
-            config_keys = response["configurationKey"]
-            max_keys = 30
 
-            if len(config_keys) >= max_keys:
-                logger.info(f"    ⚠️ Received {len(config_keys)} configuration keys (may be limited by GetConfigurationMaxKeys={max_keys})")
-                logger.info("    📝 Note: There might be additional configuration keys not shown")
-            else:
-                logger.info(f"    ✅ Received {len(config_keys)} configuration keys")
+        # List of standard OCPP 1.6-J keys to query
+        ocpp_standard_keys = [
+            "AuthorizeRemoteTxRequests",
+            "ClockAlignedDataInterval",
+            "ConnectionTimeOut",
+            "ConnectorPhaseRotation",
+            "GetConfigurationMaxKeys",
+            "HeartbeatInterval",
+            "LocalAuthorizeOffline",
+            "LocalPreAuthorize",
+            "MessageTimeout",
+            "MeterValuesAlignedData",
+            "MeterValuesSampledData",
+            "MeterValueSampleInterval",
+            "NumberOfConnectors",
+            "ResetRetries",
+            "StopTransactionOnEVSideDisconnect",
+            "StopTransactionOnInvalidId",
+            "StopTxnAlignedData",
+            "StopTxnSampledData",
+            "SupportedFeatureProfiles",
+            "TransactionMessageAttempts",
+            "TransactionMessageRetryInterval",
+            "UnlockConnectorOnEVSideDisconnect",
+            "WebSocketPingInterval",
+            "LocalAuthListEnabled",
+            "LocalAuthListMaxLength",
+            "SendLocalListMaxLength",
+            "ChargeProfileMaxStackLevel",
+            "ChargingScheduleAllowedChargingRateUnit",
+            "ChargingScheduleMaxPeriods",
+            "ConnectorSwitch3to1PhaseSupported",
+            "MaxChargingProfilesInstalled",
+            "OCPPCommCtrlrMessageAttemptIntervalBoo",
+            "TxCtrlrTxStartPoint",
+            "FreeChargeMode"
+        ]
 
+        logger.info(f"  Requesting {len(ocpp_standard_keys)} configuration keys one at a time...")
+        logger.info("  (Workaround: Some charge points cannot handle empty key array)")
+
+        config_keys = []
+        success_count = 0
+
+        # Request keys one at a time to work around charge point limitations
+        for idx, key in enumerate(ocpp_standard_keys, 1):
+            self._check_cancellation()
+
+            logger.debug(f"  [{idx}/{len(ocpp_standard_keys)}] Requesting key: {key}")
+
+            try:
+                response = await self.handler.send_and_wait(
+                    "GetConfiguration",
+                    GetConfigurationRequest(key=[key]),
+                    timeout=OCPP_MESSAGE_TIMEOUT
+                )
+
+                if response and response.get("configurationKey"):
+                    config_item = response["configurationKey"][0]
+                    config_keys.append(config_item)
+                    success_count += 1
+
+                # Small delay between requests
+                await asyncio.sleep(0.1)
+
+            except Exception as e:
+                logger.warning(f"    Error requesting {key}: {e}")
+
+        if success_count > 0:
+            logger.info(f"    ✅ Received {success_count}/{len(ocpp_standard_keys)} configuration keys")
             self._set_test_result(step_name, "PASSED")
-            
+
             logger.info("--- Charge Point Configuration ---")
             for key_value in config_keys:
                 key = key_value.get("key")
@@ -105,34 +159,16 @@ class OcppTestSteps:
             logger.info("-------------------------------------")
 
             await self._display_wallbox_capabilities()
-
-        elif response and response.get("unknownKey"):
-            logger.warning("Charge point reported unknown keys. This might indicate a partial success.")
-            self._set_test_result(step_name, "PASSED")
-
-            logger.info("--- Charge Point Configuration (Partial) ---")
-            if response.get("configurationKey"):
-                for key_value in response["configurationKey"]:
-                    key = key_value.get("key")
-                    readonly = key_value.get("readonly")
-                    value = key_value.get("value")
-                    logger.info(f"{key} (readonly: {readonly}): {value}")
-            logger.info("Unknown keys reported by charge point:")
-            for key in response["unknownKey"]:
-                logger.info(f"- {key}")
-            logger.info("------------------------------------------")
-
-            await self._display_wallbox_capabilities()
         else:
             logger.error("    ❌ No configuration keys received from charge point")
             self._set_test_result(step_name, "FAILED")
 
         logger.info(f"--- Step A.2 for {self.charge_point_id} complete. ---")
 
-    async def run_a3_change_configuration_test(self):
-        """A.3: Get OCPP Standard Keys - Retrieves all OCPP 1.6-J standard configuration parameters by explicitly requesting each key."""
+    async def run_a3_check_single_parameters(self):
+        """A.3: Check single Parameters - Retrieves all OCPP 1.6-J standard configuration parameters by explicitly requesting each key."""
         logger.info(f"--- Step A.3: Running GetConfiguration test for {self.charge_point_id} ---")
-        step_name = "run_a3_change_configuration_test"
+        step_name = "run_a3_check_single_parameters"
         self._check_cancellation()
 
         ocpp_standard_keys = [
@@ -177,38 +213,74 @@ class OcppTestSteps:
 
         results = {}
 
-        logger.info("  Requesting all configuration keys...")
-        self._check_cancellation()
+        logger.info(f"  Sending {len(ocpp_standard_keys)} GetConfiguration requests with sliding window (max 5 concurrent)...")
+        logger.info("  (Optimized: Keep 5 requests in flight, send next one as soon as one completes)")
 
-        response = await self.handler.send_and_wait(
-            "GetConfiguration",
-            GetConfigurationRequest(key=ocpp_standard_keys),
-            timeout=30
-        )
+        # Helper function to request a single key
+        async def request_key(key: str):
+            try:
+                response = await self.handler.send_and_wait(
+                    "GetConfiguration",
+                    GetConfigurationRequest(key=[key]),
+                    timeout=5  # 5 second timeout per request
+                )
 
-        self._check_cancellation()
+                if response:
+                    if response.get("configurationKey"):
+                        config_item = response["configurationKey"][0]
+                        value = config_item.get("value", "")
+                        readonly = config_item.get("readonly", False)
 
-        if response:
-            if response.get("configurationKey"):
-                for config_item in response["configurationKey"]:
-                    key = config_item.get("key", "")
-                    value = config_item.get("value", "")
-                    readonly = config_item.get("readonly", False)
+                        if value:
+                            display_value = value if len(value) <= 100 else f"{value[:97]}..."
+                            result_value = f"{display_value} (RO)" if readonly else display_value
+                            logger.info(f"    ✅ {key}: {display_value}" + (" (RO)" if readonly else ""))
+                            return (key, result_value)
+                        else:
+                            result_value = "No value" + (" (RO)" if readonly else "")
+                            logger.info(f"    ⚠️  {key}: No value" + (" (RO)" if readonly else ""))
+                            return (key, result_value)
 
-                    if value:
-                        display_value = value if len(value) <= 100 else f"{value[:97]}..."
-                        results[key] = f"{display_value} (RO)" if readonly else display_value
+                    elif response.get("unknownKey"):
+                        logger.info(f"    ❌ {key}: Not Supported")
+                        return (key, "N/A (Not Supported)")
                     else:
-                        results[key] = "No value" + (" (RO)" if readonly else "")
+                        logger.info(f"    ❌ {key}: N/A")
+                        return (key, "N/A")
+                else:
+                    logger.warning(f"    ⏱️  {key}: No response")
+                    return (key, "NO_RESPONSE")
 
-            if response.get("unknownKey"):
-                for key in response["unknownKey"]:
-                    results[key] = "N/A (Not Supported)"
-                    logger.info(f"    ❌ {key}: Not Supported")
-        else:
-            logger.error("    No response received from charge point")
-            for key in ocpp_standard_keys:
-                results[key] = "NO_RESPONSE"
+            except Exception as e:
+                logger.error(f"    ❌ {key}: Error - {e}")
+                return (key, f"ERROR: {str(e)}")
+
+        # Sliding window approach: maintain exactly 5 concurrent requests
+        MAX_CONCURRENT = 5
+        pending_tasks = set()
+        key_index = 0
+
+        # Start initial batch of 5 requests
+        while key_index < len(ocpp_standard_keys) and len(pending_tasks) < MAX_CONCURRENT:
+            task = asyncio.create_task(request_key(ocpp_standard_keys[key_index]))
+            pending_tasks.add(task)
+            key_index += 1
+
+        # Process requests: as soon as one completes, start the next one
+        while pending_tasks:
+            # Wait for at least one task to complete
+            done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
+
+            # Collect results from completed tasks
+            for task in done:
+                key, value = await task
+                results[key] = value
+
+            # Start new tasks to maintain MAX_CONCURRENT in flight
+            while key_index < len(ocpp_standard_keys) and len(pending_tasks) < MAX_CONCURRENT:
+                task = asyncio.create_task(request_key(ocpp_standard_keys[key_index]))
+                pending_tasks.add(task)
+                key_index += 1
 
         for key in ocpp_standard_keys:
             if key not in results:
@@ -245,11 +317,12 @@ class OcppTestSteps:
 
         logger.info("--------------------\n")
 
-        # Test passes if we got any response
-        if response and response.get("configurationKey"):
+        # Test passes if we got any successful responses (not N/A or NO_RESPONSE)
+        successful_results = [v for v in results.values() if "N/A" not in v and "NO_RESPONSE" not in v and "ERROR" not in v]
+        if successful_results:
             self._set_test_result(step_name, "PASSED")
         else:
-            self._set_test_result(step_name, "FAILED")
+            self._set_test_result(step_name, "FAILED", "No successful responses received")
 
         logger.info(f"--- Step A.3 for {self.charge_point_id} complete. ---")
 
@@ -260,7 +333,11 @@ class OcppTestSteps:
         self._check_cancellation()
         if not SERVER_SETTINGS.get("ev_simulator_available"):
             logger.warning("Skipping test: EV simulator is not in use.")
-            self._set_test_result(step_name, "SKIPPED")
+            self._set_test_result(
+                step_name,
+                "SKIPPED",
+                "Test requires EV simulator. Connect and enable the EV simulator to run this test."
+            )
             logger.info(f"--- Step A.4 for {self.charge_point_id} complete. ---")
             return
 
@@ -280,7 +357,7 @@ class OcppTestSteps:
                 trigger_response = await self.handler.send_and_wait(
                     "TriggerMessage",
                     TriggerMessageRequest(requestedMessage="StatusNotification", connectorId=1),
-                    timeout=10
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 if trigger_response and trigger_response.get("status") == "Accepted":
                     logger.info("StatusNotification trigger accepted, waiting for response...")
@@ -331,7 +408,7 @@ class OcppTestSteps:
         start_response = await self.handler.send_and_wait(
             "RemoteStartTransaction",
             RemoteStartTransactionRequest(idTag=id_tag, connectorId=1),
-            timeout=30
+            timeout=OCPP_MESSAGE_TIMEOUT
         )
         self._check_cancellation()
 
@@ -423,7 +500,7 @@ class OcppTestSteps:
                 stop_response = await self.handler.send_and_wait(
                     "RemoteStopTransaction",
                     RemoteStopTransactionRequest(transactionId=wallbox_tx_id),
-                    timeout=30
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 self._check_cancellation()
                 if stop_response and stop_response.get("status") == "Accepted":
@@ -473,13 +550,14 @@ class OcppTestSteps:
         logger.info(f"--- Step A.5: Testing all TriggerMessages for {self.charge_point_id} ---")
         step_name = "run_a5_trigger_all_messages_test"
         self._check_cancellation()
+
         # Fetch SupportedFeatureProfiles if not already available
         if "features" not in CHARGE_POINTS.get(self.charge_point_id, {}):
             logger.info("Fetching SupportedFeatureProfiles for TriggerMessage test...")
             response = await self.handler.send_and_wait(
                 "GetConfiguration",
                 GetConfigurationRequest(key=["SupportedFeatureProfiles"]),
-                timeout=30
+                timeout=OCPP_MESSAGE_TIMEOUT
             )
             self._check_cancellation()
             if response and response.get("configurationKey"):
@@ -500,48 +578,71 @@ class OcppTestSteps:
             self._set_test_result(step_name, "SKIPPED")
             logger.info(f"--- Step A.5 for {self.charge_point_id} complete. ---")
             return
-        
+
+        # Define messages to trigger with their parameters
         triggered_messages = {
+            "StatusNotification": {"connectorId": 1},
             "BootNotification": {},
             "DiagnosticsStatusNotification": {},
             "FirmwareStatusNotification": {},
             "Heartbeat": {},
             "MeterValues": {"connectorId": 1},
-            "StatusNotification": {"connectorId": 1}
         }
-        
+
         results = {}
-        
-        for message, params in triggered_messages.items():
-            self._check_cancellation()
-            logger.info(f"--- Triggering {message} ---")
-            
-            payload = TriggerMessageRequest(requestedMessage=message, **params)
 
-            trigger_ok = await self.handler.send_and_wait(
-                "TriggerMessage",
-                payload,
-                timeout=15
-            )
+        # Loop through each message type
+        for message_type, params in triggered_messages.items():
             self._check_cancellation()
-            
-            if trigger_ok and trigger_ok.get("status") == "Accepted":
-                logger.info(f"SUCCESS: The charge point acknowledged the TriggerMessage request for {message}.")
-                results[message] = "PASSED"
-            else:
-                logger.error(f"FAILURE: The charge point did not acknowledge the TriggerMessage request for {message}.")
-                results[message] = "FAILED"
+            logger.info(f"--- Triggering {message_type} ---")
 
+            # Step 1: Create event to wait for the triggered message
+            message_event = asyncio.Event()
+            self.pending_triggered_message_events[message_type] = message_event
+
+            try:
+                # Step 2: Send TriggerMessage request
+                payload = TriggerMessageRequest(requestedMessage=message_type, **params)
+                trigger_response = await self.handler.send_and_wait(
+                    "TriggerMessage",
+                    payload,
+                    timeout=15
+                )
+                self._check_cancellation()
+
+                # Step 3: Check if trigger was accepted
+                if not trigger_response or trigger_response.get("status") != "Accepted":
+                    status = trigger_response.get("status", "NO_RESPONSE") if trigger_response else "NO_RESPONSE"
+                    logger.error(f"FAILURE: TriggerMessage for {message_type} not accepted. Status: {status}")
+                    results[message_type] = "FAILED"
+                    continue
+
+                logger.info(f"✓ TriggerMessage for {message_type} accepted. Waiting for the message...")
+
+                # Step 4: Wait for the actual message to arrive
+                try:
+                    await asyncio.wait_for(message_event.wait(), timeout=10)
+                    self._check_cancellation()
+                    logger.info(f"SUCCESS: Received triggered {message_type} from charge point")
+                    results[message_type] = "PASSED"
+                except asyncio.TimeoutError:
+                    logger.error(f"FAILURE: Timeout waiting for triggered {message_type}")
+                    results[message_type] = "FAILED"
+
+            finally:
+                # Clean up the event
+                self.pending_triggered_message_events.pop(message_type, None)
+
+        # Summary
         logger.info("--- Test Summary ---")
-        for key, result in results.items():
+        for message_type, result in results.items():
             if result == "PASSED":
-                logger.info(f"  \033[92m{key}: {result}\033[0m")
+                logger.info(f"  \033[92m{message_type}: {result}\033[0m")
             else:
-                logger.error(f"  \033[91m{key}: {result}\033[0m")
+                logger.error(f"  \033[91m{message_type}: {result}\033[0m")
         logger.info("--------------------")
 
         # Only pass if the three essential runtime messages pass
-        # (BootNotification, DiagnosticsStatusNotification, and FirmwareStatusNotification are optional)
         essential_messages = ["Heartbeat", "MeterValues", "StatusNotification"]
         if all(results.get(msg) == "PASSED" for msg in essential_messages):
             logger.info(f"✅ All essential runtime messages (Heartbeat, MeterValues, StatusNotification) passed")
@@ -550,7 +651,7 @@ class OcppTestSteps:
             failed_essential = [msg for msg in essential_messages if results.get(msg) != "PASSED"]
             logger.error(f"❌ Essential runtime messages failed: {', '.join(failed_essential)}")
             self._set_test_result(step_name, "FAILED")
-            
+
         logger.info(f"--- Step A.5 for {self.charge_point_id} complete. ---")
 
     async def run_a6_status_and_meter_value_acquisition(self):
@@ -566,7 +667,7 @@ class OcppTestSteps:
         trigger_response = await self.handler.send_and_wait(
             "TriggerMessage",
             TriggerMessageRequest(requestedMessage="MeterValues", connectorId=1),
-            timeout=30
+            timeout=OCPP_MESSAGE_TIMEOUT
         )
         self._check_cancellation()
         if not trigger_response or trigger_response.get("status") != "Accepted":
@@ -606,7 +707,7 @@ class OcppTestSteps:
         cache_cleared = False
 
         try:
-            response = await self.handler.send_and_wait("ClearCache", clear_cache_request, timeout=10)
+            response = await self.handler.send_and_wait("ClearCache", clear_cache_request, timeout=OCPP_MESSAGE_TIMEOUT)
 
             if response is None:
                 logger.warning("⚠️  ClearCache request timed out")
@@ -662,7 +763,7 @@ class OcppTestSteps:
             config_request = ChangeConfigurationRequest(key=key, value=value)
 
             try:
-                response = await self.handler.send_and_wait("ChangeConfiguration", config_request, timeout=30)
+                response = await self.handler.send_and_wait("ChangeConfiguration", config_request, timeout=OCPP_MESSAGE_TIMEOUT)
                 self._check_cancellation()
 
                 if response and response.get("status"):
@@ -695,7 +796,7 @@ class OcppTestSteps:
         get_config_request = GetConfigurationRequest(key=keys_to_verify)
 
         try:
-            response = await self.handler.send_and_wait("GetConfiguration", get_config_request, timeout=10)
+            response = await self.handler.send_and_wait("GetConfiguration", get_config_request, timeout=OCPP_MESSAGE_TIMEOUT)
             self._check_cancellation()
 
             if response and response.get("configurationKey"):
@@ -780,224 +881,6 @@ class OcppTestSteps:
 
         logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
 
-    async def run_b2_autonomous_start_test(self):
-        """B.2: Autonomous Start - Tests autonomous transaction initiation without manual authorization."""
-        logger.info(f"--- Step B.2: Running Autonomous Start test for {self.charge_point_id} ---")
-        step_name = "run_b2_autonomous_start_test"
-        self._check_cancellation()
-
-        logger.info("📋 AUTONOMOUS START TEST")
-        logger.info("   📘 This tests sending RemoteStartTransaction BEFORE EV connects:")
-        logger.info("   📘 1. Central System sends RemoteStartTransaction")
-        logger.info("   📘 2. User then plugs in EV")
-        logger.info("   📘 3. Wallbox starts transaction automatically")
-        logger.info("")
-
-        # Step 0: Ensure baseline configuration
-        logger.info("🔧 Step 0: Verifying baseline configuration...")
-        logger.info("   📘 For this test: AuthorizeRemoteTxRequests=false (remote commands don't need auth)")
-
-        try:
-            response = await self.handler.send_and_wait(
-                "GetConfiguration",
-                GetConfigurationRequest(key=["AuthorizeRemoteTxRequests"]),
-                timeout=10
-            )
-            self._check_cancellation()
-
-            authorize_remote = None
-            if response and response.get("configurationKey"):
-                for key in response.get("configurationKey", []):
-                    if key.get("key") == "AuthorizeRemoteTxRequests":
-                        authorize_remote = key.get("value", "").lower()
-                        break
-
-            if authorize_remote != "false":
-                logger.info(f"   🔧 Setting AuthorizeRemoteTxRequests=false (currently: {authorize_remote})...")
-                config_response = await self.handler.send_and_wait(
-                    "ChangeConfiguration",
-                    ChangeConfigurationRequest(key="AuthorizeRemoteTxRequests", value="false"),
-                    timeout=10
-                )
-                self._check_cancellation()
-                if config_response and config_response.get("status") == "Accepted":
-                    logger.info("   ✅ Configuration updated")
-                else:
-                    logger.warning(f"   ⚠️  Configuration may not have updated: {config_response.get('status', 'Unknown')}")
-            else:
-                logger.info("   ✅ Configuration already correct")
-
-        except Exception as e:
-            logger.warning(f"   ⚠️  Could not verify/update configuration: {e}")
-
-        logger.info("")
-
-        # Try to use the RFID card from B.2 test, otherwise use default
-        id_tag = CHARGE_POINTS.get(self.charge_point_id, {}).get("accepted_rfid", "50600020100021")
-        if CHARGE_POINTS.get(self.charge_point_id, {}).get("accepted_rfid"):
-            logger.info(f"   🎫 Using RFID card from B.2 test: {id_tag}")
-        else:
-            logger.info(f"   🎫 Using default RFID card: {id_tag}")
-            logger.info(f"   💡 Run B.10 first to use your actual RFID card")
-
-        connector_id = 1  # Use connector 1 instead of 0
-
-        # 1. First ensure EV is UNPLUGGED (State A)
-        logger.info("📡 Step 1: Ensuring EV is unplugged (State A)...")
-        await self._set_ev_state("A")
-        await asyncio.sleep(1)
-        self._check_cancellation()
-
-        # 2. Send RemoteStartTransaction FIRST (before EV connects)
-        try:
-            start_response = await asyncio.wait_for(
-                self.handler.send_and_wait(
-                    "RemoteStartTransaction",
-                    RemoteStartTransactionRequest(idTag=id_tag, connectorId=connector_id),
-                    timeout=15
-                ),
-                timeout=20
-            )
-            self._check_cancellation()
-
-            if not start_response or start_response.get("status") != "Accepted":
-                status = start_response.get("status", "Unknown") if start_response else "No response"
-                logger.error(f"    ❌ RemoteStartTransaction: {status}")
-                self._set_test_result(step_name, "FAILED")
-                return
-
-        except asyncio.TimeoutError:
-            logger.error(f"    ❌ RemoteStartTransaction: Timeout - wallbox did not respond within 20 seconds")
-            self._set_test_result(step_name, "FAILED")
-            return
-
-        logger.info("    ✅ RemoteStartTransaction: Accepted")
-        logger.info("    💡 Transaction authorized - waiting for EV to connect...")
-        logger.info("")
-
-        # Create placeholder transaction entry to track this remote start
-        # Use a temporary key (we'll get the real transaction ID from StartTransaction.req)
-        temp_transaction_key = f"temp_remote_{connector_id}"
-        TRANSACTIONS[temp_transaction_key] = {
-            "charge_point_id": self.charge_point_id,
-            "id_tag": id_tag,
-            "start_time": datetime.now(timezone.utc).isoformat(),
-            "meter_start": 0,  # Will be updated by StartTransaction
-            "connector_id": connector_id,
-            "status": "Ongoing",
-            "remote_started": True,  # Mark as remotely started
-            "cp_transaction_id": None,  # Will be filled by StartTransaction
-        }
-        logger.debug(f"   📝 Created placeholder transaction entry: {temp_transaction_key}")
-
-        # 3. NOW connect the EV (State B)
-        logger.info("📡 Step 3: Simulating EV cable connection (State B)...")
-        await self._set_ev_state("B")
-        self._check_cancellation()
-        await asyncio.sleep(2)  # Give wallbox time to process connection
-
-        # 4. Wait for transaction to start
-        logger.info("⏳ Step 4: Waiting for transaction to start...")
-        transaction_id = None
-        start_time = asyncio.get_event_loop().time()
-        timeout = 10  # 10 seconds to detect transaction start
-
-        while (asyncio.get_event_loop().time() - start_time) < timeout:
-            self._check_cancellation()
-            await asyncio.sleep(0.5)
-
-            # Check for new ongoing transaction
-            for tx_id, tx_data in TRANSACTIONS.items():
-                if (tx_data.get("charge_point_id") == self.charge_point_id and
-                    tx_data.get("status") == "Ongoing" and
-                    tx_data.get("remote_started") == True):
-                    transaction_id = tx_id
-                    break
-
-            if transaction_id:
-                break
-
-        if not transaction_id:
-            logger.error("❌ Transaction did not start after EV connection")
-            logger.info("   💡 Check wallbox logs for errors")
-            await self._set_ev_state("A")
-            self._set_test_result(step_name, "FAILED")
-            return
-
-        logger.info(f"   ✅ Transaction started! (ID: {transaction_id})")
-        logger.info("")
-
-        # 5. Simulate the EV drawing power by setting state to 'C'
-        logger.info("📡 Step 5: Setting EV state to 'C' (requesting power)...")
-        await self._set_ev_state("C")
-        self._check_cancellation()
-        await asyncio.sleep(2)
-
-        # 6. Wait for the charge point to send a StatusNotification indicating "Charging".
-        logger.info("📡 Step 6: Waiting for charge point to report 'Charging' status...")
-        try:
-            await asyncio.wait_for(self._wait_for_status("Charging"), timeout=15)
-            self._check_cancellation()
-            logger.info("   ✅ Charge point is now charging!")
-        except asyncio.TimeoutError:
-            logger.error("    ❌ Timeout waiting for 'Charging' status")
-            await self._set_ev_state("A")
-            self._set_test_result(step_name, "FAILED")
-            return
-
-        # 7. Brief verification
-        logger.info("")
-        logger.info("📊 Verifying transaction is active...")
-        await asyncio.sleep(3)
-        self._check_cancellation()
-
-        # Check transaction is still active
-        if transaction_id in TRANSACTIONS:
-            tx_data = TRANSACTIONS[transaction_id]
-            if tx_data.get("stop_timestamp") is None:
-                meter_values_count = len(tx_data.get("meter_values", []))
-                logger.info(f"   ✅ Transaction {transaction_id} active")
-                logger.info(f"   📊 Received {meter_values_count} meter value samples")
-        logger.info("")
-        logger.info("=" * 60)
-        logger.info("✅ AUTONOMOUS START TEST PASSED")
-        logger.info("=" * 60)
-        logger.info(f"   ⚡ Transaction ID: {transaction_id}")
-        logger.info(f"   🎫 ID Tag: {id_tag}")
-        logger.info("   📱 Remote start flow working correctly")
-
-        self._set_test_result(step_name, "PASSED")
-
-        # Cleanup: Stop the transaction and reset EV state
-        logger.info("")
-        logger.info("🧹 Cleaning up: Stopping transaction and resetting EV state...")
-
-        if transaction_id:
-            try:
-                stop_response = await self.handler.send_and_wait(
-                    "RemoteStopTransaction",
-                    RemoteStopTransactionRequest(transactionId=transaction_id),
-                    timeout=10
-                )
-                self._check_cancellation()
-                if stop_response and stop_response.get("status") == "Accepted":
-                    logger.info(f"   ✅ Transaction {transaction_id} stopped")
-                    await asyncio.sleep(2)
-            except Exception as e:
-                logger.warning(f"   ⚠️  Could not stop transaction: {e}")
-
-        # Reset EV state to A (unplugged)
-        await self._set_ev_state("A")
-        logger.info("   ✅ EV state reset to A (unplugged)")
-
-        # Wait for Available status
-        try:
-            await asyncio.wait_for(self._wait_for_status("Available"), timeout=10)
-            logger.info("   ✅ Wallbox returned to Available state")
-        except asyncio.TimeoutError:
-            logger.warning("   ⚠️  Timeout waiting for Available status")
-
-        logger.info(f"--- Step B.3 for {self.charge_point_id} complete. ---")
 
     async def run_c2_user_initiated_transaction_test(self):
         """C.2: Guides the user to start a transaction manually."""
@@ -1031,7 +914,7 @@ class OcppTestSteps:
             try:
                 response = await asyncio.wait_for(
                     self.handler.send_and_wait("GetCompositeSchedule", composite_request),
-                    timeout=30.0
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 self._check_cancellation()
             except asyncio.TimeoutError:
@@ -1098,7 +981,7 @@ class OcppTestSteps:
             start_response = await self.handler.send_and_wait(
                 "RemoteStartTransaction",
                 RemoteStartTransactionRequest(idTag=id_tag, connectorId=1),
-                timeout=10
+                timeout=OCPP_MESSAGE_TIMEOUT
             )
             self._check_cancellation()
 
@@ -1176,7 +1059,7 @@ class OcppTestSteps:
                 )
             )
         )
-        success = await self.handler.send_and_wait("SetChargingProfile", profile, timeout=30)
+        success = await self.handler.send_and_wait("SetChargingProfile", profile, timeout=OCPP_MESSAGE_TIMEOUT)
         self._check_cancellation()
 
         test_passed = False
@@ -1194,7 +1077,7 @@ class OcppTestSteps:
             verify_response = await self.handler.send_and_wait(
                 "GetCompositeSchedule",
                 GetCompositeScheduleRequest(connectorId=1, duration=3600, chargingRateUnit=None),
-                timeout=10
+                timeout=OCPP_MESSAGE_TIMEOUT
             )
 
             if verify_response and verify_response.get("status") == "Accepted":
@@ -1280,7 +1163,7 @@ class OcppTestSteps:
                 stop_response = await self.handler.send_and_wait(
                     "RemoteStopTransaction",
                     RemoteStopTransactionRequest(transactionId=transaction_id),
-                    timeout=10
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 if stop_response and stop_response.get("status") == "Accepted":
                     logger.info("   ✓ Transaction stopped")
@@ -1389,7 +1272,7 @@ class OcppTestSteps:
             verify_response = await self.handler.send_and_wait(
                 "GetCompositeSchedule",
                 GetCompositeScheduleRequest(connectorId=1, duration=3600, chargingRateUnit=None),
-                timeout=10
+                timeout=OCPP_MESSAGE_TIMEOUT
             )
 
             if verify_response and verify_response.get("status") == "Accepted":
@@ -1534,7 +1417,7 @@ class OcppTestSteps:
                 stop_response = await self.handler.send_and_wait(
                     "RemoteStopTransaction",
                     RemoteStopTransactionRequest(transactionId=transaction_id),
-                    timeout=10
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 self._check_cancellation()
 
@@ -2141,7 +2024,7 @@ class OcppTestSteps:
 
         try:
             # Send ClearCache command and wait for response
-            response = await self.handler.send_and_wait("ClearCache", clear_cache_request, timeout=10)
+            response = await self.handler.send_and_wait("ClearCache", clear_cache_request, timeout=OCPP_MESSAGE_TIMEOUT)
 
             if response is None:
                 logger.error("❌ ClearCache request timed out")
@@ -2262,7 +2145,7 @@ class OcppTestSteps:
 
         try:
             # Send GetLocalListVersion command and wait for response
-            response = await self.handler.send_and_wait("GetLocalListVersion", get_version_request, timeout=10)
+            response = await self.handler.send_and_wait("GetLocalListVersion", get_version_request, timeout=OCPP_MESSAGE_TIMEOUT)
 
             if response is None:
                 logger.error("❌ GetLocalListVersion request timed out")
@@ -2297,10 +2180,10 @@ class OcppTestSteps:
 
         logger.info(f"--- Step B.8 for {self.charge_point_id} complete. ---")
 
-    async def run_b3_tap_to_charge_test(self):
+    async def run_b1_rfid_public_charging_test(self):
         """B.3: RFID Tap-to-Charge (Online Authorization) - Tests the standard RFID tap-to-charge flow."""
         logger.info(f"--- Step B.3: RFID Tap-to-Charge (Online Authorization) for {self.charge_point_id} ---")
-        step_name = "run_b3_tap_to_charge_test"
+        step_name = "run_b1_rfid_public_charging_test"
         self._check_cancellation()
 
         logger.info("🎫 TAP-TO-CHARGE TEST")
@@ -2414,7 +2297,7 @@ class OcppTestSteps:
                 stop_response = await self.handler.send_and_wait(
                     "RemoteStopTransaction",
                     RemoteStopTransactionRequest(transactionId=transaction_id),
-                    timeout=10
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 self._check_cancellation()
                 if stop_response and stop_response.get("status") == "Accepted":
@@ -2429,17 +2312,17 @@ class OcppTestSteps:
 
         # Wait for Available status
         try:
-            await asyncio.wait_for(self._wait_for_status("Available"), timeout=10)
+            await asyncio.wait_for(self._wait_for_status("Available"), timeout=OCPP_MESSAGE_TIMEOUT)
             logger.info("   ✅ Wallbox returned to Available state")
         except asyncio.TimeoutError:
             logger.warning("   ⚠️  Timeout waiting for Available status")
 
         logger.info(f"--- Step B.3 for {self.charge_point_id} complete. ---")
 
-    async def run_b4_anonymous_remote_start_test(self, params=None):
+    async def run_b2_remote_smart_charging_test(self, params=None):
         """B.4: Anonymous Remote Start - Tests remote transaction initiation via app/website."""
         logger.info(f"--- Step B.4: Anonymous Remote Start for {self.charge_point_id} ---")
-        step_name = "run_b4_anonymous_remote_start_test"
+        step_name = "run_b2_remote_smart_charging_test"
         self._check_cancellation()
 
         logger.info("📱 REMOTE START TEST")
@@ -2459,7 +2342,7 @@ class OcppTestSteps:
             response = await self.handler.send_and_wait(
                 "GetConfiguration",
                 GetConfigurationRequest(key=["AuthorizeRemoteTxRequests"]),
-                timeout=10
+                timeout=OCPP_MESSAGE_TIMEOUT
             )
             self._check_cancellation()
 
@@ -2475,7 +2358,7 @@ class OcppTestSteps:
                 config_response = await self.handler.send_and_wait(
                     "ChangeConfiguration",
                     ChangeConfigurationRequest(key="AuthorizeRemoteTxRequests", value="false"),
-                    timeout=10
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 self._check_cancellation()
                 if config_response and config_response.get("status") == "Accepted":
@@ -2510,7 +2393,7 @@ class OcppTestSteps:
                     idTag="ElecqAutoStart",  # Use wallbox's authorized tag
                     connectorId=1
                 ),
-                timeout=10
+                timeout=OCPP_MESSAGE_TIMEOUT
             )
             self._check_cancellation()
 
@@ -2597,7 +2480,7 @@ class OcppTestSteps:
                 stop_response = await self.handler.send_and_wait(
                     "RemoteStopTransaction",
                     RemoteStopTransactionRequest(transactionId=transaction_id),
-                    timeout=10
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 self._check_cancellation()
                 if stop_response and stop_response.get("status") == "Accepted":
@@ -2612,17 +2495,17 @@ class OcppTestSteps:
 
         # Wait for Available status
         try:
-            await asyncio.wait_for(self._wait_for_status("Available"), timeout=10)
+            await asyncio.wait_for(self._wait_for_status("Available"), timeout=OCPP_MESSAGE_TIMEOUT)
             logger.info("   ✅ Wallbox returned to Available state")
         except asyncio.TimeoutError:
             logger.warning("   ⚠️  Timeout waiting for Available status")
 
         logger.info(f"--- Step B.4 for {self.charge_point_id} complete. ---")
 
-    async def run_b5_plug_and_charge_test(self, params=None):
+    async def run_b3_offline_local_start_test(self, params=None):
         """B.5: Plug-and-Charge - Tests automatic charging when EV is plugged in with LocalPreAuthorize enabled."""
         logger.info(f"--- Step B.5: Plug-and-Charge for {self.charge_point_id} ---")
-        step_name = "run_b5_plug_and_charge_test"
+        step_name = "run_b3_offline_local_start_test"
         self._check_cancellation()
 
         logger.info("🔌 PLUG-AND-CHARGE TEST")
@@ -2641,7 +2524,7 @@ class OcppTestSteps:
             response = await self.handler.send_and_wait(
                 "GetConfiguration",
                 GetConfigurationRequest(key=["LocalPreAuthorize"]),
-                timeout=10
+                timeout=OCPP_MESSAGE_TIMEOUT
             )
             self._check_cancellation()
 
@@ -2661,7 +2544,7 @@ class OcppTestSteps:
                 config_response = await self.handler.send_and_wait(
                     "ChangeConfiguration",
                     ChangeConfigurationRequest(key="LocalPreAuthorize", value="true"),
-                    timeout=10
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 self._check_cancellation()
 
@@ -2790,7 +2673,7 @@ class OcppTestSteps:
                 stop_response = await self.handler.send_and_wait(
                     "RemoteStopTransaction",
                     RemoteStopTransactionRequest(transactionId=transaction_id),
-                    timeout=10
+                    timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 self._check_cancellation()
                 if stop_response and stop_response.get("status") == "Accepted":
@@ -2805,7 +2688,7 @@ class OcppTestSteps:
 
         # Wait for Available status
         try:
-            await asyncio.wait_for(self._wait_for_status("Available"), timeout=10)
+            await asyncio.wait_for(self._wait_for_status("Available"), timeout=OCPP_MESSAGE_TIMEOUT)
             logger.info("   ✅ Wallbox returned to Available state")
         except asyncio.TimeoutError:
             logger.warning("   ⚠️  Timeout waiting for Available status")
@@ -2816,7 +2699,7 @@ class OcppTestSteps:
             config_response = await self.handler.send_and_wait(
                 "ChangeConfiguration",
                 ChangeConfigurationRequest(key="LocalPreAuthorize", value="false"),
-                timeout=10
+                timeout=OCPP_MESSAGE_TIMEOUT
             )
             self._check_cancellation()
             if config_response and config_response.get("status") in ["Accepted", "RebootRequired"]:
@@ -2842,7 +2725,7 @@ class OcppTestSteps:
         reset_request = ResetRequest(type=ResetType.Hard)
         logger.info(f"Sending Reset Hard message: {asdict(reset_request)}")
 
-        success = await self.handler.send_and_wait("Reset", reset_request, timeout=30)
+        success = await self.handler.send_and_wait("Reset", reset_request, timeout=OCPP_MESSAGE_TIMEOUT)
         self._check_cancellation()
 
         if success and success.get("status") == "Accepted":
@@ -2871,7 +2754,7 @@ class OcppTestSteps:
         get_config_request = GetConfigurationRequest(key=None)
 
         try:
-            response = await self.handler.send_and_wait("GetConfiguration", get_config_request, timeout=10)
+            response = await self.handler.send_and_wait("GetConfiguration", get_config_request, timeout=OCPP_MESSAGE_TIMEOUT)
             self._check_cancellation()
 
             if response and response.get("configurationKey"):
@@ -2939,7 +2822,7 @@ class OcppTestSteps:
         )
         logger.info(f"Sending GetCompositeSchedule: {asdict(composite_request)}")
 
-        response = await self.handler.send_and_wait("GetCompositeSchedule", composite_request, timeout=30)
+        response = await self.handler.send_and_wait("GetCompositeSchedule", composite_request, timeout=OCPP_MESSAGE_TIMEOUT)
         self._check_cancellation()
 
         # Clear previous schedule
@@ -2981,7 +2864,7 @@ class OcppTestSteps:
         success_0 = await self.handler.send_and_wait(
             "ClearChargingProfile",
             ClearChargingProfileRequest(connectorId=0),
-            timeout=30
+            timeout=OCPP_MESSAGE_TIMEOUT
         )
         self._check_cancellation()
 
@@ -2989,7 +2872,7 @@ class OcppTestSteps:
         success_1 = await self.handler.send_and_wait(
             "ClearChargingProfile",
             ClearChargingProfileRequest(connectorId=1),
-            timeout=30
+            timeout=OCPP_MESSAGE_TIMEOUT
         )
         self._check_cancellation()
 

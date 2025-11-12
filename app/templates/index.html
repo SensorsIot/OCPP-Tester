@@ -362,8 +362,8 @@
                     </div>    </div>
     <div class="quick-actions-container" style="display: flex; justify-content: space-around; margin-top: 15px;">
         <div class="quick-action">
-            <button onclick="runTestWithParams('run_a3_change_configuration_test', {})" class="analysis-btn">
-                A.3: Get OCPP Standard Keys
+            <button onclick="runTestWithParams('run_a3_check_single_parameters', {})" class="analysis-btn">
+                A.3: Check single Parameters
             </button>
         </div>
     </div>
@@ -394,20 +394,18 @@
             <h3>A. Core Communication & Status</h3>
             <div class="button-group" id="category-a-buttons">
                 <button data-step-key="run_a1_change_configuration_test">A.1: ChangeConfiguration</button>
-                <button data-step-key="run_a2_get_configuration_test">A.2: Get All Configuration</button>
+                <button data-step-key="run_a2_get_all_parameters">A.2: Get all parameters</button>
             </div>
         </div>
         <div class="test-category">
             <h3>B. Authorization & Transaction Management</h3>
             <div class="button-group" id="category-b-buttons">
-                <button data-step-key="run_b1_reset_transaction_management">B.1: Reset Transaction Management</button>
-                <button data-step-key="run_b2_autonomous_start_test">B.2: Autonomous Start</button>
+                <button data-step-key="run_b1_rfid_public_charging_test">B.1: RFID Public Charging</button>
+                <button data-step-key="run_b2_remote_smart_charging_test">B.2: Remote Smart Charging</button>
+                <button data-step-key="run_b3_offline_local_start_test">B.3: Offline Local Start</button>
                 <button data-step-key="run_b6_clear_rfid_cache">B.6: Clear RFID Cache</button>
                 <button data-step-key="run_b7_send_rfid_list">B.7: Send RFID List</button>
                 <button data-step-key="run_b8_get_rfid_list_version">B.8: Get RFID List Version</button>
-                <button data-step-key="run_b3_tap_to_charge_test">B.3: RFID Tap-to-Charge</button>
-                <button data-step-key="run_b4_anonymous_remote_start_test">B.4: Anonymous Remote Start</button>
-                <button data-step-key="run_b5_plug_and_charge_test">B.5: Plug-and-Charge</button>
             </div>
         </div>
         <div class="test-category">
@@ -567,11 +565,11 @@
   </div>
 </div>
 
-<!-- B.3 RFID Tap-to-Charge Modal -->
+<!-- B.1 RFID Public Charging Modal -->
 <div id="tapToChargeModal" class="modal">
   <div class="modal-content">
     <span class="close" id="tap-to-charge-modal-close">&times;</span>
-    <h3>🎫 B.3: RFID Tap-to-Charge Test</h3>
+    <h3>🎫 B.1: RFID Public Charging Test</h3>
     <div id="tap-to-charge-status">
         <div style="margin: 30px 0; text-align: center;">
             <div style="font-size: 48px; margin-bottom: 20px;">🎫</div>
@@ -586,11 +584,11 @@
   </div>
 </div>
 
-<!-- B.4 Anonymous Remote Start Modal -->
+<!-- B.2 Remote Smart Charging Modal -->
 <div id="remoteStartModal" class="modal">
   <div class="modal-content">
     <span class="close" id="remote-start-modal-close">&times;</span>
-    <h3>📱 B.4: Anonymous Remote Start</h3>
+    <h3>📱 B.2: Remote Smart Charging</h3>
     <div style="padding: 20px;">
       <p style="margin-bottom: 20px; color: #666; font-size: 16px;">
         This simulates <strong>free charging</strong> or charging where payment is handled externally.<br>
@@ -1186,16 +1184,14 @@
     async function fetchAndRenderTestSteps() {
         const testDefinitions = {
             'run_a1_initial_registration': { name: 'A.1: Initial Registration', category: 'category-a-buttons' },
-            'run_a2_get_configuration_test': { name: 'A.2: Get All Configuration', category: 'category-a-buttons' },
-            'run_a3_change_configuration_test': { name: 'A.3: Get OCPP Standard Keys', category: 'category-a-buttons' },
+            'run_a2_get_all_parameters': { name: 'A.2: Get all parameters', category: 'category-a-buttons' },
+            'run_a3_check_single_parameters': { name: 'A.3: Check single Parameters', category: 'category-a-buttons' },
             'run_a4_check_initial_state': { name: 'A.4: Check Initial State', category: 'category-a-buttons' },
             'run_a5_trigger_all_messages_test': { name: 'A.5: Trigger All Messages', category: 'category-a-buttons' },
             'run_a6_status_and_meter_value_acquisition': { name: 'A.6: Meter Values', category: 'category-a-buttons' },
-            'run_b1_reset_transaction_management': { name: 'B.1: Reset Transaction Management', category: 'category-b-buttons' },
-            'run_b2_autonomous_start_test': { name: 'B.2: Autonomous Start', category: 'category-b-buttons' },
-            'run_b3_tap_to_charge_test': { name: 'B.3: RFID Tap-to-Charge', category: 'category-b-buttons' },
-            'run_b4_anonymous_remote_start_test': { name: 'B.4: Anonymous Remote Start', category: 'category-b-buttons' },
-            'run_b5_plug_and_charge_test': { name: 'B.5: Plug-and-Charge', category: 'category-b-buttons' },
+            'run_b1_rfid_public_charging_test': { name: 'B.1: RFID Public Charging', category: 'category-b-buttons' },
+            'run_b2_remote_smart_charging_test': { name: 'B.2: Remote Smart Charging', category: 'category-b-buttons' },
+            'run_b3_offline_local_start_test': { name: 'B.3: Offline Local Start', category: 'category-b-buttons' },
             'run_b6_clear_rfid_cache': { name: 'B.6: Clear RFID Cache', category: 'category-b-buttons' },
             'run_b7_send_rfid_list': { name: 'B.7: Send RFID List', category: 'category-b-buttons' },
             'run_b8_get_rfid_list_version': { name: 'B.8: Get RFID List Version', category: 'category-b-buttons' },
@@ -1236,15 +1232,11 @@
                             showStatusMessage('No active charge point selected.', true);
                         }
                     };
-                } else if (key === 'run_b2_rfid_authorization_test') {
-                    btn.onclick = () => {
-                        openRfidModal();
-                    };
-                } else if (key === 'run_b3_tap_to_charge_test') {
+                } else if (key === 'run_b1_rfid_public_charging_test') {
                     btn.onclick = () => {
                         openTapToChargeModal();
                     };
-                } else if (key === 'run_b4_anonymous_remote_start_test') {
+                } else if (key === 'run_b2_remote_smart_charging_test') {
                     btn.onclick = () => {
                         openRemoteStartModal();
                     };
@@ -1324,10 +1316,7 @@
             const categoryBContainer = document.getElementById('category-b-buttons');
             if (categoryBContainer) {
                 const allTestsBtn = document.createElement('button');
-                allTestsBtn.textContent = 'B All Tests (B.2-B.5)';
-                allTestsBtn.style.backgroundColor = '#17a2b8';
-                allTestsBtn.style.color = '#fff';
-                allTestsBtn.style.fontWeight = 'bold';
+                allTestsBtn.textContent = 'B All Tests (B.1-B.3)';
                 allTestsBtn.dataset.stepKey = 'b_all_tests';
                 allTestsBtn.onclick = async () => {
                     const r = await fetch('/api/discovered_charge_points');
@@ -1369,47 +1358,39 @@
                         }
                         await new Promise(resolve => setTimeout(resolve, 2000));
 
-                        // Run B.2
-                        showStatusMessage('Running B.2: Autonomous Start...');
-                        const b2Response = await fetch('/api/test/run_b2_autonomous_start_test', { method: 'POST' });
+                        // Run B.1 (RFID Public Charging) with modal
+                        showStatusMessage('Running B.1: RFID Public Charging... (RFID modal will appear)');
+                        await openTapToChargeModal();
+                        // Wait a bit for log file to be written
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        // Get the most recent B.1 log file after modal closes
+                        try {
+                            const b1LogResponse = await fetch('/api/test/get_latest_log?test_name=run_b1_rfid_public_charging_test');
+                            if (b1LogResponse.ok) {
+                                const b1LogResult = await b1LogResponse.json();
+                                if (b1LogResult.log_file) logFiles.push(b1LogResult.log_file);
+                            } else {
+                                console.warn('B.1 log file not found, continuing without it');
+                            }
+                        } catch (e) {
+                            console.warn('Failed to fetch B.1 log file:', e);
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+
+                        // Run B.2 (Remote Smart Charging)
+                        showStatusMessage('Running B.2: Remote Smart Charging...');
+                        const b2Response = await fetch('/api/test/run_b2_remote_smart_charging_test', { method: 'POST' });
                         if (!b2Response.ok) throw new Error(`B.2 failed: ${b2Response.status}`);
                         const b2Result = await b2Response.json();
                         if (b2Result.log_file) logFiles.push(b2Result.log_file);
                         await new Promise(resolve => setTimeout(resolve, 3000));
 
-                        // Run B.3 with modal
-                        showStatusMessage('Running B.3: Tap to Charge... (RFID modal will appear)');
-                        await openTapToChargeModal();
-                        // Wait a bit for log file to be written
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        // Get the most recent B.3 log file after modal closes
-                        try {
-                            const b3LogResponse = await fetch('/api/test/get_latest_log?test_name=run_b3_tap_to_charge_test');
-                            if (b3LogResponse.ok) {
-                                const b3LogResult = await b3LogResponse.json();
-                                if (b3LogResult.log_file) logFiles.push(b3LogResult.log_file);
-                            } else {
-                                console.warn('B.3 log file not found, continuing without it');
-                            }
-                        } catch (e) {
-                            console.warn('Failed to fetch B.3 log file:', e);
-                        }
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-
-                        // Run B.4
-                        showStatusMessage('Running B.4: Anonymous Remote Start...');
-                        const b4Response = await fetch('/api/test/run_b4_anonymous_remote_start_test', { method: 'POST' });
-                        if (!b4Response.ok) throw new Error(`B.4 failed: ${b4Response.status}`);
-                        const b4Result = await b4Response.json();
-                        if (b4Result.log_file) logFiles.push(b4Result.log_file);
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-
-                        // Run B.5
-                        showStatusMessage('Running B.5: Plug and Charge...');
-                        const b5Response = await fetch('/api/test/run_b5_plug_and_charge_test', { method: 'POST' });
-                        if (!b5Response.ok) throw new Error(`B.5 failed: ${b5Response.status}`);
-                        const b5Result = await b5Response.json();
-                        if (b5Result.log_file) logFiles.push(b5Result.log_file);
+                        // Run B.3 (Offline Local Start)
+                        showStatusMessage('Running B.3: Offline Local Start...');
+                        const b3Response = await fetch('/api/test/run_b3_offline_local_start_test', { method: 'POST' });
+                        if (!b3Response.ok) throw new Error(`B.3 failed: ${b3Response.status}`);
+                        const b3Result = await b3Response.json();
+                        if (b3Result.log_file) logFiles.push(b3Result.log_file);
                         await new Promise(resolve => setTimeout(resolve, 2000));
 
                         // Combine log files
@@ -1433,27 +1414,25 @@
                         const activeCP = cpData.charge_points[backendActiveCpId];
                         const testResults = activeCP?.test_results || {};
 
-                        const b2TestResult = testResults['run_b2_autonomous_start_test'] || 'NOT RUN';
-                        const b3TestResult = testResults['run_b3_tap_to_charge_test'] || 'NOT RUN';
-                        const b4TestResult = testResults['run_b4_anonymous_remote_start_test'] || 'NOT RUN';
-                        const b5TestResult = testResults['run_b5_plug_and_charge_test'] || 'NOT RUN';
+                        const b1TestResult = testResults['run_b1_rfid_public_charging_test'] || 'NOT RUN';
+                        const b2TestResult = testResults['run_b2_remote_smart_charging_test'] || 'NOT RUN';
+                        const b3TestResult = testResults['run_b3_offline_local_start_test'] || 'NOT RUN';
 
                         showStatusMessage(`B All Tests completed! Log saved to: ${combineResult.combined_log_file}`);
 
                         let message = `B All Tests Completed!\n\n`;
                         message += `Results:\n`;
-                        message += `  B.2 Autonomous Start: ${b2TestResult}\n`;
-                        message += `  B.3 Tap to Charge: ${b3TestResult}\n`;
-                        message += `  B.4 Anonymous Remote Start: ${b4TestResult}\n`;
-                        message += `  B.5 Plug and Charge: ${b5TestResult}\n\n`;
-                        message += `Total: 4 tests completed\n\n`;
+                        message += `  B.1 RFID Public Charging: ${b1TestResult}\n`;
+                        message += `  B.2 Remote Smart Charging: ${b2TestResult}\n`;
+                        message += `  B.3 Offline Local Start: ${b3TestResult}\n\n`;
+                        message += `Total: 3 tests completed\n\n`;
                         message += `Combined log file: ${combineResult.combined_log_file}`;
 
                         alert(message);
 
                         // Update button color based on results
-                        const allPassed = b2TestResult === 'PASSED' && b3TestResult === 'PASSED' &&
-                                        b4TestResult === 'PASSED' && b5TestResult === 'PASSED';
+                        const allPassed = b1TestResult === 'PASSED' && b2TestResult === 'PASSED' &&
+                                        b3TestResult === 'PASSED';
                         allTestsBtn.classList.add(allPassed ? 'btn-success' : 'btn-failure');
                         allTestsBtn.style.backgroundColor = allPassed ? '#17a2b8' : '#dc3545';  // Cyan or red
 
@@ -1481,9 +1460,6 @@
             if (categoryCContainer) {
                 const allTestsBtn = document.createElement('button');
                 allTestsBtn.textContent = 'C.1 and C.2 Tests';
-                allTestsBtn.style.backgroundColor = '#28a745';
-                allTestsBtn.style.color = '#fff';
-                allTestsBtn.style.fontWeight = 'bold';
                 allTestsBtn.dataset.stepKey = 'c_all_tests';
                 allTestsBtn.onclick = async () => {
                     const r = await fetch('/api/discovered_charge_points');
@@ -2273,7 +2249,7 @@
         }
     }
 
-    // B.3 RFID Tap-to-Charge Modal Functions
+    // B.1 RFID Public Charging Modal Functions
     let tapToChargeInterval = null;
     let tapToChargeTestStartTime = null;
     let tapToChargeTestActive = false;
@@ -2303,7 +2279,7 @@
                 try {
                     const rfidResponse = await fetch('/api/enable_rfid_test_mode', { method: 'POST' });
                     if (rfidResponse.ok) {
-                        console.log('✅ B.3: RFID test mode enabled - any card will be accepted');
+                        console.log('✅ B.1: RFID test mode enabled - any card will be accepted');
                     }
                 } catch (e) {
                     console.error('Failed to enable RFID test mode:', e);
@@ -2375,13 +2351,13 @@
         tapToChargeTestActive = true;
 
         // Start the backend test (fire and forget)
-        fetch('/api/test/run_b3_tap_to_charge_test', { method: 'POST' })
+        fetch('/api/test/run_b1_rfid_public_charging_test', { method: 'POST' })
             .then(r => r.json())
             .then(result => {
-                console.log('B.3 test started:', result);
+                console.log('B.1 test started:', result);
             })
             .catch(e => {
-                console.error('Failed to start B.3 test:', e);
+                console.error('Failed to start B.1 test:', e);
             });
 
         // Start polling for transaction status
@@ -2490,12 +2466,12 @@
 
         // Disable RFID test mode when closing
         fetch('/api/disable_rfid_test_mode', { method: 'POST' })
-            .then(() => console.log('🔒 B.3: RFID test mode disabled'))
+            .then(() => console.log('🔒 B.1: RFID test mode disabled'))
             .catch(e => console.error('Failed to disable RFID test mode:', e));
 
         // Resolve the Promise so B All Tests can continue
         if (tapToChargeModalResolver) {
-            console.log('✅ Resolving B.3 modal promise - test complete');
+            console.log('✅ Resolving B.1 modal promise - test complete');
             tapToChargeModalResolver();
             tapToChargeModalResolver = null;
         }
@@ -2509,7 +2485,7 @@
         }
     });
 
-    // B.4 Anonymous Remote Start Modal Functions
+    // B.2 Remote Smart Charging Modal Functions
     function openRemoteStartModal() {
         fetch('/api/discovered_charge_points')
             .then(r => r.json())
@@ -2547,7 +2523,7 @@
 
         // For anonymous remote start, don't send any idTag parameter
         const params = {};  // Empty params = anonymous charging
-        runTestWithParams('run_b4_anonymous_remote_start_test', params);
+        runTestWithParams('run_b2_remote_smart_charging_test', params);
         closeRemoteStartModal();
     }
 
