@@ -1090,3 +1090,186 @@ app/
 *Section Added: 2025-11-12*
 *Helper Functions: 37 total covering all OCPP operations*
 *Projected Code Reduction: 61% (1,820 lines)*
+
+### 15.4 Modular Test Structure (Phase 1 - Implemented)
+
+**Status**: Phase 1 Complete - A-Series Migrated ✓
+
+**Architecture**: Facade Pattern with Incremental Migration
+
+The test codebase is being refactored from a monolithic 3,377-line file into modular series-based files. The migration uses a Facade pattern to maintain backward compatibility while progressively moving tests to the new structure.
+
+#### 15.4.1 Current Structure
+
+```
+app/
+├── ocpp_test_steps.py            # Facade class (delegates to series classes)
+├── ocpp_test_steps_monolithic.py # Original file (backup, used for unmigrated tests)
+├── test_helpers.py               # 1,301 lines - 37 helper functions
+└── tests/
+    ├── __init__.py               # Package initialization
+    ├── test_base.py              # Base class with shared functionality
+    └── test_series_a_basic.py    # ✓ A-Series (6 tests, 674 lines)
+```
+
+#### 15.4.2 Migration Status
+
+| Series | Tests | Status | Lines | File |
+|--------|-------|--------|-------|------|
+| **A** | 6 tests | ✅ MIGRATED | 674 | `test_series_a_basic.py` |
+| **B** | 10 tests | 🔄 TODO | ~850 | `test_series_b_auth.py` |
+| **C** | 7 tests | 🔄 TODO | ~700 | `test_series_c_charging.py` |
+| **D** | 3 tests | 🔄 TODO | ~150 | `test_series_d_smart.py` |
+| **E** | 8 tests | 🔄 TODO | ~550 | `test_series_e_remote.py` |
+| **X** | 2 tests | 🔄 TODO | ~150 | `test_series_x_utility.py` |
+
+**Total**: 36 tests, 6 migrated (17%), 30 remaining (83%)
+
+#### 15.4.3 Facade Pattern Implementation
+
+**app/ocpp_test_steps.py** acts as a facade that:
+
+1. **Maintains Backward Compatibility**
+   - Same API as before (all test methods present)
+   - No changes required in ocpp_server_logic.py
+   - Existing tests continue to work
+
+2. **Delegates to Appropriate Classes**
+   - Migrated tests: Delegate to new series classes (e.g., `self.series_a.run_a1_...()`)
+   - Unmigrated tests: Delegate to monolithic backup (`self._monolithic.run_b1_...()`)
+
+3. **Enables Incremental Migration**
+   - Migrate one series at a time
+   - Test after each series migration
+   - Reduce risk of breaking changes
+
+**Code Example:**
+```python
+class OcppTestSteps:
+    def __init__(self, ocpp_server_logic):
+        # Instantiate migrated series
+        self.series_a = TestSeriesA(ocpp_server_logic)
+        
+        # Fall back to monolithic for unmigrated tests
+        from app.ocpp_test_steps_monolithic import OcppTestSteps as MonolithicTests
+        self._monolithic = MonolithicTests(ocpp_server_logic)
+    
+    # Migrated test - delegates to series class
+    async def run_a1_initial_registration(self):
+        return await self.series_a.run_a1_initial_registration()
+    
+    # Unmigrated test - delegates to monolithic
+    async def run_b1_reset_transaction_management(self):
+        return await self._monolithic.run_b1_reset_transaction_management()
+```
+
+#### 15.4.4 Base Class Design
+
+**app/tests/test_base.py** provides shared functionality:
+
+```python
+class OcppTestBase:
+    """Base class for all OCPP test series"""
+    
+    def __init__(self, ocpp_server_logic):
+        self.ocpp_server_logic = ocpp_server_logic
+        self.handler = ocpp_server_logic.handler
+        self.charge_point_id = ocpp_server_logic.charge_point_id
+        self.pending_triggered_message_events = ...
+    
+    def _check_cancellation(self):
+        """Check if test execution was cancelled"""
+        
+    def _set_test_result(self, step_name, result):
+        """Set test result (PASSED/FAILED/SKIPPED)"""
+        
+    async def _set_ev_state(self, state):
+        """Set EV simulator state (A/B/C/D/E)"""
+        
+    async def _wait_for_status(self, status):
+        """Wait for connector status"""
+```
+
+All series classes inherit from `OcppTestBase` and gain access to these methods.
+
+#### 15.4.5 Migration Benefits
+
+**Achieved with Phase 1:**
+- ✅ Modular structure established
+- ✅ A-Series migrated (6 tests, 674 lines)
+- ✅ Backward compatibility maintained
+- ✅ Base class with shared functionality
+- ✅ Facade pattern prevents breaking changes
+- ✅ Zero impact on existing functionality
+
+**Future Benefits (After Full Migration):**
+- Each test file will be 150-850 lines (manageable)
+- Clear separation by functionality
+- Easier to navigate and find specific tests
+- Better for code review and git diffs
+- Can run individual series independently
+- Natural fit for future test expansion
+
+#### 15.4.6 Next Migration Steps
+
+**Priority Order:**
+1. **Series B** (10 tests, ~850 lines) - Authorization & RFID operations
+   - Highest impact: Most tests, most duplication
+   - Can leverage RFID helpers extensively
+
+2. **Series C** (7 tests, ~700 lines) - Charging profiles
+   - High impact: Complex tests with lots of duplication
+   - Can leverage charging profile helpers extensively
+
+3. **Series E** (8 tests, ~550 lines) - Remote operations
+   - Medium impact: Remote start/stop patterns
+   - Can leverage remote operation helpers
+
+4. **Series D** (3 tests, ~150 lines) - Smart charging
+   - Low impact: Fewer tests
+   - Similar to C-series patterns
+
+5. **Series X** (2 tests, ~150 lines) - Utility functions
+   - Low impact: Simple utility tests
+   - Least duplication
+
+**Migration Process per Series:**
+1. Create `test_series_X.py` file with imports and class
+2. Copy test methods from monolithic file
+3. Adjust indentation (remove one level)
+4. Fix any missing imports
+5. Update facade to delegate to new series class
+6. Test compilation and functionality
+7. Commit the series migration
+
+#### 15.4.7 File Organization
+
+**After Full Migration:**
+```
+app/
+├── ocpp_test_steps.py            # Facade (200 lines - delegates only)
+├── test_helpers.py               # 1,301 lines - helper functions
+└── tests/
+    ├── __init__.py               # Package exports
+    ├── test_base.py              # Base class (100 lines)
+    ├── test_series_a_basic.py    # A1-A6 (674 lines)
+    ├── test_series_b_auth.py     # B1-B8 (850 lines)
+    ├── test_series_c_charging.py # C1-C7 (700 lines)
+    ├── test_series_d_smart.py    # D3, D5-D6 (150 lines)
+    ├── test_series_e_remote.py   # E1-E11 (550 lines)
+    └── test_series_x_utility.py  # X1-X2 (150 lines)
+```
+
+**Total Lines After Migration:**
+- Facade: 200 lines
+- Test modules: 3,074 lines (across 7 files)
+- Helpers: 1,301 lines
+- **Total: 4,575 lines** (vs 4,678 current = **-2% overhead**)
+
+The modular structure adds minimal overhead while providing significant organizational benefits.
+
+---
+
+*Section Updated: 2025-11-12*
+*Phase 1 Complete: A-Series Migrated (6/36 tests)*
+*Migration Pattern: Facade with Incremental Migration*
