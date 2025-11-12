@@ -395,9 +395,10 @@ class OcppMessageHandlers:
             import uuid
 
             unique_id = str(uuid.uuid4())
-            request_payload = GetConfigurationRequest(key=[])
+            # Request only the specific key needed for auto-detection (not bulk request)
+            request_payload = GetConfigurationRequest(key=["ChargingScheduleAllowedChargingRateUnit"])
             message = create_ocpp_message(2, unique_id, request_payload, "GetConfiguration", self.charge_point_id)
             await self.handler.websocket.send(message)
-            logger.debug(f"🔍 Sent GetConfiguration (fire-and-forget) for auto-detection from {self.charge_point_id}")
+            logger.debug(f"🔍 Sent GetConfiguration for ChargingScheduleAllowedChargingRateUnit (auto-detection) from {self.charge_point_id}")
         except Exception as e:
             logger.warning(f"⚠️ Failed to send GetConfiguration for auto-detection: {e}")

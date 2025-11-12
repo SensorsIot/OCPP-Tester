@@ -24,6 +24,11 @@ class TestManager:
         logger.info(f"API triggered: Running Step A.1 for {self.handler.charge_point_id}")
         await self.test_sequence.step_a1_initial_registration()
 
+    async def run_a2_get_all_parameters(self):
+        """Runs Step A.2: Get all parameters."""
+        logger.info(f"API triggered: Running Step A.2 for {self.handler.charge_point_id}")
+        await self.test_sequence.run_a2_get_all_parameters()
+
     async def run_a2_configuration_exchange(self):
         """Runs Step A.2: Configuration Exchange."""
         logger.info(f"API triggered: Running Step A.2 for {self.handler.charge_point_id}")
@@ -64,10 +69,10 @@ class TestManager:
         logger.info(f"API triggered: Running Step E.4 for {self.handler.charge_point_id}")
         await self.test_sequence.run_e4_set_charging_profile_16a()
 
-    async def run_a3_change_configuration_test(self):
-        """Runs Step A.3: A dedicated test to change a configuration value."""
+    async def run_a3_check_single_parameters(self):
+        """Runs Step A.3: Check single Parameters - Retrieves all OCPP 1.6-J standard configuration parameters."""
         logger.info(f"API triggered: Running Step A.3 for {self.handler.charge_point_id}")
-        await self.test_sequence.run_a3_change_configuration_test()
+        await self.test_sequence.run_a3_check_single_parameters()
 
     async def run_a4_check_initial_state(self):
         """Runs Step A.4: Checks the initial status of the charge point."""

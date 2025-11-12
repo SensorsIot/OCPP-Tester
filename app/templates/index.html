@@ -403,7 +403,7 @@
                 <button data-step-key="run_b1_rfid_public_charging_test">B.1: RFID Authorization Before Plug-in</button>
                 <button data-step-key="run_b2_local_cache_authorization_test">B.2: RFID Authorization After Plug-in</button>
                 <button data-step-key="run_b3_remote_smart_charging_test">B.3: Remote Smart Charging</button>
-                <button data-step-key="run_b4_offline_local_start_test">B.4: Offline Local Start</button>
+                <button data-step-key="run_b4_offline_local_start_test">B.4: Plug & Charge</button>
                 <button data-step-key="run_b6_clear_rfid_cache">B.6: Clear RFID Cache</button>
                 <button data-step-key="run_b7_send_rfid_list">B.7: Send RFID List</button>
                 <button data-step-key="run_b8_get_rfid_list_version">B.8: Get RFID List Version</button>
@@ -592,21 +592,23 @@
     <h3>📱 B.3: Remote Smart Charging</h3>
     <div style="padding: 20px;">
       <p style="margin-bottom: 20px; color: #666; font-size: 16px;">
-        This simulates <strong>free charging</strong> or charging where payment is handled externally.<br>
-        The Central System will send a <strong>RemoteStartTransaction</strong> command <strong>without an ID tag</strong>.
+        This simulates <strong>smart charging</strong> where the EV is already plugged in and the system decides when to start charging.<br>
+        The Central System sends a <strong>RemoteStartTransaction</strong> command (no physical RFID card tap needed).
       </p>
       <p style="margin-bottom: 20px; color: #444;">
         <strong>Use cases:</strong>
       </p>
       <ul style="margin-bottom: 20px; color: #666;">
-        <li>Free public charging</li>
-        <li>One-time credit card payment on website</li>
-        <li>Pre-paid charging sessions</li>
+        <li>Solar-optimized charging (EVCC, SolarManager) - start when solar surplus available</li>
+        <li>Dynamic pricing optimization - charge during off-peak hours</li>
+        <li>Grid load balancing - start/stop based on grid capacity</li>
+        <li>App/web payment - user pays via app or credit card, system starts charging remotely</li>
+        <li>QR code payment - scan QR, pay, charging starts automatically</li>
       </ul>
       <form id="remoteStartForm">
         <div style="margin-top: 20px;">
           <button type="submit" class="button" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; margin-right: 10px; font-size: 16px;">
-            🚗 Start Anonymous Charging
+            🚗 Start Remote Charging
           </button>
           <button type="button" id="remote-start-cancel-btn" class="button" style="background-color: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 4px; font-size: 16px;">
             Cancel
@@ -1193,7 +1195,7 @@
             'run_b1_rfid_public_charging_test': { name: 'B.1: RFID Authorization Before Plug-in', category: 'category-b-buttons' },
             'run_b2_local_cache_authorization_test': { name: 'B.2: RFID Authorization After Plug-in', category: 'category-b-buttons' },
             'run_b3_remote_smart_charging_test': { name: 'B.3: Remote Smart Charging', category: 'category-b-buttons' },
-            'run_b4_offline_local_start_test': { name: 'B.4: Offline Local Start', category: 'category-b-buttons' },
+            'run_b4_offline_local_start_test': { name: 'B.4: Plug & Charge', category: 'category-b-buttons' },
             'run_b6_clear_rfid_cache': { name: 'B.6: Clear RFID Cache', category: 'category-b-buttons' },
             'run_b7_send_rfid_list': { name: 'B.7: Send RFID List', category: 'category-b-buttons' },
             'run_b8_get_rfid_list_version': { name: 'B.8: Get RFID List Version', category: 'category-b-buttons' },
@@ -1396,7 +1398,7 @@
                         await new Promise(resolve => setTimeout(resolve, 3000));
 
                         // Run B.4 (Offline Local Start)
-                        showStatusMessage('Running B.4: Offline Local Start...');
+                        showStatusMessage('Running B.4: Plug & Charge...');
                         const b4Response = await fetch('/api/test/run_b4_offline_local_start_test', { method: 'POST' });
                         if (!b4Response.ok) throw new Error(`B.4 failed: ${b4Response.status}`);
                         const b4Result = await b4Response.json();
@@ -1436,7 +1438,7 @@
                         message += `  B.1 RFID Authorization Before Plug-in: ${b1TestResult}\n`;
                         message += `  B.2 RFID Authorization After Plug-in: ${b2TestResult}\n`;
                         message += `  B.3 Remote Smart Charging: ${b3TestResult}\n`;
-                        message += `  B.4 Offline Local Start: ${b4TestResult}\n\n`;
+                        message += `  B.4 Plug & Charge: ${b4TestResult}\n\n`;
                         message += `Total: 4 tests completed\n\n`;
                         message += `Combined log file: ${combineResult.combined_log_file}`;
 

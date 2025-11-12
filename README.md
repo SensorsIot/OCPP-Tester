@@ -30,7 +30,7 @@ cd ocpp
 pip install -r requirements.txt
 
 # Start the server
-python3 main.py
+python3 ocpp-tester.py
 ```
 
 ### Access
@@ -95,7 +95,7 @@ Runs B.2 → B.3 → B.4 → B.5 sequentially.
 - 10-minute timeout
 - Result summary popup
 
-**Log Location**: `/home/ocpp/logs/b_all_tests_{charge_point_id}_{timestamp}.log`
+**Log Location**: `/home/ocpp-tester/logs/b_all_tests_{charge_point_id}_{timestamp}.log`
 
 ### C All Tests
 Runs C.1 and C.2 tests 4 times each (8 iterations total).
@@ -109,7 +109,7 @@ Runs C.1 and C.2 tests 4 times each (8 iterations total).
 - 8-minute timeout
 - Verification for all 8 iterations
 
-**Log Location**: `/home/ocpp/logs/c_all_tests_{charge_point_id}_{timestamp}.log`
+**Log Location**: `/home/ocpp-tester/logs/c_all_tests_{charge_point_id}_{timestamp}.log`
 
 ## ✅ Verification System
 
@@ -149,14 +149,14 @@ Colors persist across page refreshes and update every 3 seconds via polling.
 
 ### Individual Test Logs
 ```
-/home/ocpp/logs/{test_name}_{charge_point_id}_{timestamp}.log
+/home/ocpp-tester/logs/{test_name}_{charge_point_id}_{timestamp}.log
 ```
 Contains: Test name, parameters, OCPP messages, result
 
 ### Combined Test Logs
 ```
-/home/ocpp/logs/b_all_tests_{charge_point_id}_{timestamp}.log
-/home/ocpp/logs/c_all_tests_{charge_point_id}_{timestamp}.log
+/home/ocpp-tester/logs/b_all_tests_{charge_point_id}_{timestamp}.log
+/home/ocpp-tester/logs/c_all_tests_{charge_point_id}_{timestamp}.log
 ```
 
 Structure:
@@ -169,7 +169,7 @@ Structure:
 ## 🏗️ Architecture
 
 ```
-main.py                     # Entry point & WebSocket routing
+ocpp-tester.py              # Entry point & WebSocket routing
 ├── app/
 │   ├── core.py            # Global state & configuration
 │   ├── ocpp_handler.py    # WebSocket connection management

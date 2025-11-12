@@ -22,7 +22,7 @@ from app.messages import (
 )
 from app.ocpp_server_logic import OcppServerLogic
 from app.test_sequence import TestSequence
-from app.core import CHARGE_POINTS, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id
+from app.core import CHARGE_POINTS, SERVER_SETTINGS, get_active_charge_point_id, set_active_charge_point_id, OCPP_MESSAGE_TIMEOUT
 from websockets.server import ServerConnection
 from websockets.exceptions import ConnectionClosedOK
 
@@ -102,6 +102,7 @@ class OCPPHandler:
         self.ocpp_logic = OcppServerLogic(self, self.refresh_trigger, self.initial_status_received)
         self.test_sequence = TestSequence(self.ocpp_logic)
         self._logic_task = None
+        self.incoming_message_logger: Optional[Callable[[str, str, Any, str], None]] = None
 
     def signal_cancellation(self):
         self._cancellation_event.set()
@@ -158,7 +159,7 @@ class OCPPHandler:
         except Exception as e:
             logger.error(f"Logic error for {self.charge_point_id}: {e}", exc_info=True)
 
-    async def send_and_wait(self, action: str, request_payload: Any, timeout: int = 30) -> Optional[Dict[str, Any]]:
+    async def send_and_wait(self, action: str, request_payload: Any, timeout: int = OCPP_MESSAGE_TIMEOUT) -> Optional[Dict[str, Any]]:
         unique_id = str(uuid.uuid4())
         event = asyncio.Event()
         pending_request = {"action": action, "event": event}
@@ -214,6 +215,13 @@ class OCPPHandler:
             filtered = _filter_payload(payload_class, payload_dict)
             handler = getattr(self.ocpp_logic.message_handlers, handler_name)
             payload = payload_class(**filtered)
+
+            # Log incoming message if logger is set (during test execution)
+            if self.incoming_message_logger:
+                from datetime import datetime
+                timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                self.incoming_message_logger("RECEIVED", action, payload, timestamp_str, unique_id)
+
             response_payload = await handler(self.charge_point_id, payload)
             if response_payload is not None:
                 response_message = create_ocpp_message(3, unique_id, response_payload, charge_point_id=self.charge_point_id)

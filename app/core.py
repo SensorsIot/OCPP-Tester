@@ -13,7 +13,7 @@ def _env(name: str, default: str) -> str:
     return os.getenv(name, default)
 
 OCPP_HOST = _env("OCPP_HOST", "0.0.0.0")
-OCPP_PORT = int(_env("OCPP_PORT", "8887"))
+OCPP_PORT = int(_env("OCPP_PORT", "8888"))
 
 LOG_WS_PATH = _env("LOG_WS_PATH", "/logs")
 EV_STATUS_WS_PATH = _env("EV_STATUS_WS_PATH", "/ev-status")
@@ -27,6 +27,9 @@ EV_SIMULATOR_BASE_URL = _env("EV_SIMULATOR_BASE_URL", "http://192.168.0.151")
 EV_SIMULATOR_CHARGE_POINT_ID = _env("EV_SIMULATOR_CHARGE_POINT_ID", "Wallbox001")
 EV_STATUS_POLL_INTERVAL = int(_env("EV_STATUS_POLL_INTERVAL", "5"))
 EV_WAIT_MAX_BACKOFF = int(_env("EV_WAIT_MAX_BACKOFF", "30"))
+
+# OCPP message timeout in seconds
+OCPP_MESSAGE_TIMEOUT = int(_env("OCPP_MESSAGE_TIMEOUT", "10"))
 
 CHARGE_POINTS: Dict[str, Dict[str, Any]] = {}
 TRANSACTIONS: Dict[int, Dict[str, Any]] = {}
@@ -215,13 +218,31 @@ def process_configuration_response(response_payload: dict) -> bool:
                 "A": "A"
             }
 
-            mapped_unit = unit_mapping.get(value)
-            if mapped_unit:
+            # Handle comma-separated values (e.g., "Current, Power")
+            values = [v.strip() for v in value.split(",")]
+
+            # Try to map each value
+            mapped_units = []
+            for v in values:
+                if v in unit_mapping:
+                    mapped_units.append(unit_mapping[v])
+
+            if mapped_units:
+                # Prefer W (Power) over A (Current) when both are available (more precise)
+                if "W" in mapped_units:
+                    chosen_unit = "W"
+                else:
+                    chosen_unit = mapped_units[0]
+
                 old_unit = SERVER_SETTINGS.get("charging_rate_unit", "A")
-                SERVER_SETTINGS["charging_rate_unit"] = mapped_unit
+                SERVER_SETTINGS["charging_rate_unit"] = chosen_unit
                 SERVER_SETTINGS["charging_rate_unit_auto_detected"] = True
                 SERVER_SETTINGS["auto_detection_completed"] = True
-                logger.info(f"✅ Auto-detected charging rate unit: {mapped_unit} (from '{value}', was: {old_unit})")
+
+                if len(mapped_units) > 1:
+                    logger.info(f"✅ Auto-detected charging rate unit: {chosen_unit} (wallbox supports: {', '.join(mapped_units)}, chose {chosen_unit}, was: {old_unit})")
+                else:
+                    logger.info(f"✅ Auto-detected charging rate unit: {chosen_unit} (from '{value}', was: {old_unit})")
                 return True
             else:
                 logger.warning(f"⚠️ Unsupported charging rate unit: {value}, keeping default")

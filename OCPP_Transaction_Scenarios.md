@@ -12,7 +12,7 @@ This document maps the OCPP Tester B-series tests to standard OCPP transaction s
 
 ## Standard OCPP Scenarios
 
-### 🔌 1. Plug & Charge (Offline Local Start)
+### 🔌 1. Plug & Charge (Plug & Charge)
 
 Used when the EVSE starts charging immediately after plug-in (e.g., free charging or locally authorized).
 
@@ -98,8 +98,8 @@ Backend starts or stops a session via network commands, often used by solar-awar
 |------|------|-------------------|-------------------|--------|-------------------|
 | **B.1** | RFID Authorization Before Plug-in | ✅ Scenario 2 (exact match) | Default OCPP settings | Tap → Plug → Start | Online via `Authorize` |
 | **B.2** | RFID Authorization After Plug-in | ✅ Scenario 3 (exact match) | `LocalAuthListEnabled=true`<br>`LocalAuthorizeOffline=true` | Plug → Tap → Start (< 2s) | Local cache (offline-capable) |
-| **B.3** | Remote Smart Charging | ✅ Scenario 4 (variation) | `AuthorizeRemoteTxRequests=false` | Plug → Remote cmd → Start | Remote command (no auth check) |
-| **B.4** | Offline Local Start | ✅ Scenario 1 (exact match) | `LocalPreAuthorize=true` | Plug → Auto-start | Local (automatic) |
+| **B.3** | Remote Smart Charging | ✅ Scenario 4 (exact match) | `AuthorizeRemoteTxRequests=true` | Plug → Remote cmd → Authorize → Start | Remote command (with authorization) |
+| **B.4** | Plug & Charge | ✅ Scenario 1 (exact match) | `LocalPreAuthorize=true` | Plug → Auto-start | Local (automatic) |
 
 ---
 
@@ -164,32 +164,36 @@ Backend starts or stops a session via network commands, often used by solar-awar
 ---
 
 ### B.3: Remote Smart Charging
-**Maps to:** Standard Scenario 4 - Remote Start/Stop (immediate variant)
+**Maps to:** Standard Scenario 4 - Remote Start/Stop (standard OCPP sequence)
 
 **Configuration:**
-- `AuthorizeRemoteTxRequests=false` - Skip authorize check for remote commands
+- `AuthorizeRemoteTxRequests=true` - Wallbox checks authorization for remote commands
 - EV **already connected** when command received
 
 **Flow:**
 ```
 1. EV is already plugged in (State B or C)
-2. User initiates charging via app/web/QR code
+2. User initiates charging via app/web/smart charging controller
 3. CS sends RemoteStartTransaction(idTag, connectorId)
-4. Wallbox accepts and starts transaction immediately
-5. StartTransaction sent to CS
-6. Charging begins
-7. Periodic MeterValues
-8. RemoteStopTransaction or physical stop
+4. Wallbox sends Authorize(idTag) to CS
+5. CS responds Authorize.conf(Accepted)
+6. Wallbox starts transaction
+7. StartTransaction sent to CS
+8. Charging begins
+9. Periodic MeterValues
+10. RemoteStopTransaction or physical stop
 ```
 
 **Use Case:**
+- Solar-optimized charging (EVCC, SolarManager)
+- Dynamic pricing / off-peak charging
+- Grid load balancing
+- App/web payment-based charging
 - QR code payment systems
-- Web portal charging
-- App-based charging after already plugged in
 
 ---
 
-### B.4: Offline Local Start (Plug-and-Charge)
+### B.4: Plug & Charge (Plug-and-Charge)
 **Maps to:** Standard Scenario 1 - Plug & Charge
 
 **Configuration:**
@@ -218,7 +222,7 @@ Backend starts or stops a session via network commands, often used by solar-awar
 
 Your test suite provides **complete coverage** of standard OCPP charging scenarios:
 
-✅ **Scenario 1** - Offline Local Start (B.4)
+✅ **Scenario 1** - Plug & Charge (B.4)
 ✅ **Scenario 2** - RFID Authorization Before Plug-in (B.1)
 ✅ **Scenario 3** - RFID Authorization After Plug-in / Local Cache (B.2)
 ✅ **Scenario 4** - Remote Smart Charging (B.3)
@@ -241,7 +245,7 @@ Key OCPP configuration parameters used across B tests:
 | Parameter | B.1 | B.2 | B.3 | B.4 |
 |-----------|-----|-----|-----|-----|
 | `LocalPreAuthorize` | false | false | false | **true** |
-| `AuthorizeRemoteTxRequests` | N/A | N/A | **false** | N/A |
+| `AuthorizeRemoteTxRequests` | N/A | N/A | **true** | N/A |
 | `LocalAuthListEnabled` | false | **true** | false | false |
 | `LocalAuthorizeOffline` | false | **true** | false | false |
 
@@ -252,8 +256,8 @@ Key OCPP configuration parameters used across B tests:
 - `false`: Wallbox waits for authorization (B.1, B.2, B.3)
 
 **AuthorizeRemoteTxRequests:**
-- `false`: RemoteStartTransaction commands are trusted without `Authorize` check (B.3)
-- `true`: RemoteStartTransaction requires additional `Authorize` request (Standard Scenario 4)
+- `true`: RemoteStartTransaction triggers `Authorize` check before starting (B.3 - Standard OCPP flow)
+- `false`: RemoteStartTransaction starts immediately without `Authorize` check (skips authorization)
 
 **LocalAuthListEnabled:**
 - `true`: Enable local authorization cache (B.2)
@@ -300,13 +304,15 @@ CS           Wallbox        User
 ```
 *Note: StartTransaction sent BEFORE waiting for Authorize.conf*
 
-### B.3: Remote Start (Immediate)
+### B.3: Remote Smart Charging (with Authorization)
 ```
 CS           Wallbox        User
 │             │              │
 │             │<────Plug─────┤
 ├─RemoteStart─>│              │
 │<─Accepted────┤              │
+│<─Authorize──┤ (idTag)      │
+├─Accepted───>│              │
 │<─StartTx────┤              │
 ├─Confirm─────>│              │
 │             ├──Charging────>│
@@ -314,8 +320,9 @@ CS           Wallbox        User
 ├─RemoteStop─>│              │
 │<─StopTx─────┤              │
 ```
+*Note: Authorize step included (AuthorizeRemoteTxRequests=true)*
 
-### B.4: Plug-and-Charge
+### B.4: Plug & Charge
 ```
 CS           Wallbox        User
 │             │              │
@@ -327,6 +334,7 @@ CS           Wallbox        User
 │<─StopTx─────┤              │
 │             │              │
 ```
+*Note: No authorization needed (LocalPreAuthorize=true)*
 
 ---
 

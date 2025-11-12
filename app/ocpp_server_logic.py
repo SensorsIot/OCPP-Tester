@@ -49,14 +49,22 @@ class OcppServerLogic:
             logger.info(f"Cancellation requested for {self.charge_point_id}. Aborting test.")
             raise asyncio.CancelledError("Test cancelled by user.")
 
-    def _set_test_result(self, step_name: str, result: str):
+    def _set_test_result(self, step_name: str, result: str, reason: str = None):
         if self.charge_point_id not in CHARGE_POINTS:
             return
         if "test_results" not in CHARGE_POINTS[self.charge_point_id]:
             CHARGE_POINTS[self.charge_point_id]["test_results"] = {}
 
-        CHARGE_POINTS[self.charge_point_id]["test_results"][step_name] = result
-        logger.debug(f"Stored test result for {self.charge_point_id} - {step_name}: {result}")
+        # Store result as dict if reason provided, otherwise as string for backward compatibility
+        if reason:
+            CHARGE_POINTS[self.charge_point_id]["test_results"][step_name] = {
+                "result": result,
+                "reason": reason
+            }
+            logger.debug(f"Stored test result for {self.charge_point_id} - {step_name}: {result} ({reason})")
+        else:
+            CHARGE_POINTS[self.charge_point_id]["test_results"][step_name] = result
+            logger.debug(f"Stored test result for {self.charge_point_id} - {step_name}: {result}")
 
     async def _set_ev_state(self, state: str):
         if not SERVER_SETTINGS.get("ev_simulator_available"):
@@ -124,14 +132,14 @@ class OcppServerLogic:
     async def run_a1_initial_registration(self):
         return await self.test_steps.run_a1_initial_registration()
 
-    async def run_a2_get_configuration_test(self):
-        return await self.test_steps.run_a2_get_configuration_test()
+    async def run_a2_get_all_parameters(self):
+        return await self.test_steps.run_a2_get_all_parameters()
 
     async def run_a2_configuration_exchange(self):
         return await self.test_steps.run_a2_configuration_exchange()
 
-    async def run_a3_change_configuration_test(self):
-        return await self.test_steps.run_a3_change_configuration_test()
+    async def run_a3_check_single_parameters(self):
+        return await self.test_steps.run_a3_check_single_parameters()
 
     async def run_a4_check_initial_state(self):
         return await self.test_steps.run_a4_check_initial_state()

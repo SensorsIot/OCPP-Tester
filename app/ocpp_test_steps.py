@@ -2539,9 +2539,41 @@ class OcppTestSteps:
         logger.info("💡 Use cases: App-based charging, web portal charging, pre-authorized sessions")
         logger.info("")
 
+        # Step -1: Cleanup - Stop any active transactions first
+        logger.info("🧹 Step -1: Checking for and stopping any active transactions...")
+        transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
+                              tdata.get("charge_point_id") == self.charge_point_id and
+                              tdata.get("status") == "Ongoing"), None)
+
+        if transaction_id:
+            logger.info(f"   🛑 Found active transaction {transaction_id}, stopping it...")
+            try:
+                stop_response = await self.handler.send_and_wait(
+                    "RemoteStopTransaction",
+                    RemoteStopTransactionRequest(transactionId=transaction_id),
+                    timeout=OCPP_MESSAGE_TIMEOUT
+                )
+                self._check_cancellation()
+                if stop_response and stop_response.get("status") == "Accepted":
+                    logger.info("   ✅ Transaction stopped successfully")
+                    await asyncio.sleep(3)  # Wait for StopTransaction message
+                else:
+                    logger.warning(f"   ⚠️  Stop command status: {stop_response.get('status', 'Unknown')}")
+            except Exception as e:
+                logger.warning(f"   ⚠️  Could not stop transaction: {e}")
+        else:
+            logger.info("   ✅ No active transactions to clean up")
+
+        logger.info("")
+
         # Step 0: Ensure baseline configuration
         logger.info("🔧 Step 0: Verifying baseline configuration...")
-        logger.info("   📘 For this test: AuthorizeRemoteTxRequests=false (remote commands don't need auth)")
+        logger.info("   📘 For this test: AuthorizeRemoteTxRequests=true (wallbox checks authorization)")
+        logger.info("   📘 This follows standard OCPP 1.6-J Remote Start sequence:")
+        logger.info("   📘   1. CS sends RemoteStartTransaction with idTag")
+        logger.info("   📘   2. CP sends Authorize to check idTag")
+        logger.info("   📘   3. CS responds Authorize.conf (Accepted)")
+        logger.info("   📘   4. CP sends StartTransaction")
 
         try:
             response = await self.handler.send_and_wait(
@@ -2558,11 +2590,11 @@ class OcppTestSteps:
                         authorize_remote = key.get("value", "").lower()
                         break
 
-            if authorize_remote != "false":
-                logger.info(f"   🔧 Setting AuthorizeRemoteTxRequests=false (currently: {authorize_remote})...")
+            if authorize_remote != "true":
+                logger.info(f"   🔧 Setting AuthorizeRemoteTxRequests=true (currently: {authorize_remote})...")
                 config_response = await self.handler.send_and_wait(
                     "ChangeConfiguration",
-                    ChangeConfigurationRequest(key="AuthorizeRemoteTxRequests", value="false"),
+                    ChangeConfigurationRequest(key="AuthorizeRemoteTxRequests", value="true"),
                     timeout=OCPP_MESSAGE_TIMEOUT
                 )
                 self._check_cancellation()
@@ -2578,12 +2610,47 @@ class OcppTestSteps:
 
         logger.info("")
 
-        # Step 1: Plug in EV (set State B)
-        logger.info("🔌 Step 1: Simulating EV cable connection...")
-        logger.info("   💡 In real scenario, user plugs in their EV")
+        # Step 1: Prepare EV connection (State B)
+        using_simulator = SERVER_SETTINGS.get("use_simulator", False)
+        logger.info(f"🔌 Step 1: Preparing EV connection...")
+        logger.info(f"   💡 Mode: {'EV Simulator' if using_simulator else 'Real Charge Point'}")
 
-        await self._set_ev_state("B")
-        logger.info("   ✅ EV cable connected (State B)")
+        if using_simulator:
+            # Using EV simulator - set state programmatically
+            logger.info("   🤖 Setting EV simulator to State B (cable connected)...")
+            await self._set_ev_state("B")
+            logger.info("   ✅ EV cable connected (State B)")
+            # Give wallbox time to process state change
+            await asyncio.sleep(2)
+        else:
+            # Real charge point - need user to plug in EV
+            current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
+            logger.info(f"   📊 Current connector status: {current_status}")
+
+            if current_status in ["Preparing", "SuspendedEV", "SuspendedEVSE"]:
+                logger.info("   ✅ EV is already connected and ready")
+            elif current_status == "Charging":
+                logger.error("   ❌ Connector is currently charging - cleanup failed")
+                self._set_test_result(step_name, "FAILED")
+                return
+            else:
+                # Need to wait for user to plug in
+                logger.info("")
+                logger.info("👤 USER ACTION REQUIRED:")
+                logger.info("   🔌 PLEASE PLUG IN YOUR EV CABLE NOW")
+                logger.info("   ⏳ Waiting for connector status to change to 'Preparing'...")
+                logger.info("   💡 The test will continue automatically once EV is detected")
+                logger.info("")
+
+                try:
+                    await asyncio.wait_for(self._wait_for_status("Preparing"), timeout=120)
+                    logger.info("   ✅ EV detected - connector is in Preparing state")
+                except asyncio.TimeoutError:
+                    final_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
+                    logger.error(f"   ❌ Timeout waiting for EV connection. Current status: {final_status}")
+                    logger.error("   💡 RemoteStartTransaction requires EV to be plugged in first")
+                    self._set_test_result(step_name, "FAILED")
+                    return
 
         # Step 2: Send RemoteStartTransaction with idTag for remote charging
         logger.info("")
@@ -2605,6 +2672,11 @@ class OcppTestSteps:
             if not response or response.get("status") != "Accepted":
                 status = response.get("status", "Unknown") if response else "No response"
                 logger.error(f"❌ RemoteStartTransaction rejected: {status}")
+                logger.info("   💡 Possible reasons for rejection:")
+                logger.info("      - Connector already in use or faulted")
+                logger.info("      - Wallbox doesn't recognize idTag 'ElecqAutoStart'")
+                logger.info("      - Remote start not enabled in wallbox configuration")
+                logger.info("      - Wallbox in error state or offline")
                 self._set_test_result(step_name, "FAILED")
                 return
 
@@ -2669,16 +2741,16 @@ class OcppTestSteps:
 
         # Test PASSED
         logger.info("")
-        logger.info("✅ ANONYMOUS REMOTE START TEST PASSED")
+        logger.info("✅ REMOTE SMART CHARGING TEST PASSED")
         logger.info(f"   ⚡ Transaction ID: {transaction_id}")
-        logger.info("   ❗ No ID Tag (Anonymous charging)")
-        logger.info("   📱 Free/anonymous charging flow working correctly")
+        logger.info(f"   🎫 ID Tag: ElecqAutoStart (authorized remotely)")
+        logger.info("   📱 Smart charging / remote start flow working correctly")
 
         self._set_test_result(step_name, "PASSED")
 
         # Cleanup: Stop the transaction and reset EV state
         logger.info("")
-        logger.info("🧹 Cleaning up: Stopping anonymous transaction and resetting EV state...")
+        logger.info("🧹 Cleaning up: Stopping remote transaction and resetting EV state...")
 
         if transaction_id:
             try:
@@ -2708,8 +2780,8 @@ class OcppTestSteps:
         logger.info(f"--- Step B.4 for {self.charge_point_id} complete. ---")
 
     async def run_b4_offline_local_start_test(self, params=None):
-        """B.4: Offline Local Start - Tests automatic charging when EV is plugged in with LocalPreAuthorize enabled."""
-        logger.info(f"--- Step B.4: Offline Local Start for {self.charge_point_id} ---")
+        """B.4: Plug & Charge - Tests automatic charging when EV is plugged in with LocalPreAuthorize enabled."""
+        logger.info(f"--- Step B.4: Plug & Charge for {self.charge_point_id} ---")
         step_name = "run_b4_offline_local_start_test"
         self._check_cancellation()
 

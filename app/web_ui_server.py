@@ -440,8 +440,20 @@ def run_test_step(step_name):
     # Message log storage
     message_log = []
 
+    # Track triggered messages
+    triggered_messages = set()
+
     def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None):
         """Helper to log OCPP messages with full OCPP message format."""
+        # Filter out passive StatusNotification and BootNotification unless explicitly triggered
+        if msg_type == "RECEIVED" and action in ["StatusNotification", "BootNotification"]:
+            # Only log if this message type was triggered by TriggerMessage
+            if action not in triggered_messages:
+                return  # Skip logging this passive status update
+            else:
+                # Clear the trigger flag after logging
+                triggered_messages.discard(action)
+
         if is_dataclass(payload):
             payload_dict = asdict(payload)
         elif isinstance(payload, dict):
@@ -453,6 +465,13 @@ def run_test_step(step_name):
         if msg_type == "REQUEST":
             # CALL format: [2, message_id, action, payload]
             full_ocpp_message = [2, message_id, action, payload_dict]
+
+            # Track if we're triggering StatusNotification or BootNotification
+            if action == "TriggerMessage":
+                requested_message = payload_dict.get("requestedMessage")
+                if requested_message in ["StatusNotification", "BootNotification"]:
+                    triggered_messages.add(requested_message)
+
         elif msg_type == "RESPONSE":
             # CALLRESULT format: [3, message_id, payload]
             full_ocpp_message = [3, message_id, payload_dict]
@@ -914,8 +933,20 @@ def run_c_all_tests():
     # Message log storage
     message_log = []
 
+    # Track triggered messages
+    triggered_messages = set()
+
     def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None):
         """Helper to log OCPP messages with full OCPP message format."""
+        # Filter out passive StatusNotification and BootNotification unless explicitly triggered
+        if msg_type == "RECEIVED" and action in ["StatusNotification", "BootNotification"]:
+            # Only log if this message type was triggered by TriggerMessage
+            if action not in triggered_messages:
+                return  # Skip logging this passive status update
+            else:
+                # Clear the trigger flag after logging
+                triggered_messages.discard(action)
+
         # Convert dataclass to dict if needed
         if is_dataclass(payload):
             payload_dict = asdict(payload)
@@ -928,6 +959,13 @@ def run_c_all_tests():
         if msg_type == "REQUEST":
             # CALL format: [2, message_id, action, payload]
             full_ocpp_message = [2, message_id, action, payload_dict]
+
+            # Track if we're triggering StatusNotification or BootNotification
+            if action == "TriggerMessage":
+                requested_message = payload_dict.get("requestedMessage")
+                if requested_message in ["StatusNotification", "BootNotification"]:
+                    triggered_messages.add(requested_message)
+
         elif msg_type == "RESPONSE":
             # CALLRESULT format: [3, message_id, payload]
             full_ocpp_message = [3, message_id, payload_dict]
@@ -1302,8 +1340,20 @@ def run_b_all_tests():
     # Message log storage
     message_log = []
 
+    # Track triggered messages
+    triggered_messages = set()
+
     def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None):
         """Helper to log OCPP messages with full OCPP message format."""
+        # Filter out passive StatusNotification and BootNotification unless explicitly triggered
+        if msg_type == "RECEIVED" and action in ["StatusNotification", "BootNotification"]:
+            # Only log if this message type was triggered by TriggerMessage
+            if action not in triggered_messages:
+                return  # Skip logging this passive status update
+            else:
+                # Clear the trigger flag after logging
+                triggered_messages.discard(action)
+
         # Convert dataclass to dict if needed
         if is_dataclass(payload):
             payload_dict = asdict(payload)
@@ -1316,6 +1366,13 @@ def run_b_all_tests():
         if msg_type == "REQUEST":
             # CALL format: [2, message_id, action, payload]
             full_ocpp_message = [2, message_id, action, payload_dict]
+
+            # Track if we're triggering StatusNotification or BootNotification
+            if action == "TriggerMessage":
+                requested_message = payload_dict.get("requestedMessage")
+                if requested_message in ["StatusNotification", "BootNotification"]:
+                    triggered_messages.add(requested_message)
+
         elif msg_type == "RESPONSE":
             # CALLRESULT format: [3, message_id, payload]
             full_ocpp_message = [3, message_id, payload_dict]
@@ -1398,8 +1455,8 @@ def run_b_all_tests():
                 await test_steps.run_b3_remote_smart_charging_test(params=None)
                 await asyncio.sleep(2)
 
-                # Run B.4 - Offline Local Start
-                logging.info(f"📋 Starting B.4 Offline Local Start test...")
+                # Run B.4 - Plug & Charge
+                logging.info(f"📋 Starting B.4 Plug & Charge test...")
                 await test_steps.run_b4_offline_local_start_test(params=None)
                 await asyncio.sleep(2)
 
