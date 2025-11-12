@@ -1,13 +1,17 @@
 """
-OCPP Test Modules
+OCPP Test Modules - Modular Test Structure
 
-Test series organized by functionality:
-- Series A: Core Communication & Status (6 tests)
-- Series B: Authorization & Status Management (10 tests)
-- Series C: Charging Profile Management (5 tests)
-- Series D: Smart Charging (2 tests)
-- Series E: Remote Operations (7 tests)
-- Series X: Utility Functions (2 tests)
+All tests organized by series for better maintainability and clarity.
+
+Test Series Organization (ALL MIGRATED ✓):
+- Series A (TestSeriesA): Core Communication & Status (6 tests)
+- Series B (TestSeriesB): Authorization & Status Management (8 tests)
+- Series C (TestSeriesC): Charging Profile Management (7 tests)
+- Series D (TestSeriesD): Smart Charging (3 tests)
+- Series E (TestSeriesE): Remote Operations (8 tests)
+- Series X (TestSeriesX): Utility Functions (2 tests)
+
+Total: 36 tests across 6 series
 """
 
 from app.tests.test_base import OcppTestBase
