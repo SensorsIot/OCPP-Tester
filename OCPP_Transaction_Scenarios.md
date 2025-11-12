@@ -31,9 +31,9 @@ Used when the EVSE starts charging immediately after plug-in (e.g., free chargin
 
 ---
 
-### 🪪 2. Authorize Before Charge (RFID / Card Start)
+### 🪪 2. Authorize Before Plug-in (RFID / Card Start - Online)
 
-The most common public charging workflow.
+The most common public charging workflow. User authorizes first, then plugs in.
 
 **Sequence:**
 1. CP → CS: `BootNotification` - On startup
@@ -51,7 +51,29 @@ The most common public charging workflow.
 
 ---
 
-### 🛰️ 3. Remote Start / Stop (Smart Charging)
+### 🔐 3. Authorize After Plug-in (Local Authorization Cache)
+
+Offline-capable authorization using local cache. EV plugs in first, then user authorizes.
+
+**Sequence:**
+1. CP → CS: `BootNotification` - On startup
+2. CS → CP: `BootNotification.conf` - Confirms
+3. CP → CS: `StatusNotification` - Connector = Available
+4. CP → CS: `StatusNotification` - Connector = Preparing (plug inserted)
+5. CP → CS: `Authorize(idTag)` - User presents card; CP checks local cache
+6. **Local Cache Hit** - CP validates immediately without waiting
+7. CP → CS: `StartTransaction(idTag)` - Start charging immediately
+8. CS → CP: `Authorize.conf(status)` - Server acknowledges (parallel/async)
+9. CS → CP: `StartTransaction.conf(transactionId)` - Assign transaction ID
+10. CP ↔ CS: `MeterValues` - Periodic
+11. CP → CS: `StopTransaction` - When unplugged or stopped
+12. CS → CP: `StopTransaction.conf` - Confirms end
+
+**Characteristic:** Fast offline authorization - transaction starts within 2 seconds of tap (no network round-trip delay).
+
+---
+
+### 🛰️ 4. Remote Start / Stop (Smart Charging)
 
 Backend starts or stops a session via network commands, often used by solar-aware controllers or apps.
 
@@ -74,16 +96,17 @@ Backend starts or stops a session via network commands, often used by solar-awar
 
 | Test | Name | Standard Scenario | Key Configuration | Timing | Authorization Flow |
 |------|------|-------------------|-------------------|--------|-------------------|
-| **B.1** | RFID Public Charging | ✅ Scenario 2 (exact match) | Default OCPP settings | Tap → Plug → Start | Online via `Authorize` |
-| **B.2** | Remote Smart Charging | ✅ Scenario 3 (variation) | `AuthorizeRemoteTxRequests=false` | Plug → Remote cmd → Start | Remote command (no auth check) |
-| **B.3** | Offline Local Start | ✅ Scenario 1 (exact match) | `LocalPreAuthorize=true` | Plug → Auto-start | Local (automatic) |
+| **B.1** | RFID Authorization Before Plug-in | ✅ Scenario 2 (exact match) | Default OCPP settings | Tap → Plug → Start | Online via `Authorize` |
+| **B.2** | RFID Authorization After Plug-in | ✅ Scenario 3 (exact match) | `LocalAuthListEnabled=true`<br>`LocalAuthorizeOffline=true` | Plug → Tap → Start (< 2s) | Local cache (offline-capable) |
+| **B.3** | Remote Smart Charging | ✅ Scenario 4 (variation) | `AuthorizeRemoteTxRequests=false` | Plug → Remote cmd → Start | Remote command (no auth check) |
+| **B.4** | Offline Local Start | ✅ Scenario 1 (exact match) | `LocalPreAuthorize=true` | Plug → Auto-start | Local (automatic) |
 
 ---
 
 ## Detailed Test Descriptions
 
-### B.1: RFID Public Charging (Online Authorization)
-**Maps to:** Standard Scenario 2 - Authorize Before Charge
+### B.1: RFID Authorization Before Plug-in (Online Authorization)
+**Maps to:** Standard Scenario 2 - Authorize Before Plug-in
 
 **Configuration:**
 - Default OCPP settings
@@ -106,8 +129,42 @@ Backend starts or stops a session via network commands, often used by solar-awar
 
 ---
 
-### B.2: Remote Smart Charging
-**Maps to:** Standard Scenario 3 - Remote Start/Stop (immediate variant)
+### B.2: RFID Authorization After Plug-in (Local Cache)
+**Maps to:** Standard Scenario 3 - Authorize After Plug-in (Local Authorization Cache)
+
+**Configuration:**
+- `LocalAuthListEnabled=true` - Enable local authorization list
+- `LocalAuthorizeOffline=true` - Allow offline authorization from cache
+- Local cache must contain valid RFID cards
+
+**Flow:**
+```
+1. User plugs in EV first (State A → B)
+2. Wallbox sends StatusNotification (Preparing)
+3. User taps RFID card on wallbox reader
+4. Wallbox checks local authorization cache (instant validation)
+5. Cache HIT: Card found and valid in local list
+6. Wallbox immediately starts transaction (< 2 seconds from tap)
+7. StartTransaction sent to CS with cached idTag
+8. Authorize message sent to CS in parallel (for logging)
+9. Charging begins immediately without waiting for network
+10. Periodic MeterValues
+11. StopTransaction when complete
+```
+
+**Key Validation:**
+- Transaction start delay < 2 seconds (proves local cache working)
+- No waiting for Authorize.conf response before StartTransaction
+
+**Use Case:**
+- Parking garages with unreliable network connectivity
+- Sites requiring offline authorization capability
+- Backup authorization when CSMS unreachable
+
+---
+
+### B.3: Remote Smart Charging
+**Maps to:** Standard Scenario 4 - Remote Start/Stop (immediate variant)
 
 **Configuration:**
 - `AuthorizeRemoteTxRequests=false` - Skip authorize check for remote commands
@@ -132,7 +189,7 @@ Backend starts or stops a session via network commands, often used by solar-awar
 
 ---
 
-### B.3: Offline Local Start (Plug-and-Charge)
+### B.4: Offline Local Start (Plug-and-Charge)
 **Maps to:** Standard Scenario 1 - Plug & Charge
 
 **Configuration:**
@@ -161,17 +218,19 @@ Backend starts or stops a session via network commands, often used by solar-awar
 
 Your test suite provides **complete coverage** of standard OCPP charging scenarios:
 
-✅ **Scenario 1** - Offline Local Start (B.3)
-✅ **Scenario 2** - RFID Public Charging (B.1)
-✅ **Scenario 3** - Remote Smart Charging (B.2)
+✅ **Scenario 1** - Offline Local Start (B.4)
+✅ **Scenario 2** - RFID Authorization Before Plug-in (B.1)
+✅ **Scenario 3** - RFID Authorization After Plug-in / Local Cache (B.2)
+✅ **Scenario 4** - Remote Smart Charging (B.3)
 
 ### Real-World Applications
 
 | Test | Typical Deployment |
 |------|-------------------|
 | **B.1** | Public charging stations, parking lots, shopping centers |
-| **B.2** | App-controlled charging, web portals, smart home systems |
-| **B.3** | Home chargers, private parking, workplace charging |
+| **B.2** | Parking garages, unreliable networks, offline authorization |
+| **B.3** | App-controlled charging, web portals, smart home systems |
+| **B.4** | Home chargers, private parking, workplace charging |
 
 ---
 
@@ -179,43 +238,36 @@ Your test suite provides **complete coverage** of standard OCPP charging scenari
 
 Key OCPP configuration parameters used across B tests:
 
-| Parameter | B.2 | B.1 | B.2 | B.1 |
+| Parameter | B.1 | B.2 | B.3 | B.4 |
 |-----------|-----|-----|-----|-----|
 | `LocalPreAuthorize` | false | false | false | **true** |
-| `AuthorizeRemoteTxRequests` | **false** | N/A | **false** | N/A |
-| `LocalAuthListEnabled` | false | false | false | false |
-| `LocalAuthorizeOffline` | false | varies | false | false |
+| `AuthorizeRemoteTxRequests` | N/A | N/A | **false** | N/A |
+| `LocalAuthListEnabled` | false | **true** | false | false |
+| `LocalAuthorizeOffline` | false | **true** | false | false |
 
 ### Configuration Explanations
 
 **LocalPreAuthorize:**
-- `true`: Wallbox starts charging immediately on plug-in (B.3)
-- `false`: Wallbox waits for authorization (B.2, B.3, B.2)
+- `true`: Wallbox starts charging immediately on plug-in (B.4)
+- `false`: Wallbox waits for authorization (B.1, B.2, B.3)
 
 **AuthorizeRemoteTxRequests:**
-- `false`: RemoteStartTransaction commands are trusted without `Authorize` check (B.2, B.2)
-- `true`: RemoteStartTransaction requires additional `Authorize` request (Standard Scenario 3)
+- `false`: RemoteStartTransaction commands are trusted without `Authorize` check (B.3)
+- `true`: RemoteStartTransaction requires additional `Authorize` request (Standard Scenario 4)
+
+**LocalAuthListEnabled:**
+- `true`: Enable local authorization cache (B.2)
+- `false`: Disable local cache, always use online authorization (B.1, B.3, B.4)
+
+**LocalAuthorizeOffline:**
+- `true`: Allow authorization from cache when CSMS unreachable (B.2)
+- `false`: Require online authorization (B.1, B.3, B.4)
 
 ---
 
 ## Message Sequence Diagrams
 
-### B.2: Autonomous Start (Reservation)
-```
-CS           Wallbox        User
-│             │              │
-├─RemoteStart─>│              │
-│<─Accepted────┤              │
-│             │  [Waiting]   │
-│             │<─────Plug────┤
-│<─StartTx────┤              │
-├─Confirm─────>│              │
-│             ├──Charging────>│
-│<─MeterVals──┤              │
-│             │              │
-```
-
-### B.1: RFID Tap-to-Charge
+### B.1: RFID Authorization Before Plug-in
 ```
 CS           Wallbox        User
 │             │              │
@@ -230,7 +282,25 @@ CS           Wallbox        User
 │             │              │
 ```
 
-### B.2: Remote Start (Immediate)
+### B.2: RFID Authorization After Plug-in (Local Cache)
+```
+CS           Wallbox        User
+│             │              │
+│             │<────Plug─────┤
+│<─StatusNot──┤ (Preparing)  │
+│             │<────Tap──────┤
+│             │ [Cache HIT!] │
+│<─StartTx────┤ (< 2sec)     │
+│<─Authorize──┤ (parallel)   │
+├─Accepted───>│              │
+├─Confirm────>│              │
+│             ├──Charging───>│
+│<─MeterVals──┤              │
+│             │              │
+```
+*Note: StartTransaction sent BEFORE waiting for Authorize.conf*
+
+### B.3: Remote Start (Immediate)
 ```
 CS           Wallbox        User
 │             │              │
@@ -245,7 +315,7 @@ CS           Wallbox        User
 │<─StopTx─────┤              │
 ```
 
-### B.1: Plug-and-Charge
+### B.4: Plug-and-Charge
 ```
 CS           Wallbox        User
 │             │              │
@@ -264,10 +334,14 @@ CS           Wallbox        User
 
 When running B-series tests, verify:
 
-- [ ] **B.3** - Charging starts immediately on plug-in (no authorization needed)
-- [ ] **B.3** - Authorization request sent before transaction starts
-- [ ] **B.2** - RemoteStart works when EV already connected
-- [ ] **B.2** - RemoteStart creates reservation that activates on plug-in
+- [ ] **B.1** - Authorization request sent and accepted before transaction starts
+- [ ] **B.1** - Tap → Plug → Start sequence works correctly
+- [ ] **B.2** - Transaction starts within 2 seconds of RFID tap (local cache working)
+- [ ] **B.2** - Plug → Tap → Start sequence works correctly
+- [ ] **B.2** - StartTransaction sent before waiting for Authorize.conf response
+- [ ] **B.3** - RemoteStart works when EV already connected
+- [ ] **B.3** - RemoteStart accepts command without additional authorization
+- [ ] **B.4** - Charging starts immediately on plug-in (no authorization needed)
 - [ ] Configuration parameters are correctly set for each test
 - [ ] MeterValues are received periodically during charging
 - [ ] StopTransaction includes correct reason codes
@@ -275,6 +349,7 @@ When running B-series tests, verify:
 
 ---
 
-*Document Version: 1.0*
+*Document Version: 2.0*
 *Last Updated: 2025-11-12*
 *OCPP Version: 1.6-J*
+*Changes: Added B.2 (Local Cache Authorization), renumbered B.2→B.3 and B.3→B.4*

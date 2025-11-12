@@ -1270,7 +1270,7 @@ def run_c_all_tests():
 
 @app.route("/api/test/b_all_tests", methods=["POST"])
 def run_b_all_tests():
-    """B All Tests - Run B.1 through B.3 tests sequentially and write comprehensive log to file."""
+    """B All Tests - Run B.1 through B.4 tests sequentially and write comprehensive log to file."""
     import os
     from datetime import datetime
     from dataclasses import asdict, is_dataclass
@@ -1282,7 +1282,7 @@ def run_b_all_tests():
 
     charge_point_id = active_charge_point_id
 
-    logging.info(f"API call to run B All Tests (B.1-B.3) for charge point '{charge_point_id}'")
+    logging.info(f"API call to run B All Tests (B.1-B.4) for charge point '{charge_point_id}'")
     if charge_point_id not in CHARGE_POINTS:
         return jsonify({"error": "Charge point not connected."}), 404
 
@@ -1359,7 +1359,7 @@ def run_b_all_tests():
         return response
 
     async def run_tests_with_logging():
-        """Run B.2 through B.5 tests sequentially."""
+        """Run B.1 through B.4 tests sequentially."""
         async with ocpp_handler.test_lock:
             # Get current status BEFORE wrapping (so TriggerMessage isn't logged)
             await ensure_status_known(ocpp_handler, charge_point_id)
@@ -1383,19 +1383,24 @@ def run_b_all_tests():
                 ocpp_logic = ocpp_handler.ocpp_logic
                 test_steps = ocpp_logic.test_steps
 
-                # Run B.1 - RFID Public Charging
-                logging.info(f"📋 Starting B.1 RFID Public Charging test...")
+                # Run B.1 - RFID Authorization Before Plug-in
+                logging.info(f"📋 Starting B.1 RFID Authorization Before Plug-in test...")
                 await test_steps.run_b1_rfid_public_charging_test()
                 await asyncio.sleep(2)
 
-                # Run B.2 - Remote Smart Charging
-                logging.info(f"📋 Starting B.2 Remote Smart Charging test...")
-                await test_steps.run_b2_remote_smart_charging_test(params=None)
+                # Run B.2 - RFID Authorization After Plug-in (Local Cache)
+                logging.info(f"📋 Starting B.2 RFID Authorization After Plug-in test...")
+                await test_steps.run_b2_local_cache_authorization_test(params=None)
                 await asyncio.sleep(2)
 
-                # Run B.3 - Offline Local Start
-                logging.info(f"📋 Starting B.3 Offline Local Start test...")
-                await test_steps.run_b3_offline_local_start_test(params=None)
+                # Run B.3 - Remote Smart Charging
+                logging.info(f"📋 Starting B.3 Remote Smart Charging test...")
+                await test_steps.run_b3_remote_smart_charging_test(params=None)
+                await asyncio.sleep(2)
+
+                # Run B.4 - Offline Local Start
+                logging.info(f"📋 Starting B.4 Offline Local Start test...")
+                await test_steps.run_b4_offline_local_start_test(params=None)
                 await asyncio.sleep(2)
 
             finally:
@@ -1403,14 +1408,14 @@ def run_b_all_tests():
                 ocpp_handler.send_and_wait = original_send_and_wait
 
     try:
-        # Run tests (B.2, B.3, B.4, B.5 = 4 tests)
+        # Run tests (B.1, B.2, B.3, B.4 = 4 tests)
         future = asyncio.run_coroutine_threadsafe(run_tests_with_logging(), app.loop)
         future.result(timeout=600)  # 10 minutes timeout for all tests
 
         # Write comprehensive log file
         with open(log_file, "w") as f:
             f.write("=" * 80 + "\n")
-            f.write("OCPP 1.6J - B All Tests (B.2-B.5) - Comprehensive Log\n")
+            f.write("OCPP 1.6J - B All Tests (B.1-B.4) - Comprehensive Log\n")
             f.write("=" * 80 + "\n")
             f.write(f"Charge Point ID: {charge_point_id}\n")
             f.write(f"Test Start Time: {timestamp}\n")
@@ -1462,13 +1467,15 @@ def run_b_all_tests():
             # Get test results
             test_results = CHARGE_POINTS[charge_point_id].get("test_results", {})
             b1_result = test_results.get("run_b1_rfid_public_charging_test", "NOT RUN")
-            b2_result = test_results.get("run_b2_remote_smart_charging_test", "NOT RUN")
-            b3_result = test_results.get("run_b3_offline_local_start_test", "NOT RUN")
+            b2_result = test_results.get("run_b2_local_cache_authorization_test", "NOT RUN")
+            b3_result = test_results.get("run_b3_remote_smart_charging_test", "NOT RUN")
+            b4_result = test_results.get("run_b4_offline_local_start_test", "NOT RUN")
 
             f.write("TEST RESULTS\n")
             f.write(f"B.1: {b1_result}\n")
             f.write(f"B.2: {b2_result}\n")
             f.write(f"B.3: {b3_result}\n")
+            f.write(f"B.4: {b4_result}\n")
             f.write("-" * 80 + "\n\n")
 
             # Write configuration details (from A.3) if available
@@ -1532,10 +1539,10 @@ def run_b_all_tests():
             "status": f"B All Tests completed for {charge_point_id}",
             "log_file": log_file,
             "test_results": {
+                "b1": b1_result,
                 "b2": b2_result,
                 "b3": b3_result,
-                "b4": b4_result,
-                "b5": b5_result
+                "b4": b4_result
             }
         })
 

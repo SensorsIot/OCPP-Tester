@@ -2181,12 +2181,12 @@ class OcppTestSteps:
         logger.info(f"--- Step B.8 for {self.charge_point_id} complete. ---")
 
     async def run_b1_rfid_public_charging_test(self):
-        """B.3: RFID Tap-to-Charge (Online Authorization) - Tests the standard RFID tap-to-charge flow."""
-        logger.info(f"--- Step B.3: RFID Tap-to-Charge (Online Authorization) for {self.charge_point_id} ---")
+        """B.1: RFID Authorization Before Plug-in - Tests online authorization before EV connection."""
+        logger.info(f"--- Step B.1: RFID Authorization Before Plug-in for {self.charge_point_id} ---")
         step_name = "run_b1_rfid_public_charging_test"
         self._check_cancellation()
 
-        logger.info("🎫 TAP-TO-CHARGE TEST")
+        logger.info("🎫 RFID AUTHORIZATION BEFORE PLUG-IN TEST")
         logger.info("   📘 This tests the standard OCPP 1.6-J authorization flow:")
         logger.info("   📘 1. User taps RFID card → Wallbox sends Authorize request")
         logger.info("   📘 2. Central System responds Accepted/Blocked")
@@ -2317,12 +2317,217 @@ class OcppTestSteps:
         except asyncio.TimeoutError:
             logger.warning("   ⚠️  Timeout waiting for Available status")
 
-        logger.info(f"--- Step B.3 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step B.1 for {self.charge_point_id} complete. ---")
 
-    async def run_b2_remote_smart_charging_test(self, params=None):
-        """B.4: Anonymous Remote Start - Tests remote transaction initiation via app/website."""
-        logger.info(f"--- Step B.4: Anonymous Remote Start for {self.charge_point_id} ---")
-        step_name = "run_b2_remote_smart_charging_test"
+    async def run_b2_local_cache_authorization_test(self):
+        """B.2: RFID Authorization After Plug-in - Tests local cache authorization with EV already connected."""
+        logger.info(f"--- Step B.2: RFID Authorization After Plug-in for {self.charge_point_id} ---")
+        step_name = "run_b2_local_cache_authorization_test"
+        self._check_cancellation()
+
+        logger.info("🎫 RFID AUTHORIZATION AFTER PLUG-IN TEST (Local Cache)")
+        logger.info("   📘 This tests OCPP local authorization list capability:")
+        logger.info("   📘 1. User plugs in EV first")
+        logger.info("   📘 2. User taps RFID card")
+        logger.info("   📘 3. Wallbox checks local cache → immediate start if found")
+        logger.info("   📘 4. No network delay for known users")
+        logger.info("")
+
+        # Step 0: Ensure local auth list is enabled
+        logger.info("🔧 Step 0: Verifying local authorization list configuration...")
+        try:
+            response = await self.handler.send_and_wait(
+                "GetConfiguration",
+                GetConfigurationRequest(key=["LocalAuthListEnabled", "LocalAuthorizeOffline"]),
+                timeout=OCPP_MESSAGE_TIMEOUT
+            )
+            self._check_cancellation()
+
+            local_list_enabled = None
+            local_auth_offline = None
+            if response and response.get("configurationKey"):
+                for key in response.get("configurationKey", []):
+                    if key.get("key") == "LocalAuthListEnabled":
+                        local_list_enabled = key.get("value", "").lower()
+                    elif key.get("key") == "LocalAuthorizeOffline":
+                        local_auth_offline = key.get("value", "").lower()
+
+            logger.info(f"   📋 LocalAuthListEnabled: {local_list_enabled}")
+            logger.info(f"   📋 LocalAuthorizeOffline: {local_auth_offline}")
+
+            if local_list_enabled != "true":
+                logger.warning("   ⚠️  LocalAuthListEnabled is not true - test may not work as expected")
+                logger.warning("   💡 Consider running B.7 (Send RFID List) first")
+
+        except Exception as e:
+            logger.warning(f"   ⚠️  Could not verify configuration: {e}")
+
+        logger.info("")
+
+        # Step 1: Plug in EV first (before RFID tap)
+        logger.info("📡 Step 1: Simulating EV cable connection (State B)...")
+        await self._set_ev_state("B")
+        self._check_cancellation()
+        await asyncio.sleep(2)  # Give wallbox time to process connection
+        logger.info("   ✅ EV connected (cable plugged in)")
+        logger.info("")
+
+        # Step 2: Wait for RFID tap
+        logger.info("👤 Step 2: USER ACTION REQUIRED:")
+        logger.info("   • TAP your RFID card on the wallbox reader")
+        logger.info("   • The test will wait up to 60 seconds for card tap...")
+        logger.info("")
+
+        # Wait for Authorize message
+        start_time = asyncio.get_event_loop().time()
+        timeout = 60  # 60 seconds for user to tap card
+        authorized_id_tag = None
+
+        while (asyncio.get_event_loop().time() - start_time) < timeout:
+            self._check_cancellation()
+            await asyncio.sleep(0.5)
+
+            # Check if an Authorize was received (stored in charge point data)
+            cp_data = CHARGE_POINTS.get(self.charge_point_id, {})
+            authorized_id_tag = cp_data.get("accepted_rfid")
+
+            if authorized_id_tag:
+                logger.info(f"   ✅ RFID card detected: {authorized_id_tag}")
+                break
+
+        if not authorized_id_tag:
+            logger.error("❌ No RFID card tap detected within 60 seconds")
+            logger.error("   💡 Please tap your RFID card and try again")
+            await self._set_ev_state("A")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        # Step 3: Wait for transaction to start (should be quick with local cache)
+        logger.info("")
+        logger.info("⏳ Step 3: Waiting for transaction to start...")
+        logger.info("   💡 With local cache, this should be immediate (< 1 second)")
+
+        transaction_start_time = asyncio.get_event_loop().time()
+        transaction_id = None
+        start_wait_time = asyncio.get_event_loop().time()
+        tx_timeout = 10  # 10 seconds max
+
+        while (asyncio.get_event_loop().time() - start_wait_time) < tx_timeout:
+            self._check_cancellation()
+            await asyncio.sleep(0.5)
+
+            # Check for new ongoing transaction
+            for tx_id, tx_data in TRANSACTIONS.items():
+                if (tx_data.get("charge_point_id") == self.charge_point_id and
+                    tx_data.get("status") == "Ongoing" and
+                    tx_data.get("id_tag") == authorized_id_tag):
+                    transaction_id = tx_id
+                    transaction_start_delay = asyncio.get_event_loop().time() - transaction_start_time
+                    break
+
+            if transaction_id:
+                break
+
+        if not transaction_id:
+            logger.error("❌ Transaction did not start")
+            logger.info("   💡 Possible reasons:")
+            logger.info("   • RFID card not in local authorization list")
+            logger.info("   • LocalAuthListEnabled is false")
+            logger.info("   • Run B.7 (Send RFID List) to add your card")
+            await self._set_ev_state("A")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        logger.info(f"   ✅ Transaction started! (ID: {transaction_id})")
+        logger.info(f"   ⚡ Start delay: {transaction_start_delay:.2f} seconds")
+
+        if transaction_start_delay < 2.0:
+            logger.info("   🚀 Fast start detected - local cache working correctly!")
+        else:
+            logger.warning(f"   ⚠️  Slow start ({transaction_start_delay:.2f}s) - may indicate online authorization")
+
+        logger.info("")
+
+        # Step 4: Set EV state to charging
+        logger.info("📡 Step 4: Setting EV state to 'C' (requesting power)...")
+        await self._set_ev_state("C")
+        self._check_cancellation()
+        await asyncio.sleep(2)
+
+        # Step 5: Wait for charging status
+        logger.info("📡 Step 5: Waiting for charge point to report 'Charging' status...")
+        try:
+            await asyncio.wait_for(self._wait_for_status("Charging"), timeout=15)
+            self._check_cancellation()
+            logger.info("   ✅ Charge point is now charging!")
+        except asyncio.TimeoutError:
+            logger.error("    ❌ Timeout waiting for 'Charging' status")
+            await self._set_ev_state("A")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        # Step 6: Brief verification
+        logger.info("")
+        logger.info("📊 Verifying transaction is active...")
+        await asyncio.sleep(3)
+        self._check_cancellation()
+
+        # Check transaction is still active
+        if transaction_id in TRANSACTIONS:
+            tx_data = TRANSACTIONS[transaction_id]
+            if tx_data.get("stop_timestamp") is None:
+                meter_values_count = len(tx_data.get("meter_values", []))
+                logger.info(f"   ✅ Transaction {transaction_id} active")
+                logger.info(f"   📊 Received {meter_values_count} meter value samples")
+
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("✅ LOCAL CACHE AUTHORIZATION TEST PASSED")
+        logger.info("=" * 60)
+        logger.info(f"   ⚡ Transaction ID: {transaction_id}")
+        logger.info(f"   🎫 ID Tag: {authorized_id_tag}")
+        logger.info(f"   ⚡ Start delay: {transaction_start_delay:.2f} seconds")
+        logger.info("   📱 Plug-first flow working correctly")
+
+        self._set_test_result(step_name, "PASSED")
+
+        # Cleanup: Stop the transaction and reset EV state
+        logger.info("")
+        logger.info("🧹 Cleaning up: Stopping transaction and resetting EV state...")
+
+        if transaction_id:
+            try:
+                stop_response = await self.handler.send_and_wait(
+                    "RemoteStopTransaction",
+                    RemoteStopTransactionRequest(transactionId=transaction_id),
+                    timeout=OCPP_MESSAGE_TIMEOUT
+                )
+                self._check_cancellation()
+                if stop_response and stop_response.get("status") == "Accepted":
+                    logger.info("   ✅ Stop command accepted")
+                    await asyncio.sleep(3)  # Wait for StopTransaction message
+                else:
+                    logger.warning(f"   ⚠️  Stop command status: {stop_response.get('status', 'Unknown')}")
+            except Exception as e:
+                logger.warning(f"   ⚠️  Could not stop transaction: {e}")
+
+        # Reset EV state
+        await self._set_ev_state("A")
+        await asyncio.sleep(1)
+
+        # Wait for Available status
+        try:
+            await asyncio.wait_for(self._wait_for_status("Available"), timeout=OCPP_MESSAGE_TIMEOUT)
+            logger.info("   ✅ Wallbox returned to Available state")
+        except asyncio.TimeoutError:
+            logger.warning("   ⚠️  Timeout waiting for Available status")
+
+        logger.info(f"--- Step B.2 for {self.charge_point_id} complete. ---")
+
+    async def run_b3_remote_smart_charging_test(self, params=None):
+        """B.3: Remote Smart Charging - Tests remote transaction initiation via app/website."""
+        logger.info(f"--- Step B.3: Remote Smart Charging for {self.charge_point_id} ---")
+        step_name = "run_b3_remote_smart_charging_test"
         self._check_cancellation()
 
         logger.info("📱 REMOTE START TEST")
@@ -2502,10 +2707,10 @@ class OcppTestSteps:
 
         logger.info(f"--- Step B.4 for {self.charge_point_id} complete. ---")
 
-    async def run_b3_offline_local_start_test(self, params=None):
-        """B.5: Plug-and-Charge - Tests automatic charging when EV is plugged in with LocalPreAuthorize enabled."""
-        logger.info(f"--- Step B.5: Plug-and-Charge for {self.charge_point_id} ---")
-        step_name = "run_b3_offline_local_start_test"
+    async def run_b4_offline_local_start_test(self, params=None):
+        """B.4: Offline Local Start - Tests automatic charging when EV is plugged in with LocalPreAuthorize enabled."""
+        logger.info(f"--- Step B.4: Offline Local Start for {self.charge_point_id} ---")
+        step_name = "run_b4_offline_local_start_test"
         self._check_cancellation()
 
         logger.info("🔌 PLUG-AND-CHARGE TEST")
