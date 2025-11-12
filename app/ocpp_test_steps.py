@@ -18,11 +18,42 @@ from app.messages import (
     IdTagInfo, UpdateType,
 )
 from app.test_helpers import (
+    # Transaction management
+    find_active_transaction,
     stop_active_transaction,
-    ensure_configuration,
-    prepare_ev_connection,
     wait_for_transaction_start,
+    # Configuration management
+    get_configuration_value,
+    set_configuration_value,
+    ensure_configuration,
+    configure_multiple_parameters,
+    # Status and state management
+    wait_for_connector_status,
+    get_connector_status,
+    is_using_simulator,
+    set_ev_state_safe,
+    # EV connection management
+    prepare_ev_connection,
+    # Cleanup operations
     cleanup_transaction_and_state,
+    clear_charging_profile,
+    clear_all_charging_profiles,
+    # Charging profile operations
+    create_charging_profile,
+    set_charging_profile,
+    get_composite_schedule,
+    verify_charging_profile,
+    # RFID operations
+    clear_rfid_cache,
+    send_local_authorization_list,
+    get_local_list_version,
+    # Remote start/stop operations
+    remote_start_transaction,
+    remote_stop_transaction,
+    # Verification and test results
+    store_verification_results,
+    create_verification_result,
+    start_transaction_for_test,
 )
 
 if TYPE_CHECKING:

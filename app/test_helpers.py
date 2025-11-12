@@ -591,3 +591,711 @@ def log_user_action_required(action: str):
     logger.info("👤 USER ACTION REQUIRED:")
     logger.info(f"   {action}")
     logger.info("")
+
+# =============================================================================
+# CHARGING PROFILE OPERATIONS
+# =============================================================================
+
+async def create_charging_profile(
+    connector_id: int,
+    charging_profile_id: int,
+    stack_level: int,
+    purpose: str,
+    kind: str,
+    charging_unit: str,
+    limit: float,
+    number_phases: int = 3,
+    duration: Optional[int] = None,
+    transaction_id: Optional[int] = None,
+    start_schedule: Optional[str] = None
+):
+    """
+    Create a ChargingProfile object with specified parameters.
+
+    Args:
+        connector_id: Connector ID (0 for charge point level)
+        charging_profile_id: Unique profile ID
+        stack_level: Profile stack level
+        purpose: Profile purpose (TxProfile, TxDefaultProfile, ChargePointMaxProfile)
+        kind: Profile kind (Absolute, Recurring, Relative)
+        charging_unit: Unit (W for power, A for current)
+        limit: Power/current limit value
+        number_phases: Number of phases (default: 3)
+        duration: Profile duration in seconds (optional)
+        transaction_id: Transaction ID for TxProfile (optional)
+        start_schedule: ISO8601 timestamp for profile start (optional)
+
+    Returns:
+        ChargingProfile object ready to use
+    """
+    from app.messages import ChargingProfile, ChargingSchedule, ChargingSchedulePeriod
+    from datetime import datetime, timezone
+
+    if start_schedule is None:
+        start_schedule = datetime.now(timezone.utc).isoformat()
+
+    profile_kwargs = {
+        "chargingProfileId": charging_profile_id,
+        "stackLevel": stack_level,
+        "chargingProfilePurpose": purpose,
+        "chargingProfileKind": kind,
+        "chargingSchedule": ChargingSchedule(
+            chargingRateUnit=charging_unit,
+            chargingSchedulePeriod=[
+                ChargingSchedulePeriod(
+                    startPeriod=0,
+                    limit=limit,
+                    numberPhases=number_phases
+                )
+            ],
+            startSchedule=start_schedule
+        )
+    }
+
+    # Add duration only if specified (TxDefaultProfile should not have duration)
+    if duration is not None:
+        profile_kwargs["chargingSchedule"].duration = duration
+
+    # Add transaction ID only if specified
+    if transaction_id is not None:
+        profile_kwargs["transactionId"] = transaction_id
+
+    return ChargingProfile(**profile_kwargs)
+
+
+async def set_charging_profile(
+    handler,
+    connector_id: int,
+    charging_profile,
+    timeout: int = OCPP_MESSAGE_TIMEOUT
+) -> Tuple[bool, str]:
+    """
+    Send SetChargingProfile request to charge point.
+
+    Args:
+        handler: OCPP handler instance
+        connector_id: Connector ID
+        charging_profile: ChargingProfile object
+        timeout: Timeout in seconds
+
+    Returns:
+        Tuple of (success: bool, status: str)
+    """
+    from app.messages import SetChargingProfileRequest
+
+    try:
+        response = await handler.send_and_wait(
+            "SetChargingProfile",
+            SetChargingProfileRequest(
+                connectorId=connector_id,
+                csChargingProfiles=charging_profile
+            ),
+            timeout=timeout
+        )
+
+        if response and response.get("status"):
+            status = response.get("status")
+            success = status in ["Accepted", "RebootRequired"]
+            return success, status
+
+        return False, "No response"
+
+    except Exception as e:
+        logger.warning(f"   ⚠️  Could not set charging profile: {e}")
+        return False, f"Error: {e}"
+
+
+async def get_composite_schedule(
+    handler,
+    connector_id: int,
+    duration: int = 3600,
+    charging_rate_unit: Optional[str] = None,
+    timeout: int = OCPP_MESSAGE_TIMEOUT
+) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """
+    Get composite charging schedule from charge point.
+
+    Args:
+        handler: OCPP handler instance
+        connector_id: Connector ID
+        duration: Duration in seconds (default: 3600)
+        charging_rate_unit: Desired unit (W or A), None for wallbox native
+        timeout: Timeout in seconds
+
+    Returns:
+        Tuple of (success: bool, schedule_data: Optional[Dict])
+        schedule_data contains chargingSchedule if successful
+    """
+    from app.messages import GetCompositeScheduleRequest
+
+    try:
+        response = await handler.send_and_wait(
+            "GetCompositeSchedule",
+            GetCompositeScheduleRequest(
+                connectorId=connector_id,
+                duration=duration,
+                chargingRateUnit=charging_rate_unit
+            ),
+            timeout=timeout
+        )
+
+        if response and response.get("status") == "Accepted":
+            return True, response.get("chargingSchedule")
+
+        status = response.get("status", "Unknown") if response else "No response"
+        logger.warning(f"   ⚠️  GetCompositeSchedule failed: {status}")
+        return False, None
+
+    except Exception as e:
+        logger.warning(f"   ⚠️  Could not get composite schedule: {e}")
+        return False, None
+
+
+async def verify_charging_profile(
+    handler,
+    connector_id: int,
+    expected_unit: str,
+    expected_limit: float,
+    expected_phases: int = 3,
+    timeout: int = OCPP_MESSAGE_TIMEOUT
+) -> Tuple[bool, List[Dict[str, Any]]]:
+    """
+    Verify charging profile was applied correctly using GetCompositeSchedule.
+
+    Args:
+        handler: OCPP handler instance
+        connector_id: Connector ID
+        expected_unit: Expected charging rate unit (W or A)
+        expected_limit: Expected power/current limit
+        expected_phases: Expected number of phases
+        timeout: Timeout in seconds
+
+    Returns:
+        Tuple of (success: bool, verification_results: List[Dict])
+    """
+    logger.info("🔍 Verifying profile application with GetCompositeSchedule...")
+    await asyncio.sleep(2)  # Give wallbox time to process
+
+    success, schedule = await get_composite_schedule(
+        handler,
+        connector_id,
+        duration=3600,
+        charging_rate_unit=None,  # Let wallbox return native unit
+        timeout=timeout
+    )
+
+    verification_results = []
+
+    if not success or not schedule:
+        verification_results.append({
+            "parameter": "Charging Schedule",
+            "expected": "Present",
+            "actual": "Not returned",
+            "status": "NOT OK"
+        })
+        return False, verification_results
+
+    # Extract actual values
+    actual_unit = schedule.get("chargingRateUnit", "N/A")
+    periods = schedule.get("chargingSchedulePeriod", [])
+    actual_limit = periods[0].get("limit") if periods else "N/A"
+    actual_phases = periods[0].get("numberPhases") if periods else "N/A"
+
+    # Compare expected vs actual
+    unit_match = actual_unit == expected_unit
+    limit_match = abs(float(actual_limit) - expected_limit) < 0.01 if actual_limit != "N/A" else False
+    phases_match = actual_phases == expected_phases if actual_phases != "N/A" else False
+
+    # Build verification results
+    verification_results = [
+        {
+            "parameter": "Number of Phases",
+            "expected": str(expected_phases),
+            "actual": str(actual_phases),
+            "status": "OK" if phases_match else "NOT OK"
+        },
+        {
+            "parameter": "Charging Rate Unit",
+            "expected": str(expected_unit),
+            "actual": str(actual_unit),
+            "status": "OK" if unit_match else "NOT OK"
+        },
+        {
+            "parameter": f"Power Limit ({expected_unit})",
+            "expected": str(expected_limit),
+            "actual": str(actual_limit),
+            "status": "OK" if limit_match else "NOT OK"
+        }
+    ]
+
+    all_match = unit_match and limit_match
+    if all_match:
+        logger.info(f"   ✓ Verification passed: {expected_limit}{expected_unit} profile applied correctly")
+    else:
+        logger.error(f"   ❌ Verification FAILED: Expected {expected_limit}{expected_unit}, got {actual_limit}{actual_unit}")
+
+    return all_match, verification_results
+
+
+async def clear_all_charging_profiles(
+    handler,
+    connector_id: Optional[int] = None,
+    purpose: Optional[str] = None,
+    timeout: int = OCPP_MESSAGE_TIMEOUT
+) -> bool:
+    """
+    Clear charging profiles with optional filters.
+
+    Args:
+        handler: OCPP handler instance
+        connector_id: Optional connector ID filter
+        purpose: Optional purpose filter (ChargingProfilePurposeType)
+        timeout: Timeout in seconds
+
+    Returns:
+        True if cleared successfully
+    """
+    from app.messages import ClearChargingProfileRequest
+
+    logger.info("   Clearing charging profiles...")
+
+    try:
+        request_kwargs = {}
+        if connector_id is not None:
+            request_kwargs["connectorId"] = connector_id
+        if purpose is not None:
+            request_kwargs["chargingProfilePurpose"] = purpose
+
+        response = await handler.send_and_wait(
+            "ClearChargingProfile",
+            ClearChargingProfileRequest(**request_kwargs),
+            timeout=timeout
+        )
+
+        if response and response.get("status") == "Accepted":
+            logger.info("   ✅ Charging profiles cleared")
+            return True
+        else:
+            status = response.get("status", "Unknown") if response else "No response"
+            logger.warning(f"   ⚠️  Clear profiles failed: {status}")
+            return False
+
+    except Exception as e:
+        logger.warning(f"   ⚠️  Could not clear profiles: {e}")
+        return False
+
+
+# =============================================================================
+# RFID OPERATIONS
+# =============================================================================
+
+async def clear_rfid_cache(
+    handler,
+    timeout: int = OCPP_MESSAGE_TIMEOUT
+) -> Tuple[bool, str]:
+    """
+    Clear RFID authorization cache on charge point.
+
+    Args:
+        handler: OCPP handler instance
+        timeout: Timeout in seconds
+
+    Returns:
+        Tuple of (success: bool, status: str)
+    """
+    from app.messages import ClearCacheRequest
+
+    logger.info("🗑️  Clearing RFID cache...")
+
+    try:
+        response = await handler.send_and_wait(
+            "ClearCache",
+            ClearCacheRequest(),
+            timeout=timeout
+        )
+
+        if response is None:
+            logger.warning("   ⚠️  ClearCache request timed out")
+            return False, "Timeout"
+
+        status = response.get("status", "Unknown")
+        logger.info(f"   📝 ClearCache response: {status}")
+
+        if status == "Accepted":
+            logger.info("   ✅ RFID cache cleared successfully")
+            return True, status
+        elif status == "Rejected":
+            logger.warning("   ⚠️  ClearCache rejected (wallbox may not support this)")
+            return False, status
+        else:
+            logger.warning(f"   ⚠️  Unexpected status: {status}")
+            return False, status
+
+    except Exception as e:
+        logger.error(f"   ❌ Error clearing cache: {e}")
+        return False, f"Error: {e}"
+
+
+async def send_local_authorization_list(
+    handler,
+    rfid_cards: List[Dict[str, str]],
+    list_version: int = 1,
+    update_type: str = "Full",
+    timeout: int = 15
+) -> Tuple[bool, str]:
+    """
+    Send local authorization list (RFID cards) to charge point.
+
+    Args:
+        handler: OCPP handler instance
+        rfid_cards: List of dicts with 'idTag' and 'status' keys
+        list_version: List version number (default: 1)
+        update_type: "Full" or "Differential" (default: Full)
+        timeout: Timeout in seconds
+
+    Returns:
+        Tuple of (success: bool, status: str)
+
+    Example:
+        cards = [
+            {"idTag": "CARD_001", "status": "Accepted"},
+            {"idTag": "CARD_002", "status": "Blocked"}
+        ]
+        success, status = await send_local_authorization_list(handler, cards)
+    """
+    from app.messages import SendLocalListRequest, AuthorizationData, IdTagInfo, UpdateType
+
+    logger.info(f"📤 Sending local authorization list ({len(rfid_cards)} cards)...")
+
+    # Convert dict format to OCPP format
+    auth_data_list = []
+    for card in rfid_cards:
+        auth_data_list.append(
+            AuthorizationData(
+                idTag=card.get("idTag"),
+                idTagInfo=IdTagInfo(status=card.get("status", "Accepted"))
+            )
+        )
+
+    # Log cards being sent
+    for i, card in enumerate(rfid_cards, 1):
+        status = card.get("status", "Accepted")
+        logger.info(f"   🎫 Card {i}: {card.get('idTag')} → {status}")
+
+    try:
+        request = SendLocalListRequest(
+            listVersion=list_version,
+            updateType=UpdateType.Full if update_type == "Full" else UpdateType.Differential,
+            localAuthorizationList=auth_data_list
+        )
+
+        response = await handler.send_and_wait("SendLocalList", request, timeout=timeout)
+
+        if response is None:
+            logger.error("   ❌ SendLocalList request timed out")
+            return False, "Timeout"
+
+        status_value = response.get("status", "Unknown")
+        logger.info(f"   📝 SendLocalList response: {status_value}")
+
+        if status_value == "Accepted":
+            logger.info("   ✅ Local authorization list updated successfully")
+            return True, status_value
+        elif status_value == "Failed":
+            logger.error("   ❌ SendLocalList failed (wallbox could not process the list)")
+            return False, status_value
+        elif status_value == "VersionMismatch":
+            logger.error("   ❌ Version mismatch (list version conflict)")
+            return False, status_value
+        else:
+            logger.warning(f"   ⚠️  Unexpected status: {status_value}")
+            return False, status_value
+
+    except Exception as e:
+        logger.error(f"   ❌ Error sending local list: {e}")
+        return False, f"Error: {e}"
+
+
+async def get_local_list_version(
+    handler,
+    timeout: int = OCPP_MESSAGE_TIMEOUT
+) -> Optional[int]:
+    """
+    Get the current local authorization list version from charge point.
+
+    Args:
+        handler: OCPP handler instance
+        timeout: Timeout in seconds
+
+    Returns:
+        List version number, or None if error/not supported
+    """
+    from app.messages import GetLocalListVersionRequest
+
+    logger.info("📋 Getting local authorization list version...")
+
+    try:
+        response = await handler.send_and_wait(
+            "GetLocalListVersion",
+            GetLocalListVersionRequest(),
+            timeout=timeout
+        )
+
+        if response is None:
+            logger.warning("   ⚠️  GetLocalListVersion request timed out")
+            return None
+
+        version = response.get("listVersion", -1)
+        logger.info(f"   📝 Current list version: {version}")
+
+        if version == 0:
+            logger.info("   💡 No local authorization list installed")
+        elif version > 0:
+            logger.info(f"   ✅ Local list version: {version}")
+        else:
+            logger.warning("   ⚠️  Invalid list version returned")
+
+        return version if version >= 0 else None
+
+    except Exception as e:
+        logger.error(f"   ❌ Error getting list version: {e}")
+        return None
+
+
+# =============================================================================
+# REMOTE START/STOP OPERATIONS
+# =============================================================================
+
+async def remote_start_transaction(
+    handler,
+    id_tag: str,
+    connector_id: int = 1,
+    charging_profile=None,
+    timeout: int = OCPP_MESSAGE_TIMEOUT
+) -> Tuple[bool, str]:
+    """
+    Send RemoteStartTransaction request to charge point.
+
+    Args:
+        handler: OCPP handler instance
+        id_tag: ID tag for authorization
+        connector_id: Connector ID (default: 1)
+        charging_profile: Optional ChargingProfile to apply
+        timeout: Timeout in seconds
+
+    Returns:
+        Tuple of (success: bool, status: str)
+    """
+    from app.messages import RemoteStartTransactionRequest
+
+    logger.info(f"📤 Sending RemoteStartTransaction...")
+    logger.info(f"   🎫 ID Tag: {id_tag}")
+    logger.info(f"   🔌 Connector: {connector_id}")
+
+    try:
+        request_kwargs = {
+            "idTag": id_tag,
+            "connectorId": connector_id
+        }
+        if charging_profile is not None:
+            request_kwargs["chargingProfile"] = charging_profile
+
+        response = await handler.send_and_wait(
+            "RemoteStartTransaction",
+            RemoteStartTransactionRequest(**request_kwargs),
+            timeout=timeout
+        )
+
+        if not response:
+            logger.error("   ❌ No response received")
+            return False, "No response"
+
+        status = response.get("status", "Unknown")
+
+        if status == "Accepted":
+            logger.info("   ✅ RemoteStartTransaction accepted by wallbox")
+            return True, status
+        else:
+            logger.error(f"   ❌ RemoteStartTransaction rejected: {status}")
+            logger.info("   💡 Possible reasons for rejection:")
+            logger.info("      - Connector already in use or faulted")
+            logger.info(f"      - Wallbox doesn't recognize idTag '{id_tag}'")
+            logger.info("      - Remote start not enabled in wallbox configuration")
+            logger.info("      - Wallbox in error state or offline")
+            return False, status
+
+    except Exception as e:
+        logger.error(f"   ❌ Failed to send RemoteStartTransaction: {e}")
+        return False, f"Error: {e}"
+
+
+async def remote_stop_transaction(
+    handler,
+    transaction_id: str,
+    timeout: int = OCPP_MESSAGE_TIMEOUT
+) -> Tuple[bool, str]:
+    """
+    Send RemoteStopTransaction request to charge point.
+
+    Args:
+        handler: OCPP handler instance
+        transaction_id: Transaction ID to stop
+        timeout: Timeout in seconds
+
+    Returns:
+        Tuple of (success: bool, status: str)
+    """
+    from app.messages import RemoteStopTransactionRequest
+
+    logger.info(f"🛑 Sending RemoteStopTransaction for transaction {transaction_id}...")
+
+    try:
+        response = await handler.send_and_wait(
+            "RemoteStopTransaction",
+            RemoteStopTransactionRequest(transactionId=transaction_id),
+            timeout=timeout
+        )
+
+        if not response:
+            logger.error("   ❌ No response received")
+            return False, "No response"
+
+        status = response.get("status", "Unknown")
+
+        if status == "Accepted":
+            logger.info("   ✅ RemoteStopTransaction accepted by wallbox")
+            return True, status
+        else:
+            logger.warning(f"   ⚠️  RemoteStopTransaction rejected: {status}")
+            return False, status
+
+    except Exception as e:
+        logger.error(f"   ❌ Failed to send RemoteStopTransaction: {e}")
+        return False, f"Error: {e}"
+
+
+# =============================================================================
+# VERIFICATION AND TEST RESULTS
+# =============================================================================
+
+def store_verification_results(
+    charge_point_id: str,
+    test_name: str,
+    results: List[Dict[str, Any]]
+):
+    """
+    Store verification results for display in UI.
+
+    Args:
+        charge_point_id: The charge point identifier
+        test_name: Test identifier (e.g., "C.1: SetChargingProfile")
+        results: List of verification result dicts with keys:
+                 parameter, expected, actual, status
+    """
+    from app.core import VERIFICATION_RESULTS
+
+    key = f"{charge_point_id}_{test_name.split(':')[0].replace('.', '')}"
+    VERIFICATION_RESULTS[key] = {
+        "test": test_name,
+        "results": results
+    }
+    logger.info(f"📊 Stored verification results for {test_name}: {len(results)} items")
+
+
+def create_verification_result(
+    parameter: str,
+    expected: Any,
+    actual: Any,
+    tolerance: float = 0.0
+) -> Dict[str, Any]:
+    """
+    Create a single verification result entry.
+
+    Args:
+        parameter: Parameter name being verified
+        expected: Expected value
+        actual: Actual value
+        tolerance: Tolerance for numeric comparisons (default: 0.0)
+
+    Returns:
+        Dict with parameter, expected, actual, and status keys
+    """
+    # Convert to strings for comparison
+    expected_str = str(expected)
+    actual_str = str(actual)
+
+    # Try numeric comparison with tolerance if both are numbers
+    status = "NOT OK"
+    try:
+        expected_num = float(expected)
+        actual_num = float(actual)
+        if abs(expected_num - actual_num) <= tolerance:
+            status = "OK"
+    except (ValueError, TypeError):
+        # Not numbers, do string comparison
+        if expected_str == actual_str:
+            status = "OK"
+
+    return {
+        "parameter": parameter,
+        "expected": expected_str,
+        "actual": actual_str,
+        "status": status
+    }
+
+
+async def start_transaction_for_test(
+    handler,
+    charge_point_id: str,
+    ocpp_server_logic,
+    id_tag: str = "TestTransaction",
+    connector_id: int = 1,
+    timeout: float = 15.0
+) -> Optional[str]:
+    """
+    Start a transaction for testing purposes (used in charging profile tests).
+
+    This helper starts a transaction and waits for it to be confirmed.
+
+    Args:
+        handler: OCPP handler instance
+        charge_point_id: The charge point identifier
+        ocpp_server_logic: Instance for setting EV state
+        id_tag: ID tag for the transaction
+        connector_id: Connector ID
+        timeout: Timeout for transaction start
+
+    Returns:
+        Transaction ID if successful, None otherwise
+    """
+    logger.info("⚠️ No active transaction found. Starting transaction first...")
+
+    # Send RemoteStartTransaction
+    success, status = await remote_start_transaction(
+        handler,
+        id_tag=id_tag,
+        connector_id=connector_id
+    )
+
+    if not success:
+        logger.error(f"FAILURE: RemoteStartTransaction was not accepted. Status: {status}")
+        return None
+
+    logger.info("✓ RemoteStartTransaction accepted")
+
+    # Set EV state to C (charging)
+    await set_ev_state_safe(ocpp_server_logic, "C")
+
+    # Wait for transaction to start
+    transaction_id = await wait_for_transaction_start(
+        charge_point_id,
+        timeout=timeout,
+        check_interval=0.5
+    )
+
+    if transaction_id:
+        logger.info(f"✓ Transaction {transaction_id} started successfully")
+    else:
+        logger.error("FAILURE: Transaction did not start within timeout")
+
+    return transaction_id
