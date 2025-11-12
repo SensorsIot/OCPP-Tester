@@ -17,6 +17,13 @@ from app.messages import (
     ClearCacheRequest, SendLocalListRequest, GetLocalListVersionRequest, AuthorizationData,
     IdTagInfo, UpdateType,
 )
+from app.test_helpers import (
+    stop_active_transaction,
+    ensure_configuration,
+    prepare_ev_connection,
+    wait_for_transaction_start,
+    cleanup_transaction_and_state,
+)
 
 if TYPE_CHECKING:
     from app.ocpp_server_logic import OcppServerLogic
@@ -2541,29 +2548,8 @@ class OcppTestSteps:
 
         # Step -1: Cleanup - Stop any active transactions first
         logger.info("🧹 Step -1: Checking for and stopping any active transactions...")
-        transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
-                              tdata.get("charge_point_id") == self.charge_point_id and
-                              tdata.get("status") == "Ongoing"), None)
-
-        if transaction_id:
-            logger.info(f"   🛑 Found active transaction {transaction_id}, stopping it...")
-            try:
-                stop_response = await self.handler.send_and_wait(
-                    "RemoteStopTransaction",
-                    RemoteStopTransactionRequest(transactionId=transaction_id),
-                    timeout=OCPP_MESSAGE_TIMEOUT
-                )
-                self._check_cancellation()
-                if stop_response and stop_response.get("status") == "Accepted":
-                    logger.info("   ✅ Transaction stopped successfully")
-                    await asyncio.sleep(3)  # Wait for StopTransaction message
-                else:
-                    logger.warning(f"   ⚠️  Stop command status: {stop_response.get('status', 'Unknown')}")
-            except Exception as e:
-                logger.warning(f"   ⚠️  Could not stop transaction: {e}")
-        else:
-            logger.info("   ✅ No active transactions to clean up")
-
+        await stop_active_transaction(self.handler, self.charge_point_id)
+        self._check_cancellation()
         logger.info("")
 
         # Step 0: Ensure baseline configuration
@@ -2575,82 +2561,25 @@ class OcppTestSteps:
         logger.info("   📘   3. CS responds Authorize.conf (Accepted)")
         logger.info("   📘   4. CP sends StartTransaction")
 
-        try:
-            response = await self.handler.send_and_wait(
-                "GetConfiguration",
-                GetConfigurationRequest(key=["AuthorizeRemoteTxRequests"]),
-                timeout=OCPP_MESSAGE_TIMEOUT
-            )
-            self._check_cancellation()
-
-            authorize_remote = None
-            if response and response.get("configurationKey"):
-                for key in response.get("configurationKey", []):
-                    if key.get("key") == "AuthorizeRemoteTxRequests":
-                        authorize_remote = key.get("value", "").lower()
-                        break
-
-            if authorize_remote != "true":
-                logger.info(f"   🔧 Setting AuthorizeRemoteTxRequests=true (currently: {authorize_remote})...")
-                config_response = await self.handler.send_and_wait(
-                    "ChangeConfiguration",
-                    ChangeConfigurationRequest(key="AuthorizeRemoteTxRequests", value="true"),
-                    timeout=OCPP_MESSAGE_TIMEOUT
-                )
-                self._check_cancellation()
-                if config_response and config_response.get("status") == "Accepted":
-                    logger.info("   ✅ Configuration updated")
-                else:
-                    logger.warning(f"   ⚠️  Configuration may not have updated: {config_response.get('status', 'Unknown')}")
-            else:
-                logger.info("   ✅ Configuration already correct")
-
-        except Exception as e:
-            logger.warning(f"   ⚠️  Could not verify/update configuration: {e}")
-
+        await ensure_configuration(self.handler, "AuthorizeRemoteTxRequests", "true")
+        self._check_cancellation()
         logger.info("")
 
         # Step 1: Prepare EV connection (State B)
-        using_simulator = SERVER_SETTINGS.get("use_simulator", False)
-        logger.info(f"🔌 Step 1: Preparing EV connection...")
-        logger.info(f"   💡 Mode: {'EV Simulator' if using_simulator else 'Real Charge Point'}")
+        success, message = await prepare_ev_connection(
+            self.handler,
+            self.charge_point_id,
+            self.ocpp_server_logic,
+            required_status="Preparing",
+            timeout=120.0
+        )
+        self._check_cancellation()
 
-        if using_simulator:
-            # Using EV simulator - set state programmatically
-            logger.info("   🤖 Setting EV simulator to State B (cable connected)...")
-            await self._set_ev_state("B")
-            logger.info("   ✅ EV cable connected (State B)")
-            # Give wallbox time to process state change
-            await asyncio.sleep(2)
-        else:
-            # Real charge point - need user to plug in EV
-            current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
-            logger.info(f"   📊 Current connector status: {current_status}")
-
-            if current_status in ["Preparing", "SuspendedEV", "SuspendedEVSE"]:
-                logger.info("   ✅ EV is already connected and ready")
-            elif current_status == "Charging":
-                logger.error("   ❌ Connector is currently charging - cleanup failed")
-                self._set_test_result(step_name, "FAILED")
-                return
-            else:
-                # Need to wait for user to plug in
-                logger.info("")
-                logger.info("👤 USER ACTION REQUIRED:")
-                logger.info("   🔌 PLEASE PLUG IN YOUR EV CABLE NOW")
-                logger.info("   ⏳ Waiting for connector status to change to 'Preparing'...")
-                logger.info("   💡 The test will continue automatically once EV is detected")
-                logger.info("")
-
-                try:
-                    await asyncio.wait_for(self._wait_for_status("Preparing"), timeout=120)
-                    logger.info("   ✅ EV detected - connector is in Preparing state")
-                except asyncio.TimeoutError:
-                    final_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
-                    logger.error(f"   ❌ Timeout waiting for EV connection. Current status: {final_status}")
-                    logger.error("   💡 RemoteStartTransaction requires EV to be plugged in first")
-                    self._set_test_result(step_name, "FAILED")
-                    return
+        if not success:
+            logger.error(f"   ❌ {message}")
+            logger.error("   💡 RemoteStartTransaction requires EV to be plugged in first")
+            self._set_test_result(step_name, "FAILED")
+            return
 
         # Step 2: Send RemoteStartTransaction with idTag for remote charging
         logger.info("")
@@ -2710,27 +2639,13 @@ class OcppTestSteps:
         logger.info("⏳ Step 3: Waiting for transaction to start...")
         logger.info("   💡 Wallbox should now initiate the transaction")
 
-        transaction_id = None
-        start_time = asyncio.get_event_loop().time()
-        timeout = 15  # 15 seconds to start transaction
-
-        while asyncio.get_event_loop().time() - start_time < timeout:
-            await asyncio.sleep(0.5)
-            self._check_cancellation()
-
-            # Check for new ongoing transaction
-            for tx_id, tx_data in TRANSACTIONS.items():
-                if (tx_data.get("charge_point_id") == self.charge_point_id and
-                    tx_data.get("status") == "Ongoing" and
-                    tx_data.get("remote_started") == True):
-                    transaction_id = tx_id
-                    logger.info(f"✅ Transaction started!")
-                    logger.info(f"   Transaction ID: {tx_id}")
-                    logger.info(f"   ID Tag: {tx_data.get('id_tag', 'N/A')}")
-                    break
-
-            if transaction_id:
-                break
+        transaction_id = await wait_for_transaction_start(
+            self.charge_point_id,
+            timeout=15.0,
+            check_interval=0.5,
+            remote_started=True
+        )
+        self._check_cancellation()
 
         if not transaction_id:
             logger.error("❌ Transaction did not start within timeout")
@@ -2738,6 +2653,12 @@ class OcppTestSteps:
             await self._set_ev_state("A")
             self._set_test_result(step_name, "FAILED")
             return
+
+        # Log success
+        tx_data = TRANSACTIONS.get(transaction_id, {})
+        logger.info(f"✅ Transaction started!")
+        logger.info(f"   Transaction ID: {transaction_id}")
+        logger.info(f"   ID Tag: {tx_data.get('id_tag', 'N/A')}")
 
         # Test PASSED
         logger.info("")
@@ -2750,34 +2671,14 @@ class OcppTestSteps:
 
         # Cleanup: Stop the transaction and reset EV state
         logger.info("")
-        logger.info("🧹 Cleaning up: Stopping remote transaction and resetting EV state...")
+        await cleanup_transaction_and_state(
+            self.handler,
+            self.charge_point_id,
+            self.ocpp_server_logic,
+            transaction_id=transaction_id
+        )
 
-        if transaction_id:
-            try:
-                stop_response = await self.handler.send_and_wait(
-                    "RemoteStopTransaction",
-                    RemoteStopTransactionRequest(transactionId=transaction_id),
-                    timeout=OCPP_MESSAGE_TIMEOUT
-                )
-                self._check_cancellation()
-                if stop_response and stop_response.get("status") == "Accepted":
-                    logger.info(f"   ✅ Transaction {transaction_id} stopped")
-                    await asyncio.sleep(2)  # Wait for StopTransaction message
-            except Exception as e:
-                logger.warning(f"   ⚠️  Could not stop transaction: {e}")
-
-        # Reset EV state to A (unplugged)
-        await self._set_ev_state("A")
-        logger.info("   ✅ EV state reset to A (unplugged)")
-
-        # Wait for Available status
-        try:
-            await asyncio.wait_for(self._wait_for_status("Available"), timeout=OCPP_MESSAGE_TIMEOUT)
-            logger.info("   ✅ Wallbox returned to Available state")
-        except asyncio.TimeoutError:
-            logger.warning("   ⚠️  Timeout waiting for Available status")
-
-        logger.info(f"--- Step B.4 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step B.3 for {self.charge_point_id} complete. ---")
 
     async def run_b4_offline_local_start_test(self, params=None):
         """B.4: Plug & Charge - Tests automatic charging when EV is plugged in with LocalPreAuthorize enabled."""
