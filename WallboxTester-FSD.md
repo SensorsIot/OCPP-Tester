@@ -64,24 +64,29 @@ Triggers and waits for MeterValues messages.
 
 #### B.1: RFID Authorization Before Plug-in
 Tests standard OCPP 1.6-J "tap-first" authorization flow.
+- **Pre-test State Management**: Automatically ensures wallbox is in "Available" state (stops transactions, resets EV state, waits for ready)
 - User taps RFID card before plugging in EV
 - Wallbox sends Authorize to CS
 - CS responds Authorize.conf (Accepted/Blocked)
 - If accepted: User plugs in EV and transaction starts
 - Interactive modal with countdown and real-time status
+- **Simulation Mode**: 15-second RFID timeout - if no physical card detected, falls back to RemoteStartTransaction simulation (result: PARTIAL)
 - **Use Case**: Public charging stations, fleet management, access control
 
 #### B.2: RFID Authorization After Plug-in (Local Cache)
 Tests local authorization cache with "plug-first" workflow.
+- **Pre-test State Management**: Automatically ensures wallbox is in "Available" state (stops transactions, resets EV state, waits for ready)
 - User plugs in EV first (State A → B)
 - User taps RFID card
 - Wallbox checks local authorization cache (instant validation)
 - Transaction starts within 2 seconds (no network delay)
 - **Configuration**: LocalAuthListEnabled=true, LocalAuthorizeOffline=true
+- **Simulation Mode**: 15-second RFID timeout - if no physical card detected, falls back to RemoteStartTransaction simulation (result: PARTIAL)
 - **Use Case**: Parking garages with unreliable connectivity, offline authorization
 
 #### B.3: Remote Smart Charging
 Tests remote transaction initiation following standard OCPP sequence.
+- **Pre-test State Management**: Automatically ensures wallbox is in "Available" state (stops transactions, resets EV state, waits for ready)
 - EV already plugged in (State B or C)
 - CS sends RemoteStartTransaction with idTag
 - Wallbox sends Authorize to CS
@@ -92,6 +97,7 @@ Tests remote transaction initiation following standard OCPP sequence.
 
 #### B.4: Plug & Charge
 Tests automatic charging with LocalPreAuthorize.
+- **Pre-test State Management**: Automatically ensures wallbox is in "Available" state (stops transactions, resets EV state, waits for ready)
 - User plugs in EV (no RFID tap needed)
 - Wallbox automatically starts transaction with default idTag
 - Charging begins immediately

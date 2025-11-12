@@ -87,15 +87,13 @@ class OcppTestSteps:
         return await self.series_a.run_a6_status_and_meter_value_acquisition()
 
     # =========================================================================
-    # B-SERIES: Authorization & Status Management (MIGRATED ✓)
+    # B-SERIES: Authorization & Status Management (7 tests per FSD)
+    # Core: B.1, B.2 (RFID), B.3 (Remote), B.4 (Plug&Charge)
+    # Utility: B.6 (Clear), B.7 (Send List), B.8 (Get Version)
     # =========================================================================
 
-    async def run_b1_reset_transaction_management(self):
-        """B.1: Reset Transaction Management"""
-        return await self.series_b.run_b1_reset_transaction_management()
-
     async def run_b1_rfid_public_charging_test(self):
-        """B.1: RFID Public Charging Test"""
+        """B.1: RFID Authorization Before Plug-in (tap-first authorization)"""
         return await self.series_b.run_b1_rfid_public_charging_test()
 
     async def run_b2_local_cache_authorization_test(self):

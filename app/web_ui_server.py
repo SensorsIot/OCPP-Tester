@@ -520,8 +520,9 @@ def run_test_step(step_name):
             ocpp_handler.send_and_wait = wrapped_send_and_wait
             ocpp_handler.incoming_message_logger = log_message
 
-            # Get current status (this will now be logged)
-            await ensure_status_known(ocpp_handler, charge_point_id)
+            # Get current status only for tests that need it (skip A and B series)
+            if not (step_name.startswith("run_a") or step_name.startswith("run_b")):
+                await ensure_status_known(ocpp_handler, charge_point_id)
 
             # Log the detected status as a manual entry for summary
             status_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -797,6 +798,14 @@ def run_test_step(step_name):
                     elif action == 'ChangeConfiguration' and 'key' in payload:
                         key_name = payload['key']
                         f.write(f"[{timestamp}] {msg_type}: {key_name}\n")
+                    elif action == 'GetConfiguration' and 'key' in payload:
+                        # Show the key being requested
+                        keys = payload['key']
+                        if keys and len(keys) > 0:
+                            key_name = keys[0]  # Show first key (usually only one in our tests)
+                            f.write(f"[{timestamp}] {msg_type}: {action}: {key_name}\n")
+                        else:
+                            f.write(f"[{timestamp}] {msg_type}: {action}\n")
                     else:
                         f.write(f"[{timestamp}] {msg_type}: {action}\n")
                 elif msg_type == 'RECEIVED':
@@ -1014,8 +1023,7 @@ def run_c_all_tests():
         from app.messages import GetConfigurationRequest
 
         async with ocpp_handler.test_lock:
-            # Get current status BEFORE wrapping (so TriggerMessage isn't logged)
-            await ensure_status_known(ocpp_handler, charge_point_id)
+            # Don't need status check for B/C tests - removed ensure_status_known call
 
             # Log the detected status as a manual entry
             status_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -1418,8 +1426,7 @@ def run_b_all_tests():
     async def run_tests_with_logging():
         """Run B.1 through B.4 tests sequentially."""
         async with ocpp_handler.test_lock:
-            # Get current status BEFORE wrapping (so TriggerMessage isn't logged)
-            await ensure_status_known(ocpp_handler, charge_point_id)
+            # Don't need status check for B/C tests - removed ensure_status_known call
 
             # Log the detected status as a manual entry
             status_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
