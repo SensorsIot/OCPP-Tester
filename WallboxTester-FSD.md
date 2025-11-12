@@ -1091,9 +1091,9 @@ app/
 *Helper Functions: 37 total covering all OCPP operations*
 *Projected Code Reduction: 61% (1,820 lines)*
 
-### 15.4 Modular Test Structure (Phase 1 - Implemented)
+### 15.4 Modular Test Structure (Phase 2 - Implemented)
 
-**Status**: Phase 1 Complete - A-Series Migrated ✓
+**Status**: Phase 2 Complete - A-Series & B-Series Migrated ✓
 
 **Architecture**: Facade Pattern with Incremental Migration
 
@@ -1109,7 +1109,8 @@ app/
 └── tests/
     ├── __init__.py               # Package initialization
     ├── test_base.py              # Base class with shared functionality
-    └── test_series_a_basic.py    # ✓ A-Series (6 tests, 674 lines)
+    ├── test_series_a_basic.py    # ✓ A-Series (6 tests, 674 lines)
+    └── test_series_b_auth.py     # ✓ B-Series (8 tests, 1,174 lines)
 ```
 
 #### 15.4.2 Migration Status
@@ -1117,13 +1118,13 @@ app/
 | Series | Tests | Status | Lines | File |
 |--------|-------|--------|-------|------|
 | **A** | 6 tests | ✅ MIGRATED | 674 | `test_series_a_basic.py` |
-| **B** | 10 tests | 🔄 TODO | ~850 | `test_series_b_auth.py` |
+| **B** | 8 tests | ✅ MIGRATED | 1,174 | `test_series_b_auth.py` |
 | **C** | 7 tests | 🔄 TODO | ~700 | `test_series_c_charging.py` |
 | **D** | 3 tests | 🔄 TODO | ~150 | `test_series_d_smart.py` |
 | **E** | 8 tests | 🔄 TODO | ~550 | `test_series_e_remote.py` |
 | **X** | 2 tests | 🔄 TODO | ~150 | `test_series_x_utility.py` |
 
-**Total**: 36 tests, 6 migrated (17%), 30 remaining (83%)
+**Total**: 36 tests, 14 migrated (39%), 22 remaining (61%)
 
 #### 15.4.3 Facade Pattern Implementation
 
@@ -1149,18 +1150,22 @@ class OcppTestSteps:
     def __init__(self, ocpp_server_logic):
         # Instantiate migrated series
         self.series_a = TestSeriesA(ocpp_server_logic)
-        
+        self.series_b = TestSeriesB(ocpp_server_logic)
+
         # Fall back to monolithic for unmigrated tests
         from app.ocpp_test_steps_monolithic import OcppTestSteps as MonolithicTests
         self._monolithic = MonolithicTests(ocpp_server_logic)
-    
-    # Migrated test - delegates to series class
+
+    # Migrated tests - delegate to series classes
     async def run_a1_initial_registration(self):
         return await self.series_a.run_a1_initial_registration()
-    
-    # Unmigrated test - delegates to monolithic
+
     async def run_b1_reset_transaction_management(self):
-        return await self._monolithic.run_b1_reset_transaction_management()
+        return await self.series_b.run_b1_reset_transaction_management()
+
+    # Unmigrated test - delegates to monolithic
+    async def run_c1_set_charging_profile_test(self, params=None):
+        return await self._monolithic.run_c1_set_charging_profile_test(params)
 ```
 
 #### 15.4.4 Base Class Design
@@ -1194,13 +1199,16 @@ All series classes inherit from `OcppTestBase` and gain access to these methods.
 
 #### 15.4.5 Migration Benefits
 
-**Achieved with Phase 1:**
+**Achieved with Phase 2:**
 - ✅ Modular structure established
 - ✅ A-Series migrated (6 tests, 674 lines)
+- ✅ B-Series migrated (8 tests, 1,174 lines)
+- ✅ **39% of tests migrated** (14/36 tests)
 - ✅ Backward compatibility maintained
 - ✅ Base class with shared functionality
 - ✅ Facade pattern prevents breaking changes
 - ✅ Zero impact on existing functionality
+- ✅ All RFID/Authorization tests now organized
 
 **Future Benefits (After Full Migration):**
 - Each test file will be 150-850 lines (manageable)
@@ -1213,11 +1221,11 @@ All series classes inherit from `OcppTestBase` and gain access to these methods.
 #### 15.4.6 Next Migration Steps
 
 **Priority Order:**
-1. **Series B** (10 tests, ~850 lines) - Authorization & RFID operations
-   - Highest impact: Most tests, most duplication
-   - Can leverage RFID helpers extensively
+1. ~~**Series B** (8 tests, 1,174 lines) - Authorization & RFID operations~~ ✅ COMPLETE
+   - ~~Highest impact: Most tests, most duplication~~
+   - ~~Can leverage RFID helpers extensively~~
 
-2. **Series C** (7 tests, ~700 lines) - Charging profiles
+2. **Series C** (7 tests, ~700 lines) - Charging profiles - NEXT
    - High impact: Complex tests with lots of duplication
    - Can leverage charging profile helpers extensively
 
@@ -1252,12 +1260,12 @@ app/
 └── tests/
     ├── __init__.py               # Package exports
     ├── test_base.py              # Base class (100 lines)
-    ├── test_series_a_basic.py    # A1-A6 (674 lines)
-    ├── test_series_b_auth.py     # B1-B8 (850 lines)
-    ├── test_series_c_charging.py # C1-C7 (700 lines)
-    ├── test_series_d_smart.py    # D3, D5-D6 (150 lines)
-    ├── test_series_e_remote.py   # E1-E11 (550 lines)
-    └── test_series_x_utility.py  # X1-X2 (150 lines)
+    ├── test_series_a_basic.py    # ✅ A1-A6 (674 lines)
+    ├── test_series_b_auth.py     # ✅ B1-B8 (1,174 lines)
+    ├── test_series_c_charging.py # 🔄 C1-C7 (700 lines)
+    ├── test_series_d_smart.py    # 🔄 D3, D5-D6 (150 lines)
+    ├── test_series_e_remote.py   # 🔄 E1-E11 (550 lines)
+    └── test_series_x_utility.py  # 🔄 X1-X2 (150 lines)
 ```
 
 **Total Lines After Migration:**
@@ -1271,5 +1279,5 @@ The modular structure adds minimal overhead while providing significant organiza
 ---
 
 *Section Updated: 2025-11-12*
-*Phase 1 Complete: A-Series Migrated (6/36 tests)*
+*Phase 2 Complete: A-Series & B-Series Migrated (14/36 tests, 39%)*
 *Migration Pattern: Facade with Incremental Migration*

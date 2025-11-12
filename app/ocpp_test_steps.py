@@ -12,8 +12,8 @@ code organization.
 from typing import TYPE_CHECKING
 
 from app.tests.test_series_a_basic import TestSeriesA
+from app.tests.test_series_b_auth import TestSeriesB
 # Import other series as they are created
-# from app.tests.test_series_b_auth import TestSeriesB
 # from app.tests.test_series_c_charging import TestSeriesC
 # from app.tests.test_series_d_smart import TestSeriesD
 # from app.tests.test_series_e_remote import TestSeriesE
@@ -31,8 +31,8 @@ class OcppTestSteps:
     the new modular structure under app/tests/.
 
     Test Series Organization:
-    - Series A (TestSeriesA): Core Communication & Status (6 tests)
-    - Series B: Authorization & Status Management (10 tests) - TODO
+    - Series A (TestSeriesA): Core Communication & Status (6 tests) - MIGRATED ✓
+    - Series B (TestSeriesB): Authorization & Status Management (8 tests) - MIGRATED ✓
     - Series C: Charging Profile Management (7 tests) - TODO
     - Series D: Smart Charging (3 tests) - TODO
     - Series E: Remote Operations (8 tests) - TODO
@@ -53,8 +53,8 @@ class OcppTestSteps:
 
         # Instantiate all test series
         self.series_a = TestSeriesA(ocpp_server_logic)
+        self.series_b = TestSeriesB(ocpp_server_logic)
         # TODO: Instantiate other series as they are migrated
-        # self.series_b = TestSeriesB(ocpp_server_logic)
         # self.series_c = TestSeriesC(ocpp_server_logic)
         # self.series_d = TestSeriesD(ocpp_server_logic)
         # self.series_e = TestSeriesE(ocpp_server_logic)
@@ -93,40 +93,40 @@ class OcppTestSteps:
         return await self.series_a.run_a6_status_and_meter_value_acquisition()
 
     # =========================================================================
-    # B-SERIES: Authorization & Status Management (TODO - delegate to monolithic)
+    # B-SERIES: Authorization & Status Management (MIGRATED ✓)
     # =========================================================================
 
     async def run_b1_reset_transaction_management(self):
         """B.1: Reset Transaction Management"""
-        return await self._monolithic.run_b1_reset_transaction_management()
+        return await self.series_b.run_b1_reset_transaction_management()
 
     async def run_b1_rfid_public_charging_test(self):
         """B.1: RFID Public Charging Test"""
-        return await self._monolithic.run_b1_rfid_public_charging_test()
+        return await self.series_b.run_b1_rfid_public_charging_test()
 
     async def run_b2_local_cache_authorization_test(self):
         """B.2: Local Cache Authorization Test"""
-        return await self._monolithic.run_b2_local_cache_authorization_test()
+        return await self.series_b.run_b2_local_cache_authorization_test()
 
     async def run_b3_remote_smart_charging_test(self, params=None):
         """B.3: Remote Smart Charging Test"""
-        return await self._monolithic.run_b3_remote_smart_charging_test(params)
+        return await self.series_b.run_b3_remote_smart_charging_test(params)
 
     async def run_b4_offline_local_start_test(self, params=None):
         """B.4: Offline Local Start Test"""
-        return await self._monolithic.run_b4_offline_local_start_test(params)
+        return await self.series_b.run_b4_offline_local_start_test(params)
 
     async def run_b6_clear_rfid_cache(self):
         """B.6: Clear RFID Cache"""
-        return await self._monolithic.run_b6_clear_rfid_cache()
+        return await self.series_b.run_b6_clear_rfid_cache()
 
     async def run_b7_send_rfid_list(self):
         """B.7: Send RFID List"""
-        return await self._monolithic.run_b7_send_rfid_list()
+        return await self.series_b.run_b7_send_rfid_list()
 
     async def run_b8_get_rfid_list_version(self):
         """B.8: Get RFID List Version"""
-        return await self._monolithic.run_b8_get_rfid_list_version()
+        return await self.series_b.run_b8_get_rfid_list_version()
 
     # =========================================================================
     # C-SERIES: Charging Profile Management (TODO - delegate to monolithic)
