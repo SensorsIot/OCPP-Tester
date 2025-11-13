@@ -15,7 +15,6 @@ from app.ocpp_test_steps import OcppTestSteps
 from app.core import CHARGE_POINTS, TRANSACTIONS, EV_SIMULATOR_STATE, SERVER_SETTINGS, VERIFICATION_RESULTS, get_active_charge_point_id, set_active_charge_point_id, get_active_transaction_id, get_shutdown_event, set_shutdown_event, EV_SIMULATOR_BASE_URL, OCPP_PORT, get_current_charging_values, OCPP_MESSAGE_TIMEOUT
 from app.streamers import EVStatusStreamer
 
-# OCPP 1.6-J Command Descriptions
 async def ensure_status_known(ocpp_handler, charge_point_id: str) -> None:
     """Get current status by triggering StatusNotification."""
     from app.core import CHARGE_POINTS, OCPP_MESSAGE_TIMEOUT
@@ -456,6 +455,28 @@ def run_test_step(step_name):
     # Message log storage
     message_log = []
 
+    # Execution log storage (for test logger.info calls)
+    execution_log = []
+
+    # Create a logging handler to capture test execution logs
+    class TestLogHandler(logging.Handler):
+        def emit(self, record):
+            # Only capture logs from test modules
+            if 'app.tests' in record.name or 'app.test_helpers' in record.name:
+                timestamp_str = datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                execution_log.append({
+                    "timestamp": timestamp_str,
+                    "level": record.levelname,
+                    "message": record.getMessage()
+                })
+
+    test_log_handler = TestLogHandler()
+    test_log_handler.setLevel(logging.INFO)
+
+    # Add handler to capture logs
+    root_logger = logging.getLogger()
+    root_logger.addHandler(test_log_handler)
+
     # Track triggered messages
     triggered_messages = set()
 
@@ -563,6 +584,8 @@ def run_test_step(step_name):
                 # Restore original send_and_wait and clear logger
                 ocpp_handler.send_and_wait = original_send_and_wait
                 ocpp_handler.incoming_message_logger = None
+                # Remove test log handler
+                root_logger.removeHandler(test_log_handler)
 
     try:
         future = asyncio.run_coroutine_threadsafe(run_test_with_lock(), app.loop)
@@ -589,11 +612,11 @@ def run_test_step(step_name):
             if detected_status:
                 from app.core import SERVER_SETTINGS
                 ev_sim_available = SERVER_SETTINGS.get("ev_simulator_available", False)
-                ev_sim_in_use = CHARGE_POINTS.get(charge_point_id, {}).get("use_simulator", False)
 
-                if ev_sim_available and ev_sim_in_use:
-                    connection_type = "EV Simulator Connected"
-                    details = "Using simulated EV for testing"
+                # If EV simulator is available, assume it's being used for testing
+                if ev_sim_available:
+                    connection_type = "EV Simulator"
+                    details = f"Using EV simulator (Status: {detected_status})"
                 elif detected_status in ["Preparing", "Charging", "SuspendedEV", "SuspendedEVSE", "Finishing"]:
                     connection_type = "Real EV Connected"
                     details = f"Real EV detected (Status: {detected_status})"
@@ -658,13 +681,30 @@ def run_test_step(step_name):
                 f.write(f"Reason: {reason}\n")
             f.write("-" * 80 + "\n\n")
 
-            # Write all OCPP messages
-            f.write("OCPP MESSAGE LOG (All Messages)\n")
-            f.write("=" * 80 + "\n\n")
+            # Don't write generic "TEST EXECUTION LOG" header - phases have their own headers
 
-            # If no messages and test was skipped, add explanation
-            if not message_log and result == "SKIPPED":
-                f.write("ℹ️  TEST SKIPPED - No OCPP messages were sent\n")
+            # Tag execution logs for merging
+            all_logs = []
+            for exec_log in execution_log:
+                all_logs.append({
+                    "timestamp": exec_log["timestamp"],
+                    "log_type": "EXECUTION",
+                    "data": exec_log
+                })
+
+            for ocpp_msg in message_log:
+                all_logs.append({
+                    "timestamp": ocpp_msg["timestamp"],
+                    "log_type": "OCPP",
+                    "data": ocpp_msg
+                })
+
+            # Sort by timestamp
+            all_logs.sort(key=lambda x: x["timestamp"])
+
+            # If no logs and test was skipped, add explanation
+            if not all_logs and result == "SKIPPED":
+                f.write("INFO: TEST SKIPPED - No activity logged\n")
                 f.write("=" * 80 + "\n\n")
 
             # Build a map of message_id -> REQUEST for matching RESPONSE
@@ -675,182 +715,266 @@ def run_test_step(step_name):
                     if msg_id:
                         request_map[msg_id] = msg
 
-            for msg in message_log:
-                # Skip STATUS_DETECTED messages - don't log them
-                if msg['type'] == 'STATUS_DETECTED':
+            # Helper function to get descriptive REQUEST title and key parameter
+            def get_request_info(action, payload):
+                """Generate descriptive title and key parameter for REQUEST"""
+                if action == 'GetConfiguration':
+                    keys = payload.get('key', [])
+                    if keys and len(keys) == 1:
+                        return keys[0], f"Check {keys[0]} setting"
+                    return "Configuration", f"Check {len(keys)} parameters" if keys else "Retrieve all parameters"
+                elif action == 'ChangeConfiguration':
+                    key = payload.get('key', '')
+                    value = payload.get('value', '')
+                    return key, f"Set {key} to {value}"
+                elif action == 'RemoteStartTransaction':
+                    id_tag = payload.get('idTag', '')
+                    return id_tag, f"Start charging with {id_tag}"
+                elif action == 'RemoteStopTransaction':
+                    tx_id = payload.get('transactionId', '')
+                    return f"Transaction {tx_id}", f"Stop transaction {tx_id}"
+                elif action == 'SetChargingProfile':
+                    return "Charging Limit", "Apply charging profile"
+                elif action == 'ClearCache':
+                    return "Authorization Cache", "Clear local authorization cache"
+                elif action == 'SendLocalList':
+                    return "RFID List", "Send RFID authorization list"
+                elif action == 'GetLocalListVersion':
+                    return "RFID List Version", "Get RFID list version"
+                elif action == 'Reset':
+                    reset_type = payload.get('type', 'Hard')
+                    return reset_type, f"Reboot wallbox ({reset_type})"
+                else:
+                    return action, action
+
+            # Helper function to extract inline context from RESPONSE
+            def get_response_context(action, payload):
+                """Extract key information from RESPONSE payload for inline display"""
+                if action == 'GetConfiguration':
+                    keys = payload.get('configurationKey', [])
+                    if keys and len(keys) == 1:
+                        value = keys[0].get('value', 'N/A')
+                        return f"Current value is '{value}'"
+                    return f"Retrieved {len(keys)} parameters" if keys else "No parameters"
+                elif action == 'ChangeConfiguration':
+                    status = payload.get('status', '')
+                    return f"Status: {status}"
+                elif action in ['RemoteStartTransaction', 'RemoteStopTransaction']:
+                    status = payload.get('status', '')
+                    return f"Status: {status}"
+                elif action == 'ClearCache':
+                    status = payload.get('status', '')
+                    return f"Status: {status}"
+                elif action == 'SendLocalList':
+                    status = payload.get('status', '')
+                    return f"Status: {status}"
+                elif action == 'GetLocalListVersion':
+                    version = payload.get('listVersion', 0)
+                    return f"Version: {version}"
+                elif action == 'Authorize':
+                    status = payload.get('idTagInfo', {}).get('status', 'Unknown')
+                    return f"Authorization: {status}"
+                elif action == 'StartTransaction':
+                    tx_id = payload.get('idTagInfo', {}).get('transactionId', payload.get('transactionId', 'N/A'))
+                    return f"Transaction ID: {tx_id}"
+                else:
+                    status = payload.get('status', '')
+                    return f"Status: {status}" if status else ""
+
+            # Helper function to generate narrative message based on response
+            def get_narrative_message(action, payload, is_response=True):
+                """Generate INFO/WARNING/ERROR narrative message"""
+                if not is_response:
+                    return None
+
+                if action == 'GetConfiguration':
+                    keys = payload.get('configurationKey', [])
+                    if keys and len(keys) == 1:
+                        key_name = keys[0].get('key', '')
+                        value = keys[0].get('value', '')
+                        return f"INFO: [OK] {key_name} is set to '{value}'."
+                    return None
+                elif action == 'ChangeConfiguration':
+                    status = payload.get('status', '')
+                    if status == 'Accepted':
+                        return "INFO: [OK] Configuration updated successfully."
+                    elif status == 'Rejected':
+                        return "ERROR: Configuration change rejected by charge point."
+                    elif status == 'RebootRequired':
+                        return "WARNING: Configuration updated but requires reboot to take effect."
+                    return None
+                elif action == 'RemoteStartTransaction':
+                    status = payload.get('status', '')
+                    if status == 'Accepted':
+                        return "INFO: [OK] Remote start command accepted."
+                    elif status == 'Rejected':
+                        return "ERROR: Remote start rejected - connector may be unavailable or in use."
+                    return None
+                elif action == 'RemoteStopTransaction':
+                    status = payload.get('status', '')
+                    if status == 'Accepted':
+                        return "INFO: [OK] Remote stop command accepted."
+                    elif status == 'Rejected':
+                        return "ERROR: Remote stop rejected - transaction may not exist."
+                    return None
+                elif action == 'ClearCache':
+                    status = payload.get('status', '')
+                    if status == 'Accepted':
+                        return "INFO: [OK] Authorization cache cleared successfully."
+                    elif status == 'Rejected':
+                        return "WARNING: Cache clear rejected - may have protected entries."
+                    return None
+                elif action == 'Authorize':
+                    auth_status = payload.get('idTagInfo', {}).get('status', '')
+                    if auth_status == 'Accepted':
+                        return "INFO: [OK] RFID tag authorized."
+                    elif auth_status == 'Invalid':
+                        return "ERROR: RFID tag not recognized or invalid."
+                    elif auth_status == 'Blocked':
+                        return "ERROR: RFID tag is blocked."
+                    return None
+                return None
+
+            # Helper function to check if message should be filtered
+            def should_filter_message(msg):
+                """Returns True if message should be filtered out (not logged)"""
+                msg_type = msg.get('type')
+                action = msg.get('action', '')
+
+                # Never filter REQUEST or RESPONSE messages
+                if msg_type in ['REQUEST', 'RESPONSE', 'RESPONSE_TIMEOUT']:
+                    return False
+
+                # Filter unsolicited messages from charge point
+                if msg_type == 'RECEIVED':
+                    # Always keep these transaction-related messages
+                    if action in ['StartTransaction', 'StopTransaction', 'Authorize']:
+                        return False
+
+                    # Filter out background noise
+                    if action in ['Heartbeat', 'StatusNotification', 'MeterValues']:
+                        return True
+
+                return False
+
+            # Helper to clean emoji from message
+            def clean_emojis(message):
+                """Replace common emojis with ASCII equivalents"""
+                message = message.replace('✅', '[OK]')
+                message = message.replace('❌', '[ERROR]')
+                message = message.replace('⚠️', '[WARNING]')
+                message = message.replace('ℹ️', '[INFO]')
+                message = message.replace('📋', '')
+                message = message.replace('🔧', '')
+                message = message.replace('⏳', '[WAITING]')
+                message = message.replace('🎫', '')
+                message = message.replace('📘', '')
+                message = message.replace('⚡', '')
+                message = message.replace('🏷️', '')
+                message = message.replace('🔌', '')
+                message = message.replace('🧹', '[CLEANUP]')
+                message = message.replace('💡', '[TIP]')
+                message = message.replace('🔍', '')
+                message = message.replace('📤', '')
+                message = message.replace('📡', '')
+                message = message.replace('🔄', '')
+                message = message.replace('📱', '')
+                message = message.replace('🛑', '')
+                return message
+
+            # Helper to determine if an INFO message should be filtered
+            def should_filter_info_message(message):
+                """Filter out verbose descriptive messages, keep only essential ones"""
+                # Filter out these step-by-step execution patterns only
+                filter_patterns = [
+                    "Pre-test check",
+                    "Resetting EV state",
+                    "Waiting for wallbox",
+                    "Wallbox is now in",
+                    "ready for test",
+                    "Step 1:",
+                    "Step 2:",
+                    "Step 3:",
+                    "Step 4:",
+                    "Step 5:",
+                    "Plugging in EV",
+                    "cable connected",
+                    "Waiting for automatic",
+                    "automatically started",
+                    "Default idTag",
+                    "Common values",
+                    "Verifying charging session"
+                ]
+
+                for pattern in filter_patterns:
+                    if pattern in message:
+                        return True
+                return False
+
+            def is_scenario_description(message):
+                """Check if message is part of scenario description"""
+                description_patterns = [
+                    "This tests",
+                    "Use case",
+                    "[TIP]",
+                    "TEST",  # Like "PLUG-AND-CHARGE TEST"
+                ]
+                return any(pattern in message for pattern in description_patterns)
+
+            # Process messages chronologically - show only JSON messages
+            sequence_num = 0
+
+            for log_entry in all_logs:
+                # Skip execution logs (INFO/WARNING/ERROR messages)
+                if log_entry["log_type"] == "EXECUTION":
                     continue
 
-                # For REQUEST: show action and description
-                # For RECEIVED: show action (message from charge point)
-                # For RESPONSE_TIMEOUT: show error message
-                # For RESPONSE: show which REQUEST it belongs to
-                if msg['type'] == 'REQUEST':
-                    # Add specific details for certain actions
-                    if msg['action'] == 'TriggerMessage' and 'requestedMessage' in msg['payload']:
-                        req_msg = msg['payload']['requestedMessage']
-                        f.write(f"[{msg['timestamp']}] {msg['type']}: Trigger {req_msg}\n")
-                    elif msg['action'] == 'ChangeConfiguration' and 'key' in msg['payload']:
-                        key_name = msg['payload']['key']
-                        f.write(f"[{msg['timestamp']}] {msg['type']}: {key_name}\n")
-                    else:
-                        f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
-                elif msg['type'] == 'RECEIVED':
-                    f.write(f"[{msg['timestamp']}] {msg['type']}: {msg['action']}\n")
-                elif msg['type'] == 'RESPONSE_TIMEOUT':
-                    f.write(f"[{msg['timestamp']}] ⏱️  TIMEOUT ERROR\n")
-                    f.write(f"ERROR: {msg['payload'].get('error', 'Timeout occurred')}\n")
-                elif msg['type'] == 'RESPONSE':
-                    # Show which REQUEST this RESPONSE belongs to
-                    msg_id = msg.get('message_id')
-                    if msg_id and msg_id in request_map:
-                        req_action = request_map[msg_id].get('action')
-                        req_payload = request_map[msg_id].get('payload', {})
-                        if req_action == 'TriggerMessage' and 'requestedMessage' in req_payload:
-                            req_msg = req_payload['requestedMessage']
-                            f.write(f"[{msg['timestamp']}] {msg['type']} to: Trigger {req_msg}\n")
-                        elif req_action == 'ChangeConfiguration' and 'key' in req_payload:
-                            key_name = req_payload['key']
-                            f.write(f"[{msg['timestamp']}] {msg['type']} to: {key_name}\n")
-                        else:
-                            f.write(f"[{msg['timestamp']}] {msg['type']} to: {req_action}\n")
-                    else:
-                        f.write(f"[{msg['timestamp']}] {msg['type']}\n")
-                else:
-                    f.write(f"[{msg['timestamp']}] {msg['type']}\n")
+                # Handle OCPP messages only
+                msg = log_entry["data"]
 
-                # Write message details
-                f.write("-" * 80 + "\n")
-                # Write full OCPP message if available, otherwise just payload
-                if msg.get('full_ocpp_message'):
-                    f.write(json.dumps(msg['full_ocpp_message'], indent=2))
-                else:
-                    f.write(json.dumps(msg['payload'], indent=2))
-                f.write("\n" + "=" * 80 + "\n\n")
+                # Skip status detected and filtered messages (Heartbeat, StatusNotification, MeterValues)
+                if msg['type'] == 'STATUS_DETECTED' or should_filter_message(msg):
+                    continue
+
+                # Handle REQUEST messages
+                if msg['type'] == 'REQUEST':
+                    sequence_num += 1
+                    f.write(f"### Sequence {sequence_num}: {msg['action']} ###\n\n")
+                    f.write(f"[{msg['timestamp']}] REQUEST (Server -> CP): {msg['action']}\n")
+                    if msg.get('full_ocpp_message'):
+                        f.write(json.dumps(msg['full_ocpp_message'], indent=2))
+                    else:
+                        f.write(json.dumps(msg['payload'], indent=2))
+                    f.write("\n\n")
+
+                # Handle RESPONSE messages
+                elif msg['type'] in ['RESPONSE', 'RESPONSE_TIMEOUT']:
+                    if msg['type'] == 'RESPONSE_TIMEOUT':
+                        f.write(f"[{msg['timestamp']}] RESPONSE (CP -> Server): TIMEOUT\n")
+                        f.write(f"ERROR: {msg['payload'].get('error', 'Timeout occurred')}\n\n")
+                    else:
+                        f.write(f"[{msg['timestamp']}] RESPONSE (CP -> Server)\n")
+                        if msg.get('full_ocpp_message'):
+                            f.write(json.dumps(msg['full_ocpp_message'], indent=2))
+                        else:
+                            f.write(json.dumps(msg['payload'], indent=2))
+                        f.write("\n\n")
+                    f.write("---\n\n")
+
+                # Handle standalone RECEIVED messages
+                elif msg['type'] == 'RECEIVED':
+                    f.write(f"[{msg['timestamp']}] RECEIVED (CP -> Server): {msg['action']}\n")
+                    if msg.get('full_ocpp_message'):
+                        f.write(json.dumps(msg['full_ocpp_message'], indent=2))
+                    else:
+                        f.write(json.dumps(msg['payload'], indent=2))
+                    f.write("\n\n---\n\n")
 
         logging.info(f"✅ {step_name} completed. Log written to: {log_file}")
 
-        # Create summary log file
-        summary_log_file = log_file.replace(".txt", "_summary.txt")
-        with open(summary_log_file, "w", encoding="utf-8") as f:
-            # Header
-            f.write("=" * 80 + "\n")
-            f.write(f"TEST SUMMARY: {step_name}\n")
-            f.write(f"Charge Point: {charge_point_id}\n")
-            f.write(f"Timestamp: {timestamp}\n")
-            f.write("=" * 80 + "\n\n")
-
-            # Configuration summary (always show for ALL B tests)
-            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
-
-            # Show configuration for all B tests (B.1 through B.8)
-            if config_details and step_name.startswith("run_b"):
-                f.write("CONFIGURATION SUMMARY\n")
-                f.write("-" * 80 + "\n")
-                for key, value in sorted(config_details.items()):
-                    f.write(f"{key}: {value}\n")
-                f.write("-" * 80 + "\n\n")
-
-            # Test result
-            test_results = CHARGE_POINTS[charge_point_id].get("test_results", {})
-            result_data = test_results.get(step_name, "NOT RUN")
-            if isinstance(result_data, dict):
-                result = result_data.get("result", "NOT RUN")
-                reason = result_data.get("reason")
-            else:
-                result = result_data
-                reason = None
-
-            f.write(f"TEST RESULT: {result}\n")
-            if reason:
-                f.write(f"Reason: {reason}\n")
-            f.write("-" * 80 + "\n\n")
-
-            # Key OCPP messages (full JSON format)
-            f.write("KEY OCPP MESSAGES\n")
-            f.write("=" * 80 + "\n\n")
-
-            # Write all messages with full JSON
-            import json
-
-            # Build a map to identify TriggerMessage responses (to skip them)
-            trigger_response_ids = set()
-            for msg in message_log:
-                if msg.get('type') == 'REQUEST' and msg.get('action') == 'TriggerMessage':
-                    msg_id = msg.get('message_id')
-                    if msg_id:
-                        trigger_response_ids.add(msg_id)
-
-            # Write messages in chronological order
-            for msg in message_log:
-                # Skip STATUS_DETECTED messages
-                if msg.get('type') == 'STATUS_DETECTED':
-                    continue
-
-                msg_type = msg.get('type', 'MESSAGE')
-                action = msg.get('action', 'Unknown')
-                timestamp = msg.get('timestamp', 'N/A')
-                msg_id = msg.get('message_id')
-
-                # Skip RESPONSE for TriggerMessage (the "Accepted" acknowledgment)
-                if msg_type == 'RESPONSE' and msg_id in trigger_response_ids:
-                    continue
-
-                # For B tests: filter out periodic Heartbeat and StatusNotification
-                if step_name.startswith("run_b"):
-                    if msg_type == 'RECEIVED' and action in ['Heartbeat', 'StatusNotification']:
-                        continue
-                    # Also filter TriggerMessage for StatusNotification
-                    if msg_type == 'REQUEST' and action == 'TriggerMessage':
-                        payload = msg.get('payload', {})
-                        if payload.get('requestedMessage') == 'StatusNotification':
-                            continue
-
-                # Write message header
-                if msg_type == 'REQUEST':
-                    payload = msg.get('payload', {})
-                    if action == 'TriggerMessage' and 'requestedMessage' in payload:
-                        req_msg = payload['requestedMessage']
-                        f.write(f"[{timestamp}] {msg_type}: Trigger {req_msg}\n")
-                    elif action == 'ChangeConfiguration' and 'key' in payload:
-                        key_name = payload['key']
-                        f.write(f"[{timestamp}] {msg_type}: {key_name}\n")
-                    elif action == 'GetConfiguration' and 'key' in payload:
-                        # Show the key being requested
-                        keys = payload['key']
-                        if keys and len(keys) > 0:
-                            key_name = keys[0]  # Show first key (usually only one in our tests)
-                            f.write(f"[{timestamp}] {msg_type}: {action}: {key_name}\n")
-                        else:
-                            f.write(f"[{timestamp}] {msg_type}: {action}\n")
-                    else:
-                        f.write(f"[{timestamp}] {msg_type}: {action}\n")
-                elif msg_type == 'RECEIVED':
-                    f.write(f"[{timestamp}] {msg_type}: {action}\n")
-                elif msg_type == 'RESPONSE_TIMEOUT':
-                    f.write(f"[{timestamp}] ⏱️  TIMEOUT ERROR\n")
-                    f.write(f"ERROR: {msg['payload'].get('error', 'Timeout occurred')}\n")
-                elif msg_type == 'RESPONSE':
-                    f.write(f"[{timestamp}] {msg_type}\n")
-                else:
-                    f.write(f"[{timestamp}] {msg_type}\n")
-
-                # Write full JSON
-                f.write("-" * 80 + "\n")
-                if msg.get('full_ocpp_message'):
-                    f.write(json.dumps(msg['full_ocpp_message'], indent=2))
-                else:
-                    f.write(json.dumps(msg.get('payload', {}), indent=2))
-                f.write("\n" + "=" * 80 + "\n\n")
-
-            if not message_log:
-                f.write("No OCPP messages were exchanged during this test.\n\n")
-
-        logging.info(f"✅ Summary log written to: {summary_log_file}")
-
         return jsonify({
             "status": f"Test step '{step_name}' completed for {charge_point_id}.",
-            "log_file": log_file,
-            "summary_log_file": summary_log_file
+            "log_file": log_file
         })
 
     except concurrent.futures.TimeoutError:
@@ -1143,11 +1267,11 @@ def run_c_all_tests():
             if detected_status:
                 from app.core import SERVER_SETTINGS
                 ev_sim_available = SERVER_SETTINGS.get("ev_simulator_available", False)
-                ev_sim_in_use = CHARGE_POINTS.get(charge_point_id, {}).get("use_simulator", False)
 
-                if ev_sim_available and ev_sim_in_use:
-                    connection_type = "EV Simulator Connected"
-                    details = "Using simulated EV for testing"
+                # If EV simulator is available, assume it's being used for testing
+                if ev_sim_available:
+                    connection_type = "EV Simulator"
+                    details = f"Using EV simulator (Status: {detected_status})"
                 elif detected_status in ["Preparing", "Charging", "SuspendedEV", "SuspendedEVSE", "Finishing"]:
                     connection_type = "Real EV Connected"
                     details = f"Real EV detected (Status: {detected_status})"
@@ -1513,11 +1637,11 @@ def run_b_all_tests():
             if detected_status:
                 from app.core import SERVER_SETTINGS
                 ev_sim_available = SERVER_SETTINGS.get("ev_simulator_available", False)
-                ev_sim_in_use = CHARGE_POINTS.get(charge_point_id, {}).get("use_simulator", False)
 
-                if ev_sim_available and ev_sim_in_use:
-                    connection_type = "EV Simulator Connected"
-                    details = "Using simulated EV for testing"
+                # If EV simulator is available, assume it's being used for testing
+                if ev_sim_available:
+                    connection_type = "EV Simulator"
+                    details = f"Using EV simulator (Status: {detected_status})"
                 elif detected_status in ["Preparing", "Charging", "SuspendedEV", "SuspendedEVSE", "Finishing"]:
                     connection_type = "Real EV Connected"
                     details = f"Real EV detected (Status: {detected_status})"

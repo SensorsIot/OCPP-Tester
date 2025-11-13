@@ -64,10 +64,9 @@ class TestSeriesA(OcppTestBase):
         logger.info("  Requesting ALL configuration keys (empty key array)...")
 
         try:
-            # Send GetConfiguration with EMPTY key array to get all parameters
             response = await self.handler.send_and_wait(
                 "GetConfiguration",
-                GetConfigurationRequest(key=[]),  # Empty array = get ALL
+                GetConfigurationRequest(key=[]),
                 timeout=OCPP_MESSAGE_TIMEOUT
             )
 
@@ -88,12 +87,10 @@ class TestSeriesA(OcppTestBase):
                         CHARGE_POINTS[self.charge_point_id]["features"] = [f.strip() for f in value.split(",")]
                 logger.info("-------------------------------------")
 
-                # Check if response was limited by GetConfigurationMaxKeys
                 unknown_keys = response.get("unknownKey", [])
                 if unknown_keys:
                     logger.warning(f"    ⚠️  {len(unknown_keys)} keys marked as unknown")
 
-                # Note if results may be limited
                 max_keys_value = None
                 for key_value in config_keys:
                     if key_value.get("key") == "GetConfigurationMaxKeys":
@@ -165,9 +162,7 @@ class TestSeriesA(OcppTestBase):
         results = {}
 
         logger.info(f"  Sending {len(ocpp_standard_keys)} GetConfiguration requests with sliding window (max 5 concurrent)...")
-        logger.info("  (Optimized: Keep 5 requests in flight, send next one as soon as one completes)")
 
-        # Helper function to request a single key
         async def request_key(key: str):
             try:
                 response = await self.handler.send_and_wait(
@@ -206,28 +201,22 @@ class TestSeriesA(OcppTestBase):
                 logger.error(f"    ❌ {key}: Error - {e}")
                 return (key, f"ERROR: {str(e)}")
 
-        # Sliding window approach: maintain exactly 5 concurrent requests
         MAX_CONCURRENT = 5
         pending_tasks = set()
         key_index = 0
 
-        # Start initial batch of 5 requests
         while key_index < len(ocpp_standard_keys) and len(pending_tasks) < MAX_CONCURRENT:
             task = asyncio.create_task(request_key(ocpp_standard_keys[key_index]))
             pending_tasks.add(task)
             key_index += 1
 
-        # Process requests: as soon as one completes, start the next one
         while pending_tasks:
-            # Wait for at least one task to complete
             done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
 
-            # Collect results from completed tasks
             for task in done:
                 key, value = await task
                 results[key] = value
 
-            # Start new tasks to maintain MAX_CONCURRENT in flight
             while key_index < len(ocpp_standard_keys) and len(pending_tasks) < MAX_CONCURRENT:
                 task = asyncio.create_task(request_key(ocpp_standard_keys[key_index]))
                 pending_tasks.add(task)
@@ -268,7 +257,6 @@ class TestSeriesA(OcppTestBase):
 
         logger.info("--------------------\n")
 
-        # Test passes if we got any successful responses (not N/A or NO_RESPONSE)
         successful_results = [v for v in results.values() if "N/A" not in v and "NO_RESPONSE" not in v and "ERROR" not in v]
         if successful_results:
             self._set_test_result(step_name, "PASSED")
@@ -295,15 +283,12 @@ class TestSeriesA(OcppTestBase):
         all_success = True
         results = {}
 
-        # Check current status first
         current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
         logger.info(f"Current wallbox status at test start: {current_status}")
 
-        # If no status is known, trigger a StatusNotification first
         if current_status is None:
             logger.info("No initial status known - triggering StatusNotification to get current state")
             try:
-                # Use TriggerMessage to request current status
                 from app.messages import TriggerMessageRequest
                 trigger_response = await self.handler.send_and_wait(
                     "TriggerMessage",
@@ -312,7 +297,7 @@ class TestSeriesA(OcppTestBase):
                 )
                 if trigger_response and trigger_response.get("status") == "Accepted":
                     logger.info("StatusNotification trigger accepted, waiting for response...")
-                    await asyncio.sleep(3)  # Wait for StatusNotification
+                    await asyncio.sleep(3)
                     current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
                     logger.info(f"Status after trigger: {current_status}")
                 else:
@@ -320,17 +305,14 @@ class TestSeriesA(OcppTestBase):
             except Exception as e:
                 logger.warning(f"Failed to trigger StatusNotification: {e}")
 
-        # Start with state A - ensure we start fresh
         await self._set_ev_state("A")
         self._check_cancellation()
 
-        # Check if we need to wait for Available status
         current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
         if current_status == "Available":
             logger.info("Wallbox is in Available state")
             results["State A (Available)"] = "PASSED"
         else:
-            # Wait for wallbox to respond to EV state A
             logger.info(f"Waiting for wallbox to change from '{current_status}' to 'Available'")
             try:
                 await asyncio.wait_for(self._wait_for_status("Available"), timeout=15)
@@ -342,7 +324,6 @@ class TestSeriesA(OcppTestBase):
                 results["State A (Available)"] = "FAILED"
                 all_success = False
 
-        # Test state B
         await self._set_ev_state("B")
         self._check_cancellation()
         try:
@@ -353,7 +334,6 @@ class TestSeriesA(OcppTestBase):
             results["State B (Preparing)"] = "FAILED"
             all_success = False
 
-        # Test state C - Start a transaction first
         logger.info("Starting transaction for state C test...")
         id_tag = "50600020100021"  # Use same ID tag as other tests
         start_response = await self.handler.send_and_wait(

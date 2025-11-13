@@ -7,19 +7,15 @@ Test Series Organization (ALL MIGRATED ✓):
 - Series A (TestSeriesA): Core Communication & Status (6 tests)
 - Series B (TestSeriesB): Authorization & Status Management (8 tests)
 - Series C (TestSeriesC): Charging Profile Management (7 tests)
-- Series D (TestSeriesD): Smart Charging (3 tests)
-- Series E (TestSeriesE): Remote Operations (8 tests)
 - Series X (TestSeriesX): Utility Functions (2 tests)
 
-Total: 36 tests across 6 series
+Total: 23 tests across 4 series
 """
 
 from app.tests.test_base import OcppTestBase
 from app.tests.test_series_a_basic import TestSeriesA
 from app.tests.test_series_b_auth import TestSeriesB
 from app.tests.test_series_c_charging import TestSeriesC
-from app.tests.test_series_d_smart import TestSeriesD
-from app.tests.test_series_e_remote import TestSeriesE
 from app.tests.test_series_x_utility import TestSeriesX
 
 __all__ = [
@@ -27,7 +23,5 @@ __all__ = [
     "TestSeriesA",
     "TestSeriesB",
     "TestSeriesC",
-    "TestSeriesD",
-    "TestSeriesE",
     "TestSeriesX",
 ]

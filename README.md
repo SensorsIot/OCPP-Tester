@@ -9,7 +9,7 @@ WallboxTester provides a complete suite of OCPP 1.6-J protocol tests through a W
 ## ✨ Key Features
 
 - **🔌 Full OCPP 1.6-J Support**: Complete protocol implementation with automated message handling
-- **🧪 20+ Individual Tests**: Covering communication, authorization, transactions, and smart charging
+- **🧪 20 Individual Tests**: Covering communication, authorization, transactions, and smart charging
 - **🤖 Automated Test Sequences**: B All Tests (4 tests) and C All Tests (8 iterations) with comprehensive logging
 - **📊 Real-time Monitoring**: WebSocket-streamed logs and live EV status updates
 - **✅ Profile Verification**: Automatic verification of charging profiles using GetCompositeSchedule
@@ -63,21 +63,21 @@ Environment variables (defaults in `app/core.py`):
 - **A.5**: Trigger All Messages - Test TriggerMessage functionality
 - **A.6**: Status and Meter Value Acquisition - Trigger and wait for MeterValues
 
-### B. Authorization & Transaction Management (8 tests)
-- **B.1**: Reset Transaction Management - Reset transaction state
-- **B.2**: Autonomous Start - Test autonomous charging
-- **B.3**: RFID Tap-to-Charge - Standard authorization flow with modal
-- **B.4**: Anonymous Remote Start - RemoteStartTransaction without ID tag
-- **B.5**: Plug-and-Charge - Automated charging with pre-authorization
-- **B.6**: Clear RFID Cache - ClearCache command
-- **B.7**: Send RFID List - SendLocalList command
-- **B.8**: Get RFID List Version - GetLocalListVersion command
+### B. Authorization & Transaction Management (7 tests)
+- **B.1**: RFID Authorization Before Plug-in - Standard authorization flow with modal
+- **B.2**: RFID Authorization After Plug-in - Local cache authorization with modal
+- **B.3**: Remote Smart Charging - RemoteStartTransaction with authorization
+- **B.4**: Plug & Charge - Automated charging with pre-authorization
+- **B.5**: Clear RFID Cache - ClearCache command
+- **B.6**: Send RFID List - SendLocalList command
+- **B.7**: Get RFID List Version - GetLocalListVersion command
 
-### C. Smart Charging Profile (4 tests + automated sequence)
+### C. Smart Charging Profile (5 tests + automated sequence)
 - **C.1**: SetChargingProfile - Set TxProfile with verification
 - **C.2**: TxDefaultProfile - Set default profile with verification
 - **C.3**: GetCompositeSchedule - Retrieve charging schedule
 - **C.4**: ClearChargingProfile - Remove charging profiles
+- **C.5**: Cleanup - Stop transactions, clear profiles, reset EV state
 
 ### X. System Control (2 tests)
 - **X.1**: Reboot Wallbox - OCPP Reset command
@@ -86,12 +86,12 @@ Environment variables (defaults in `app/core.py`):
 ## 🤖 Automated Test Sequences
 
 ### B All Tests
-Runs B.2 → B.3 → B.4 → B.5 sequentially.
+Runs B.1 → B.2 → B.3 → B.4 sequentially.
 
 **Features**:
 - GetConfiguration called at start
 - Combined log with config, test results, and OCPP messages
-- Frontend-driven (supports B.3 modal)
+- Frontend-driven (supports B.1 and B.2 modals)
 - 10-minute timeout
 - Result summary popup
 
@@ -228,11 +228,12 @@ Control buttons: Set State A / B / C / E
 
 ## 🎯 RFID Test Mode
 
-Enabled automatically during B.3 Tap-to-Charge test:
+Enabled automatically during B.1 and B.2 RFID authorization tests:
 - **First card**: Always ACCEPTED
 - **Subsequent cards**: Always INVALID
 - Tracks card presentation order
 - Allows testing with any RFID card
+- Interactive modal with countdown and real-time status
 
 ## 📦 Requirements
 
@@ -271,6 +272,7 @@ Install via: `pip install -r requirements.txt`
 ## 📊 System Statistics
 
 - **Total Tests**: 20 individual + 2 automated sequences
+- **Individual Test Breakdown**: A: 6, B: 7, C: 5, X: 2
 - **Test Iterations**: 12 (B All: 4, C All: 8)
 - **API Endpoints**: 20+
 - **WebSocket Streams**: 3 (logs, ev-status, ocpp)

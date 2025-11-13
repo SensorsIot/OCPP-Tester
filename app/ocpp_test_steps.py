@@ -14,8 +14,6 @@ from typing import TYPE_CHECKING
 from app.tests.test_series_a_basic import TestSeriesA
 from app.tests.test_series_b_auth import TestSeriesB
 from app.tests.test_series_c_charging import TestSeriesC
-from app.tests.test_series_d_smart import TestSeriesD
-from app.tests.test_series_e_remote import TestSeriesE
 from app.tests.test_series_x_utility import TestSeriesX
 
 if TYPE_CHECKING:
@@ -33,8 +31,6 @@ class OcppTestSteps:
     - Series A (TestSeriesA): Core Communication & Status (6 tests)
     - Series B (TestSeriesB): Authorization & Status Management (8 tests)
     - Series C (TestSeriesC): Charging Profile Management (7 tests)
-    - Series D (TestSeriesD): Smart Charging (3 tests)
-    - Series E (TestSeriesE): Remote Operations (8 tests)
     - Series X (TestSeriesX): Utility Functions (2 tests)
     """
 
@@ -54,13 +50,7 @@ class OcppTestSteps:
         self.series_a = TestSeriesA(ocpp_server_logic)
         self.series_b = TestSeriesB(ocpp_server_logic)
         self.series_c = TestSeriesC(ocpp_server_logic)
-        self.series_d = TestSeriesD(ocpp_server_logic)
-        self.series_e = TestSeriesE(ocpp_server_logic)
         self.series_x = TestSeriesX(ocpp_server_logic)
-
-    # =========================================================================
-    # A-SERIES: Core Communication & Status (MIGRATED ✓)
-    # =========================================================================
 
     async def run_a1_initial_registration(self):
         """A.1: Verifies that the charge point has registered itself."""
@@ -86,12 +76,6 @@ class OcppTestSteps:
         """A.6: Status and Meter Value Acquisition"""
         return await self.series_a.run_a6_status_and_meter_value_acquisition()
 
-    # =========================================================================
-    # B-SERIES: Authorization & Status Management (7 tests per FSD)
-    # Core: B.1, B.2 (RFID), B.3 (Remote), B.4 (Plug&Charge)
-    # Utility: B.6 (Clear), B.7 (Send List), B.8 (Get Version)
-    # =========================================================================
-
     async def run_b1_rfid_public_charging_test(self):
         """B.1: RFID Authorization Before Plug-in (tap-first authorization)"""
         return await self.series_b.run_b1_rfid_public_charging_test()
@@ -108,37 +92,25 @@ class OcppTestSteps:
         """B.4: Offline Local Start Test"""
         return await self.series_b.run_b4_offline_local_start_test(params)
 
-    async def run_b6_clear_rfid_cache(self):
-        """B.6: Clear RFID Cache"""
-        return await self.series_b.run_b6_clear_rfid_cache()
+    async def run_b5_clear_rfid_cache(self):
+        """B.5: Clear RFID Cache"""
+        return await self.series_b.run_b5_clear_rfid_cache()
 
-    async def run_b7_send_rfid_list(self):
-        """B.7: Send RFID List"""
-        return await self.series_b.run_b7_send_rfid_list()
+    async def run_b6_send_rfid_list(self):
+        """B.6: Send RFID List"""
+        return await self.series_b.run_b6_send_rfid_list()
 
-    async def run_b8_get_rfid_list_version(self):
-        """B.8: Get RFID List Version"""
-        return await self.series_b.run_b8_get_rfid_list_version()
-
-    # =========================================================================
-    # C-SERIES: Charging Profile Management (MIGRATED ✓)
-    # =========================================================================
+    async def run_b7_get_rfid_list_version(self):
+        """B.7: Get RFID List Version"""
+        return await self.series_b.run_b7_get_rfid_list_version()
 
     async def run_c1_set_charging_profile_test(self, params=None):
         """C.1: Set Charging Profile Test"""
         return await self.series_c.run_c1_set_charging_profile_test(params)
 
-    async def run_c2_user_initiated_transaction_test(self):
-        """C.2: User Initiated Transaction Test"""
-        return await self.series_c.run_c2_user_initiated_transaction_test()
-
     async def run_c2_tx_default_profile_test(self, params=None):
         """C.2: TX Default Profile Test"""
         return await self.series_c.run_c2_tx_default_profile_test(params)
-
-    async def run_c3_check_power_limits_test(self):
-        """C.3: Check Power Limits Test"""
-        return await self.series_c.run_c3_check_power_limits_test()
 
     async def run_c3_get_composite_schedule_test(self, params=None):
         """C.3: Get Composite Schedule Test"""
@@ -151,62 +123,6 @@ class OcppTestSteps:
     async def run_c5_cleanup_test(self):
         """C.5: Cleanup Test"""
         return await self.series_c.run_c5_cleanup_test()
-
-    # =========================================================================
-    # D-SERIES: Smart Charging (MIGRATED ✓)
-    # =========================================================================
-
-    async def run_d3_smart_charging_capability_test(self):
-        """D.3: Smart Charging Capability Test"""
-        return await self.series_d.run_d3_smart_charging_capability_test()
-
-    async def run_d5_set_profile_5000w(self):
-        """D.5: Set Profile 5000W"""
-        return await self.series_d.run_d5_set_profile_5000w()
-
-    async def run_d6_set_high_charging_profile(self):
-        """D.6: Set High Charging Profile"""
-        return await self.series_d.run_d6_set_high_charging_profile()
-
-    # =========================================================================
-    # E-SERIES: Remote Operations (MIGRATED ✓)
-    # =========================================================================
-
-    async def run_e1_remote_start_state_a(self):
-        """E.1: Remote Start State A"""
-        return await self.series_e.run_e1_remote_start_state_a()
-
-    async def run_e2_remote_start_state_b(self):
-        """E.2: Remote Start State B"""
-        return await self.series_e.run_e2_remote_start_state_b()
-
-    async def run_e3_remote_start_state_c(self):
-        """E.3: Remote Start State C"""
-        return await self.series_e.run_e3_remote_start_state_c()
-
-    async def run_e4_set_profile_6a(self):
-        """E.4: Set Profile 6A"""
-        return await self.series_e.run_e4_set_profile_6a()
-
-    async def run_e5_set_profile_10a(self):
-        """E.5: Set Profile 10A"""
-        return await self.series_e.run_e5_set_profile_10a()
-
-    async def run_e6_set_profile_16a(self):
-        """E.6: Set Profile 16A"""
-        return await self.series_e.run_e6_set_profile_16a()
-
-    async def run_e7_clear_profile(self):
-        """E.7: Clear Profile"""
-        return await self.series_e.run_e7_clear_profile()
-
-    async def run_e11_clear_all_profiles(self):
-        """E.11: Clear All Profiles"""
-        return await self.series_e.run_e11_clear_all_profiles()
-
-    # =========================================================================
-    # X-SERIES: Utility Functions (MIGRATED ✓)
-    # =========================================================================
 
     async def run_x1_reboot_wallbox(self):
         """X.1: Reboot Wallbox"""

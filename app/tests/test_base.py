@@ -49,15 +49,16 @@ class OcppTestBase:
         """
         return self.ocpp_server_logic._check_cancellation()
 
-    def _set_test_result(self, step_name: str, result: str):
+    def _set_test_result(self, step_name: str, result: str, reason: str = None):
         """
         Set test result for a specific step.
 
         Args:
             step_name: Name of the test step
             result: Test result ("PASSED", "FAILED", "SKIPPED", etc.)
+            reason: Optional reason for the result
         """
-        return self.ocpp_server_logic._set_test_result(step_name, result)
+        return self.ocpp_server_logic._set_test_result(step_name, result, reason)
 
     async def _set_ev_state(self, state: str):
         """
@@ -66,10 +67,12 @@ class OcppTestBase:
         Args:
             state: Target EV state (A, B, C, D, E)
         """
-        if not SERVER_SETTINGS.get("use_simulator"):
+        if not SERVER_SETTINGS.get("ev_simulator_available"):
             logger.info(f"Skipping EV state change to '{state}'; simulator is disabled.")
             return
-        return await self.ocpp_server_logic._set_ev_state(state)
+
+        result = await self.ocpp_server_logic._set_ev_state(state)
+        return result
 
     async def _wait_for_status(self, status: str):
         """

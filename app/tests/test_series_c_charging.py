@@ -51,84 +51,6 @@ class TestSeriesC(OcppTestBase):
     Covers SetChargingProfile, ClearChargingProfile, GetCompositeSchedule, and verification.
     """
 
-    async def run_c2_user_initiated_transaction_test(self):
-        """C.2: Guides the user to start a transaction manually."""
-        logger.info(f"--- Step C.2: User-initiated transaction test for {self.charge_point_id} ---")
-        # This is a manual step, so we don't set a success/failure status automatically.
-        logger.info("Please connect the EV and present an authorized ID tag to the reader.")
-        logger.info("The server will wait for a StartTransaction message.")
-        self._check_cancellation()
-        await asyncio.sleep(1)
-        self._check_cancellation()
-        logger.info(f"--- Step C.2 for {self.charge_point_id} is a manual step. ---")
-
-    async def run_c3_check_power_limits_test(self):
-        """C.3: Checks current power/current limits using GetCompositeSchedule."""
-        logger.info(f"--- Step C.3: Checking power/current limits for {self.charge_point_id} ---")
-        step_name = "run_c3_check_power_limits_test"
-        self._check_cancellation()
-
-        try:
-            logger.info("Querying current charging schedule limits on connector 1...")
-
-            # Use configured charging rate unit
-            charging_unit = get_charging_rate_unit()
-            composite_request = GetCompositeScheduleRequest(
-                connectorId=1,
-                duration=3600,
-                chargingRateUnit=charging_unit
-            )
-            logger.info(f"Sending GetCompositeSchedule: {asdict(composite_request)}")
-
-            try:
-                response = await asyncio.wait_for(
-                    self.handler.send_and_wait("GetCompositeSchedule", composite_request),
-                    timeout=OCPP_MESSAGE_TIMEOUT
-                )
-                self._check_cancellation()
-            except asyncio.TimeoutError:
-                logger.error("FAILURE: GetCompositeSchedule request timed out after 30 seconds")
-                self._set_test_result(step_name, "FAILED")
-                logger.info(f"--- Step C.3 for {self.charge_point_id} complete. ---")
-                return
-
-            if response and response.get("status") == "Accepted":
-                logger.info("SUCCESS: GetCompositeSchedule was accepted.")
-
-                if response.get("chargingSchedule"):
-                    schedule = response.get("chargingSchedule")
-                    logger.info(f"📊 CURRENT POWER/CURRENT LIMITS on connector 1:")
-                    logger.info(f"  - Charging Rate Unit: {schedule.get('chargingRateUnit', 'Not specified')}")
-                    logger.info(f"  - Schedule Start: {response.get('scheduleStart', 'Not specified')}")
-
-                    if schedule.get("chargingSchedulePeriod"):
-                        logger.info("  - Active Charging Periods:")
-                        for i, period in enumerate(schedule.get("chargingSchedulePeriod")):
-                            limit = period.get('limit', 'N/A')
-                            start = period.get('startPeriod', 0)
-                            phases = period.get('numberPhases', 'N/A')
-                            unit = schedule.get('chargingRateUnit', '')
-                            logger.info(f"    • Period {i+1}: Start {start}s, Limit {limit}{unit}, Phases {phases}")
-                    else:
-                        logger.info("  - No charging periods defined (unlimited)")
-
-                    logger.info("SUCCESS: Power/current limits retrieved successfully.")
-                    self._set_test_result(step_name, "PASSED")
-                else:
-                    logger.info("📊 No active charging schedule on connector 1 (unlimited)")
-                    logger.info("SUCCESS: No charging limits currently active.")
-                    self._set_test_result(step_name, "PASSED")
-            else:
-                logger.error(f"FAILURE: GetCompositeSchedule was not accepted. Response: {response}")
-                self._set_test_result(step_name, "FAILED")
-
-        except Exception as e:
-            logger.error(f"FAILURE: Exception occurred during GetCompositeSchedule test: {e}")
-            logger.exception("Full exception details:")
-            self._set_test_result(step_name, "FAILED")
-
-        logger.info(f"--- Step C.3 for {self.charge_point_id} complete. ---")
-
     async def run_c1_set_charging_profile_test(self, params: Dict[str, Any] = None):
         """C.1: SetChargingProfile - Sets a charging profile to limit power on an active transaction."""
         if params is None:
@@ -185,7 +107,7 @@ class TestSeriesC(OcppTestBase):
             # Ensure EV is in state C
             await self._set_ev_state("C")
             self._check_cancellation()
-        # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
+
         clear_response = await self.handler.send_and_wait(
             "ClearChargingProfile",
             ClearChargingProfileRequest()
@@ -238,10 +160,8 @@ class TestSeriesC(OcppTestBase):
             logger.info("SUCCESS: SetChargingProfile was acknowledged by the charge point.")
             test_passed = True
 
-            # Verify profile was applied using GetCompositeSchedule
-            # Don't specify chargingRateUnit - let wallbox return its native unit
             logger.info("🔍 Verifying profile application with GetCompositeSchedule...")
-            await asyncio.sleep(2)  # Small delay for wallbox to process
+            await asyncio.sleep(2)
 
             verify_response = await self.handler.send_and_wait(
                 "GetCompositeSchedule",
@@ -378,11 +298,10 @@ class TestSeriesC(OcppTestBase):
         # Convert limit to float if provided
         if limit is not None:
             limit = float(limit)
-        # Note: TxDefaultProfile should not have duration per OCPP standard
 
         # If no unit or limit specified, use configured charging values
         if charging_unit is None or limit is None:
-            medium_value, default_unit = get_charging_value("medium")  # C.2 defaults to 10A/10000W
+            medium_value, default_unit = get_charging_value("medium")
             if charging_unit is None:
                 charging_unit = default_unit
             if limit is None:
@@ -392,7 +311,6 @@ class TestSeriesC(OcppTestBase):
         step_name = "run_c2_tx_default_profile_test"
         self._check_cancellation()
 
-        # Clear any existing profile first (MaxChargingProfilesInstalled = 1)
         clear_response = await self.handler.send_and_wait(
             "ClearChargingProfile",
             ClearChargingProfileRequest()
@@ -429,13 +347,8 @@ class TestSeriesC(OcppTestBase):
             logger.info(f"PASSED: SetChargingProfile to {limit}{charging_unit} was acknowledged.")
             test_passed = True
 
-            # Verify profile was applied using GetCompositeSchedule
-            # Note: TxDefaultProfile is set at charge point level (connectorId=0), but we verify
-            # at connector level (connectorId=1) because some wallboxes don't support
-            # GetCompositeSchedule at the charge point level
-            # Don't specify chargingRateUnit in GetCompositeSchedule - let wallbox return its native unit
             logger.info("🔍 Verifying profile application with GetCompositeSchedule on connector 1...")
-            await asyncio.sleep(2)  # Small delay for wallbox to process
+            await asyncio.sleep(2)
 
             verify_response = await self.handler.send_and_wait(
                 "GetCompositeSchedule",

@@ -325,12 +325,13 @@ async def ensure_test_configuration(
         key = param.get("key")
         value = param.get("value")
         description = param.get("description", "")
+        optional = param.get("optional", False)
 
         # Log what we're checking
         if description:
-            logger.info(f"   📋 {key}: {value} ({description})")
+            logger.info(f"   📋 {key}: {value} ({description}){' [Optional]' if optional else ''}")
         else:
-            logger.info(f"   📋 {key}: {value}")
+            logger.info(f"   📋 {key}: {value}{' [Optional]' if optional else ''}")
 
         # Check and set the parameter
         success, status = await ensure_configuration(handler, key, value, timeout)
@@ -340,7 +341,12 @@ async def ensure_test_configuration(
             if status == "RebootRequired":
                 reboot_required = True
         else:
-            failed_params.append(f"{key} ({status})")
+            # If parameter is optional and NotSupported, don't count as failure
+            if optional and status == "NotSupported":
+                logger.info(f"   💡 {key} not supported by this wallbox (optional parameter, continuing)")
+                success_count += 1  # Count as success since it's optional
+            else:
+                failed_params.append(f"{key} ({status})")
 
     # Determine overall result
     logger.info("")

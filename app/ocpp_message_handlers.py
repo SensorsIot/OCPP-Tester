@@ -227,16 +227,19 @@ class OcppMessageHandlers:
         else:
             TRANSACTIONS[transaction_id] = {
                 "charge_point_id": charge_point_id,
-                # "id_tag": payload.idTag,  # Removed - no RFID storage for anonymous transactions
+                "id_tag": payload.idTag if payload.idTag else None,  # Store idTag for logging/debugging
                 "start_time": "0000-00-00T00:00:00.000Z",
                 "meter_start": payload.meterStart,
                 "connector_id": payload.connectorId,
                 "status": "Ongoing",
                 "remote_started": False,
                 "transaction_id": transaction_id,
-                "anonymous": True  # Flag to indicate no idTag stored
+                "anonymous": not payload.idTag  # Flag if no idTag provided
             }
-            logger.info(f"💫 OCPP: Created new transaction (ID: {transaction_id}) initiated by CP.")
+            if payload.idTag:
+                logger.info(f"💫 OCPP: Created new transaction (ID: {transaction_id}) with idTag '{payload.idTag}' initiated by CP.")
+            else:
+                logger.info(f"💫 OCPP: Created new transaction (ID: {transaction_id}) initiated by CP (anonymous).")
             transaction_id_to_return = transaction_id
 
         set_active_transaction_id(transaction_id)
@@ -323,15 +326,24 @@ class OcppMessageHandlers:
                 logger.debug("Detected a triggered MeterValues message, setting event.")
                 self.pending_triggered_message_events["MeterValues"].set()
 
-        logger.debug(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId}")
+        # Check if this is a significant MeterValues (Begin/End) or just periodic
+        is_significant = False
+        for mv in payload.meterValue:
+            for sv in mv.sampledValue:
+                if sv.context in ("Transaction.Begin", "Transaction.End"):
+                    is_significant = True
+                    break
+            if is_significant:
+                break
+
+        if is_significant:
+            logger.debug(f"Received MeterValues from {charge_point_id} for connector {payload.connectorId}")
+        # Otherwise, silently process without logging (periodic samples)
 
         if payload.transactionId is not None:
-            logger.debug(f"Extracting transaction ID from MeterValues.req: {payload.transactionId}")
             transaction_data = TRANSACTIONS.get(payload.transactionId)
 
             if transaction_data:
-                logger.debug(f"Found transaction {payload.transactionId} by its CP ID.")
-
                 if transaction_data.get("cp_transaction_id") is None:
                     transaction_data["cp_transaction_id"] = payload.transactionId
 
@@ -367,21 +379,24 @@ class OcppMessageHandlers:
                 TRANSACTIONS[payload.transactionId]["meter_values"].extend(payload.meterValue)
                 set_active_transaction_id(payload.transactionId)
         else:
-            logger.warning(f"MeterValues received from {charge_point_id} without a transaction ID. Cannot associate with a specific transaction.")
+            if is_significant:
+                logger.warning(f"MeterValues received from {charge_point_id} without a transaction ID. Cannot associate with a specific transaction.")
 
-        for mv in payload.meterValue:
-            logger.debug(f"  -> Timestamp: {mv.timestamp}")
-            for sv in mv.sampledValue:
-                unit = f" {sv.unit}" if sv.unit else ""
-                measurand = sv.measurand or "N/A"
+        # Only log details for significant MeterValues
+        if is_significant:
+            for mv in payload.meterValue:
+                logger.debug(f"  -> Timestamp: {mv.timestamp}")
+                for sv in mv.sampledValue:
+                    unit = f" {sv.unit}" if sv.unit else ""
+                    measurand = sv.measurand or "N/A"
 
-                details_parts = []
-                if sv.context: details_parts.append(f"context: {sv.context}")
-                if sv.location: details_parts.append(f"location: {sv.location}")
-                if sv.phase: details_parts.append(f"phase: {sv.phase}")
-                details = f" ({', '.join(details_parts)})" if details_parts else ""
+                    details_parts = []
+                    if sv.context: details_parts.append(f"context: {sv.context}")
+                    if sv.location: details_parts.append(f"location: {sv.location}")
+                    if sv.phase: details_parts.append(f"phase: {sv.phase}")
+                    details = f" ({', '.join(details_parts)})" if details_parts else ""
 
-                logger.debug(f"    - {measurand}: {sv.value}{unit}{details}")
+                    logger.debug(f"    - {measurand}: {sv.value}{unit}{details}")
 
         return MeterValuesResponse()
 

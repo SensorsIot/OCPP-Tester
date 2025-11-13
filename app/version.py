@@ -4,15 +4,36 @@ OCPP Tester Version Information
 Update these constants whenever you make significant changes to the code.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.3.0"
 __build_date__ = "2025-11-13"
 
 # Module-specific versions for tracking critical changes
 __test_helpers_version__ = "1.1.0"  # Added ensure_test_configuration, set_ev_state_and_wait_for_status
-__test_series_b_version__ = "1.2.0"  # Fixed B.1: Added State C transition, parameter validation, timing fixes
+__test_series_b_version__ = "1.4.0"  # Fixed B.2: Prevent ElecqAutoStart auto-start with dual parameter fix
 
 # Change log
 CHANGELOG = {
+    "1.3.0": {
+        "date": "2025-11-13",
+        "changes": [
+            "Added B.5: Local Stop test (RFID tap to stop transaction)",
+            "Merged execution logs (EV simulator, comments) with OCPP messages in single log file",
+            "Removed separate summary log files - all info in one comprehensive log",
+            "Fixed NOT_SUPPORTED button color to yellow for better visibility"
+        ]
+    },
+    
+    "1.2.0": {
+        "date": "2025-11-13",
+        "changes": [
+            "Fixed Test B.2: Changed LocalAuthorizeOffline from true→false to prevent cache auto-start",
+            "Fixed Test B.2: Changed LocalAuthListEnabled from true→false to fully disable local cache",
+            "Fixed Test B.2: Prevent 'ElecqAutoStart' firmware card from bypassing authorization",
+            "Fixed Test B.2: Updated test description to reflect backend authorization (not local cache)",
+            "Fixed Test B.2: Improved ClearCache error handling with explanatory messages",
+            "Fixed Test B.2: Removed SendLocalList (not needed for backend auth flow)"
+        ]
+    },
     "1.1.0": {
         "date": "2025-11-13",
         "changes": [

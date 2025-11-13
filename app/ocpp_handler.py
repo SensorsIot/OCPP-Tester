@@ -1,7 +1,5 @@
 """
 OCPPHandler: manages a single WebSocket connection to a charge point.
-Maps OCPP actions (from the Charge Point to Central System) to
-their async handler functions and payload dataclasses.
 """
 import asyncio
 import json
@@ -216,7 +214,6 @@ class OCPPHandler:
             handler = getattr(self.ocpp_logic.message_handlers, handler_name)
             payload = payload_class(**filtered)
 
-            # Log incoming message if logger is set (during test execution)
             if self.incoming_message_logger:
                 from datetime import datetime
                 timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]

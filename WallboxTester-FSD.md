@@ -13,7 +13,7 @@ WallboxTester is an OCPP 1.6-J compliant test server for validating electric veh
 - **Real-time Logging**: WebSocket-streamed logs with OCPP message capture
 
 ### 1.3 Key Capabilities
-- 16 individual OCPP tests covering all protocol aspects
+- 19 individual OCPP tests covering all protocol aspects
 - Complete coverage of 4 standard OCPP transaction scenarios
 - 2 automated test sequences (B All Tests, C All Tests) with combined logging
 - Real-time visual feedback with 7 button states
@@ -58,7 +58,7 @@ Triggers and waits for MeterValues messages.
 - Validates real-time metering data
 - Tests MeterValueSampleInterval configuration
 
-### B. Authorization & Transaction Management (4 tests)
+### B. Authorization & Transaction Management (7 tests)
 
 **See Chapter 14: OCPP Transaction Scenarios for detailed protocol flows**
 
@@ -80,6 +80,7 @@ Tests local authorization cache with "plug-first" workflow.
 - User taps RFID card
 - Wallbox checks local authorization cache (instant validation)
 - Transaction starts within 2 seconds (no network delay)
+- Interactive modal with countdown and real-time status
 - **Configuration**: LocalAuthListEnabled=true, LocalAuthorizeOffline=true
 - **Simulation Mode**: 15-second RFID timeout - if no physical card detected, falls back to RemoteStartTransaction simulation (result: PARTIAL)
 - **Use Case**: Parking garages with unreliable connectivity, offline authorization
@@ -104,7 +105,26 @@ Tests automatic charging with LocalPreAuthorize.
 - **Configuration**: LocalPreAuthorize=true
 - **Use Case**: Private home chargers - "just plug in and charge"
 
-### C. Smart Charging Profile (4 tests + automated sequence)
+#### B.5: Clear RFID Cache
+Clears the local authorization list (RFID cache) in the wallbox.
+- Sends ClearCache command to charge point
+- Validates accepted/rejected/not-supported responses
+- Clears all locally stored RFID authorization data
+
+#### B.6: Send RFID List
+Sends a local authorization list with RFID cards to the wallbox.
+- Uses SendLocalList command
+- Supports multiple RFID cards with expiry dates
+- Updates local authorization cache
+- Enables offline authorization capability
+
+#### B.7: Get RFID List Version
+Gets the current version of the local authorization list.
+- Uses GetLocalListVersion command
+- Returns version number of stored authorization list
+- Useful for verifying list updates
+
+### C. Smart Charging Profile (5 tests + automated sequence)
 
 #### C.1: SetChargingProfile
 Sets TxProfile charging profile to limit power on active transaction.
@@ -131,6 +151,13 @@ Removes charging profiles from charge point.
 - Clears TxDefaultProfile types
 - Validates profile removal
 
+#### C.5: Cleanup
+Comprehensive cleanup operation for test environment.
+- Stops any active transactions
+- Clears all charging profiles
+- Resets EV state to disconnected (State A)
+- Available as a button in the UI
+
 ### X. System Control (2 tests)
 
 #### X.1: Reboot Wallbox
@@ -149,7 +176,7 @@ Exports complete configuration to log file.
 Runs B.1 → B.2 → B.3 → B.4 sequentially covering all OCPP authorization scenarios.
 
 **Features:**
-- Frontend-driven execution (supports B.1 RFID modal)
+- Frontend-driven execution (supports B.1 and B.2 RFID modals)
 - GetConfiguration called at start
 - Creates combined log file with:
   - Charge point configuration
@@ -160,8 +187,8 @@ Runs B.1 → B.2 → B.3 → B.4 sequentially covering all OCPP authorization sc
 - Button color: Green (all passed) / Red (any failed)
 
 **Test Coverage:**
-- B.1: RFID Authorization Before Plug-in (Online authorization)
-- B.2: RFID Authorization After Plug-in (Local cache)
+- B.1: RFID Authorization Before Plug-in (Online authorization with modal)
+- B.2: RFID Authorization After Plug-in (Local cache with modal)
 - B.3: Remote Smart Charging (Remote start with authorization)
 - B.4: Plug & Charge (Automatic start)
 
@@ -350,6 +377,39 @@ Tests now validate actual implementation, not just command acceptance:
 - Click to switch active wallbox
 - 2-second polling interval
 
+### 6.3 Logging Improvements
+
+#### JSON-Only Message Display
+The logging system has been simplified to focus on OCPP protocol messages:
+
+- **Test logs now show only JSON messages** (requests/responses) without verbose INFO/WARNING/DEBUG text
+- Cleaner, more readable output focused on the actual OCPP communication
+- Each message is clearly labeled with direction (→ for sent, ← for received)
+- Message types are prominently displayed for easy scanning
+
+#### Example Log Output:
+```
+→ SetChargingProfile.req
+{
+  "connectorId": 1,
+  "csChargingProfiles": {
+    "chargingProfileId": 1,
+    ...
+  }
+}
+
+← SetChargingProfile.conf
+{
+  "status": "Accepted"
+}
+```
+
+#### Benefits
+1. **Reduced noise**: No repetitive status messages cluttering the log
+2. **Protocol focus**: See exactly what's being communicated over OCPP
+3. **Easier debugging**: JSON messages are the source of truth for protocol issues
+4. **Better readability**: Clear separation between messages
+
 ## 7. EV Simulator Integration
 
 ### 7.1 Display Section
@@ -389,6 +449,46 @@ Allows any RFID card to be accepted during B.1 (RFID Authorization Before Plug-i
 - `/api/enable_rfid_test_mode` - Enable test mode
 - `/api/disable_rfid_test_mode` - Disable test mode
 - `/api/rfid_status` - Get current status
+
+### 8.4 Modal Timing and User Experience (v1.1.1)
+
+**Problem Addressed:** The RFID modal was appearing immediately when B.1 test button clicked, confusing users before the backend finished preparing (validating parameters, clearing state takes ~7 seconds).
+
+**Solution:** Modal only appears when backend is actually ready for RFID tap.
+
+**Implementation:**
+- User clicks "Run Test B.1" → **No modal shown**
+- Backend prepares silently (validates parameters, stops transactions, resets EV state)
+- Frontend monitors WebSocket log stream for "⏳ Waiting for RFID card tap" message
+- When backend ready signal detected, frontend:
+  - Shows modal with "🎫 Please present your RFID card to the wallbox"
+  - Calls `/api/enable_rfid_test_mode`
+  - Starts 60-second countdown timer
+- Modal closes immediately when RFID detected or transaction starts
+
+**Timeline:**
+```
+00s - User clicks "Run Test B.1" → NO MODAL
+00s-7s - Backend validates parameters, clears transactions, resets state
+07s - Backend logs "⏳ Waiting for RFID card tap"
+07s - Frontend detects signal → Modal appears NOW
+07s+ - User taps RFID → Transaction starts → Modal closes
+```
+
+**Benefits:**
+- No confusion about when to tap RFID
+- Modal appears exactly when backend is ready
+- Prevents stale RFID data from early taps
+- Clear visual indication of test readiness
+
+**Technical Details:**
+- Frontend flag: `waitingForBackendReady` tracks if waiting for backend
+- WebSocket log handler monitors for "⏳ Waiting for RFID card tap"
+- Modal display triggered by backend signal, not button click
+- Console logging available for debugging timing
+
+**Files Modified:**
+- `/home/ocpp-tester/app/templates/index.html` - Modal timing logic in log socket handler
 
 ## 9. Configuration Features
 
@@ -437,6 +537,83 @@ All logs use standardized format:
 [YYYY-MM-DD HH:MM:SS.mmm] RESPONSE - Action
 {"key": "value"}
 ```
+
+### 10.4 Log Content Requirements (v1.3.0)
+
+All test logs must follow a sequence-based structure that groups related OCPP messages into logical numbered sequences, making the protocol flow self-documenting.
+
+#### 10.4.1 Message Inclusion Rules
+
+**INCLUDE (Test-Relevant Messages):**
+- All REQUEST messages sent from server to charge point
+- All RESPONSE messages from charge point paired with their requests
+- Test-initiated OCPP messages: StartTransaction, StopTransaction, Authorize
+- EV simulator state changes (e.g., A→B, B→C transitions)
+- Narrative INFO/WARNING/ERROR messages explaining significance
+
+**EXCLUDE (Background Noise):**
+- Unsolicited Heartbeat messages (unless test explicitly waits for heartbeat)
+- Periodic StatusNotification messages (unless test checks specific status change)
+- Periodic MeterValues messages (unless test explicitly requests meter reading)
+
+#### 10.4.2 Sequence-Based Structure
+
+**Sequence Grouping:**
+- Group related REQUEST/RESPONSE pairs into numbered sequences
+- Each sequence represents one logical OCPP interaction
+- Sequences have descriptive titles based on the request action and purpose
+- Format: `### Sequence N: <Action> (<Key Parameter>) ###`
+
+**Direction Indicators:**
+- REQUEST messages: `(Server -> CP)` - Commands sent to charge point
+- RESPONSE messages: `(CP -> Server)` - Responses from charge point
+- RECEIVED messages: `(CP -> Server)` - Unsolicited notifications from charge point
+
+**Inline Context:**
+- RESPONSE headers include extracted key information from payload
+- Examples: "Current value is 'true'", "Status: Accepted", "Transaction ID: 12345"
+- Eliminates need to parse JSON to understand outcome
+
+**Narrative Messages:**
+- INFO/WARNING/ERROR messages follow responses to explain significance
+- Format: `[INFO]: [OK] Configuration verified` or `[ERROR]: Transaction rejected`
+- Self-documenting: failures explain WHY they failed
+
+**Phase Organization:**
+- Group sequences into test phases with section headers
+- Example phases: "PRE-TEST SETUP", "TEST EXECUTION", "CLEANUP"
+- Use ASCII symbols for phase headers (avoid Unicode emojis in logs)
+
+**Sequence Separator:**
+- Use `---` to separate sequences for visual clarity
+- Maintains readability when scanning through long logs
+
+#### 10.4.3 Message Filtering Implementation
+
+**Filter unsolicited messages by:**
+1. Message type check (Heartbeat, StatusNotification, MeterValues)
+2. Test context (is message explicitly expected?)
+3. Test phase (preparation, execution, cleanup)
+
+**Always log if:**
+- Message is a direct result of test action
+- Message is explicitly waited for by test
+- Message indicates transaction state change
+- Message is part of expected OCPP flow for test scenario
+
+#### 10.4.4 Rationale
+
+**Clarity:** Filtered logs focus on test-relevant information without background noise
+**Debugging:** Clear message purposes make troubleshooting faster
+**Documentation:** Logs serve as protocol flow documentation
+**Readability:** Reduced clutter makes logs easier to review and understand
+**Compatibility:** ASCII-focused logs work in all environments
+
+---
+
+*Log Requirements Added: 2025-11-13*
+*Version: 1.3.0*
+*Applies to: All individual test logs and combined test logs*
 
 ## 11. API Endpoints
 
@@ -497,7 +674,7 @@ Tests can send these OCPP commands:
 
 ## 13. System Statistics
 
-- **Total Individual Tests**: 16 (A: 6, B: 4, C: 4, X: 2)
+- **Total Individual Tests**: 20 (A: 6, B: 7, C: 5, X: 2)
 - **Automated Sequences**: 2 (B All Tests, C All Tests)
 - **Total Test Iterations**: 12 (B: 4 tests, C: 8 iterations)
 - **OCPP Scenarios Covered**: 4 (Plug & Charge, RFID Before Plug-in, RFID After Plug-in, Remote Smart Charging)
@@ -612,8 +789,9 @@ Backend starts or stops a session via network commands, often used by solar-awar
 **Maps to:** Standard Scenario 2 - Authorize Before Plug-in
 
 **Configuration:**
-- Default OCPP settings
-- Requires online authorization
+- `LocalPreAuthorize=false` - Wait for backend authorization (don't auto-start)
+- `LocalAuthorizeOffline=false` - No offline authorization (require online authorization)
+- Requires online backend connectivity
 - Standard public charging workflow
 
 **Flow:**
@@ -941,12 +1119,12 @@ When running B-series tests, verify:
 | Test Series | Current | After Refactoring | Reduction |
 |-------------|---------|-------------------|-----------|
 | A-series (6 tests) | 600 lines | 300 lines | **-50%** |
-| B-series (10 tests) | 850 lines | 300 lines | **-65%** |
+| B-series (7 tests) | 750 lines | 280 lines | **-63%** |
 | C-series (5 tests) | 700 lines | 200 lines | **-71%** |
 | D-series (2 tests) | 150 lines | 80 lines | **-47%** |
 | E-series (7 tests) | 550 lines | 200 lines | **-64%** |
 | X-series (2 tests) | 150 lines | 100 lines | **-33%** |
-| **Total** | **3,000 lines** | **1,180 lines** | **-61%** |
+| **Total** | **2,900 lines** | **1,160 lines** | **-60%** |
 
 **Line Savings by Operation Type**
 
@@ -1051,7 +1229,7 @@ app/
 │   ├── __init__.py
 │   ├── test_base.py         # ~100 lines - base class with shared methods
 │   ├── test_series_a_basic.py      # ~300 lines - A1-A6 tests
-│   ├── test_series_b_auth.py       # ~300 lines - B1-B8 tests  
+│   ├── test_series_b_auth.py       # ~300 lines - B1-B7 tests
 │   ├── test_series_c_charging.py   # ~200 lines - C1-C5 tests
 │   ├── test_series_d_smart.py      # ~80 lines - D3, D5-D6 tests
 │   ├── test_series_e_remote.py     # ~200 lines - E1-E11 tests
@@ -1116,8 +1294,8 @@ app/
     ├── __init__.py               # Package initialization
     ├── test_base.py              # Base class (100 lines)
     ├── test_series_a_basic.py    # ✅ A-Series (6 tests, 674 lines)
-    ├── test_series_b_auth.py     # ✅ B-Series (8 tests, 1,174 lines)
-    ├── test_series_c_charging.py # ✅ C-Series (7 tests, 853 lines)
+    ├── test_series_b_auth.py     # ✅ B-Series (7 tests, 1,174 lines)
+    ├── test_series_c_charging.py # ✅ C-Series (5 tests, 853 lines)
     ├── test_series_d_smart.py    # ✅ D-Series (3 tests, 184 lines)
     ├── test_series_e_remote.py   # ✅ E-Series (8 tests, 548 lines)
     └── test_series_x_utility.py  # ✅ X-Series (2 tests, 152 lines)
@@ -1128,13 +1306,13 @@ app/
 | Series | Tests | Status | Lines | File |
 |--------|-------|--------|-------|------|
 | **A** | 6 tests | ✅ MIGRATED | 674 | `test_series_a_basic.py` |
-| **B** | 8 tests | ✅ MIGRATED | 1,174 | `test_series_b_auth.py` |
-| **C** | 7 tests | ✅ MIGRATED | 853 | `test_series_c_charging.py` |
+| **B** | 7 tests | ✅ MIGRATED | 1,174 | `test_series_b_auth.py` |
+| **C** | 5 tests | ✅ MIGRATED | 853 | `test_series_c_charging.py` |
 | **D** | 3 tests | ✅ MIGRATED | 184 | `test_series_d_smart.py` |
 | **E** | 8 tests | ✅ MIGRATED | 548 | `test_series_e_remote.py` |
 | **X** | 2 tests | ✅ MIGRATED | 152 | `test_series_x_utility.py` |
 
-**Total**: 36/36 tests migrated (100%) ✅ COMPLETE
+**Total**: 31/31 tests migrated (100%) ✅ COMPLETE
 
 #### 15.4.3 Facade Pattern Implementation
 

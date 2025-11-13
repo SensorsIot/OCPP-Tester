@@ -85,7 +85,7 @@
         .button-group button.btn-running { background-color: #6c757d; cursor: wait; }
         .button-group button.btn-skipped { background-color: #ffc107; color: #000; }
         .button-group button.btn-partial { background-color: #fd7e14; }
-        .button-group button.btn-not-supported { background-color: #6c757d; }
+        .button-group button.btn-not-supported { background-color: #ffc107; color: #000; }
         .button-group button.active-state { background-color: #28a745; }
         .button-group button.disabled { background:#6c757d; cursor:not-allowed; }
         .log-container { height:400px; overflow-y:scroll; border:1px solid #ccc; padding:10px; background:#f8f9fa; border-radius:8px; margin-top:20px; font-family:'Courier New', Courier, monospace; font-size:14px; }
@@ -404,6 +404,7 @@
                 <button data-step-key="run_b2_local_cache_authorization_test">B.2: RFID Authorization After Plug-in</button>
                 <button data-step-key="run_b3_remote_smart_charging_test">B.3: Remote Smart Charging</button>
                 <button data-step-key="run_b4_offline_local_start_test">B.4: Plug & Charge</button>
+                <button data-step-key="run_b5_local_stop_test">B.5: Local Stop</button>
                 <button data-step-key="run_b6_clear_rfid_cache">B.6: Clear RFID Cache</button>
                 <button data-step-key="run_b7_send_rfid_list">B.7: Send RFID List</button>
                 <button data-step-key="run_b8_get_rfid_list_version">B.8: Get RFID List Version</button>
@@ -575,10 +576,10 @@
         <div style="margin: 30px 0; text-align: center;">
             <div style="font-size: 48px; margin-bottom: 20px;">🎫</div>
             <div id="tap-to-charge-timer" style="font-weight: bold; color: #007bff; font-size: 20px; margin-bottom: 20px;">
-                ⏳ Please present your RFID card to the wallbox
+                ⏳ Preparing test (validating parameters, clearing state...)
             </div>
             <div id="tap-to-charge-countdown" style="font-size: 16px; color: #6c757d;">
-                Time remaining: 60s
+                Please wait...
             </div>
         </div>
     </div>
@@ -1196,15 +1197,16 @@
             'run_b2_local_cache_authorization_test': { name: 'B.2: RFID Authorization After Plug-in', category: 'category-b-buttons' },
             'run_b3_remote_smart_charging_test': { name: 'B.3: Remote Smart Charging', category: 'category-b-buttons' },
             'run_b4_offline_local_start_test': { name: 'B.4: Plug & Charge', category: 'category-b-buttons' },
-            'run_b6_clear_rfid_cache': { name: 'B.6: Clear RFID Cache', category: 'category-b-buttons' },
-            'run_b7_send_rfid_list': { name: 'B.7: Send RFID List', category: 'category-b-buttons' },
-            'run_b8_get_rfid_list_version': { name: 'B.8: Get RFID List Version', category: 'category-b-buttons' },
+            'run_b5_clear_rfid_cache': { name: 'B.5: Clear RFID Cache', category: 'category-b-buttons' },
+            'run_b6_send_rfid_list': { name: 'B.6: Send RFID List', category: 'category-b-buttons' },
+            'run_b7_get_rfid_list_version': { name: 'B.7: Get RFID List Version', category: 'category-b-buttons' },
             'run_x1_reboot_wallbox': { name: 'X.1: Reboot Wallbox', category: 'category-x-buttons' },
             'run_x2_dump_all_configuration': { name: 'X.2: Dump All Configuration', category: 'category-x-buttons' },
             'run_c1_set_charging_profile_test': { name: 'C.1: SetChargingProfile', category: 'category-c-buttons' },
             'run_c2_tx_default_profile_test': { name: 'C.2: TxDefaultProfile', category: 'category-c-buttons' },
             'run_c3_get_composite_schedule_test': { name: 'C.3: GetCompositeSchedule', category: 'category-c-buttons' },
-            'run_c4_clear_charging_profile_test': { name: 'C.4: ClearChargingProfile', category: 'category-c-buttons' }
+            'run_c4_clear_charging_profile_test': { name: 'C.4: ClearChargingProfile', category: 'category-c-buttons' },
+            'run_c5_cleanup_test': { name: 'C.5: Cleanup', category: 'category-c-buttons' }
         };
 
         try {
@@ -1236,7 +1238,7 @@
                             showStatusMessage('No active charge point selected.', true);
                         }
                     };
-                } else if (key === 'run_b1_rfid_public_charging_test') {
+                } else if (key === 'run_b1_rfid_public_charging_test' || key === 'run_b2_local_cache_authorization_test') {
                     btn.onclick = () => {
                         openTapToChargeModal();
                     };
@@ -1680,6 +1682,33 @@
                 logLine.textContent = message.message;
                 logOutputEl.appendChild(logLine);
                 logOutputEl.scrollTop = logOutputEl.scrollHeight;
+
+                // Check if backend is ready for RFID tap (B.1 test)
+                if (waitingForBackendReady && message.message.includes('⏳ Waiting for RFID card tap')) {
+                    console.log('✅ [LOG-HANDLER] Backend ready signal detected at', new Date().toISOString());
+                    console.log('✅ [LOG-HANDLER] Message:', message.message);
+                    waitingForBackendReady = false;
+
+                    // Show the modal NOW (backend is ready for RFID tap)
+                    const modal = document.getElementById('tapToChargeModal');
+                    modal.style.display = 'block';
+                    console.log('📺 [LOG-HANDLER] Modal displayed at', new Date().toISOString());
+
+                    // Enable RFID test mode now that backend is ready
+                    fetch('/api/enable_rfid_test_mode', { method: 'POST' })
+                        .then(r => {
+                            if (r.ok) {
+                                console.log('✅ [LOG-HANDLER] RFID test mode enabled at', new Date().toISOString());
+                                // Update modal message
+                                document.getElementById('tap-to-charge-timer').textContent = '🎫 Please present your RFID card to the wallbox';
+                                document.getElementById('tap-to-charge-countdown').textContent = 'Time remaining: 60s';
+                                console.log('📝 [LOG-HANDLER] Modal text updated to "Please present RFID"');
+                            }
+                        })
+                        .catch(e => {
+                            console.error('❌ [LOG-HANDLER] Failed to enable RFID test mode:', e);
+                        });
+                }
             } catch (e) {
                 console.error("Failed to parse log WebSocket message", e);
             }
@@ -2270,11 +2299,14 @@
     let initialTransactionIds = new Set();
     let initialAcceptedRfid = null;
     let tapToChargeModalResolver = null;  // Store resolver for Promise
+    let waitingForBackendReady = false;  // Track if we're waiting for backend to be ready
 
     async function openTapToChargeModal() {
         // Return a Promise that resolves when the modal closes
         return new Promise(async (resolve, reject) => {
             try {
+                console.log('🚀 [MODAL] openTapToChargeModal() called at', new Date().toISOString());
+
                 // Store the resolver so closeTapToChargeModal can call it
                 tapToChargeModalResolver = resolve;
 
@@ -2289,24 +2321,17 @@
                     return;
                 }
 
-                // Enable RFID test mode and clear accepted_rfid to detect ANY card tap
-                try {
-                    const rfidResponse = await fetch('/api/enable_rfid_test_mode', { method: 'POST' });
-                    if (rfidResponse.ok) {
-                        console.log('✅ B.1: RFID test mode enabled - any card will be accepted');
-                    }
-                } catch (e) {
-                    console.error('Failed to enable RFID test mode:', e);
-                }
-
-                const modal = document.getElementById('tapToChargeModal');
+                // Set flag to indicate we're waiting for backend to be ready
+                // Modal will be shown when we see "⏳ Waiting for RFID card tap" in logs
+                waitingForBackendReady = true;
+                console.log('⏳ [MODAL] Waiting for backend to prepare test... (waitingForBackendReady=true)');
+                console.log('⏳ [MODAL] Modal will be shown when backend is ready');
 
                 // Reset modal state (wait for it to capture existing transactions)
                 await resetTapToChargeModal();
 
-                modal.style.display = 'block';
-
                 // Start the test automatically
+                console.log('▶️  [MODAL] Calling startTapToChargeTest()...');
                 startTapToChargeTest();
             } catch (e) {
                 showStatusMessage(`Failed to check wallbox connection: ${e.message}`, true);
@@ -2320,8 +2345,8 @@
         tapToChargeTestStartTime = Date.now();
         tapToChargeTestActive = false;
 
-        document.getElementById('tap-to-charge-timer').textContent = '⏳ Please present your RFID card to the wallbox';
-        document.getElementById('tap-to-charge-countdown').textContent = 'Time remaining: 60s';
+        document.getElementById('tap-to-charge-timer').textContent = '⏳ Preparing test (validating parameters, clearing state...)';
+        document.getElementById('tap-to-charge-countdown').textContent = 'Please wait...';
 
         if (tapToChargeInterval) {
             clearInterval(tapToChargeInterval);
@@ -2362,19 +2387,23 @@
     }
 
     async function startTapToChargeTest() {
+        console.log('▶️  [TEST] startTapToChargeTest() called at', new Date().toISOString());
         tapToChargeTestActive = true;
 
         // Start the backend test (fire and forget)
+        console.log('📡 [TEST] Sending POST /api/test/run_b1_rfid_public_charging_test...');
         fetch('/api/test/run_b1_rfid_public_charging_test', { method: 'POST' })
             .then(r => r.json())
             .then(result => {
-                console.log('B.1 test started:', result);
+                console.log('✅ [TEST] Backend test API responded at', new Date().toISOString());
+                console.log('✅ [TEST] Result:', result);
             })
             .catch(e => {
-                console.error('Failed to start B.1 test:', e);
+                console.error('❌ [TEST] Failed to start B.1 test:', e);
             });
 
         // Start polling for transaction status
+        console.log('🔄 [TEST] Starting status polling...');
         startTapToChargeStatusPolling();
     }
 
@@ -2477,6 +2506,7 @@
         }
 
         tapToChargeTestActive = false;
+        waitingForBackendReady = false;  // Reset the flag when closing modal
 
         // Disable RFID test mode when closing
         fetch('/api/disable_rfid_test_mode', { method: 'POST' })

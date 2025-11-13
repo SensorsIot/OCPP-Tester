@@ -1,6 +1,5 @@
 """
 Contains the core business logic for the OCPP server.
-Delegates message handling and test step execution to dedicated classes.
 """
 import asyncio
 import logging
@@ -29,10 +28,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 class OcppServerLogic:
-    """
-    Contains the core business logic for interacting with a charge point.
-    Delegates message handling and test step execution.
-    """
+    """Core business logic for interacting with a charge point."""
 
     def __init__(self, ocpp_handler: "OCPPHandler", refresh_trigger: asyncio.Event = None, initial_status_received: asyncio.Event = None):
         self.handler = ocpp_handler
@@ -55,7 +51,6 @@ class OcppServerLogic:
         if "test_results" not in CHARGE_POINTS[self.charge_point_id]:
             CHARGE_POINTS[self.charge_point_id]["test_results"] = {}
 
-        # Store result as dict if reason provided, otherwise as string for backward compatibility
         if reason:
             CHARGE_POINTS[self.charge_point_id]["test_results"][step_name] = {
                 "result": result,
@@ -192,52 +187,7 @@ class OcppServerLogic:
     async def run_d1_set_live_charging_power(self):
         return await self.test_steps.run_d1_set_live_charging_power()
 
-    async def run_d2_set_default_charging_profile(self):
-        return await self.test_steps.run_d2_set_default_charging_profile()
-
-    async def run_d3_smart_charging_capability_test(self):
-        return await self.test_steps.run_d3_smart_charging_capability_test()
-
-    async def run_d4_clear_default_charging_profile(self):
-        return await self.test_steps.run_d4_clear_default_charging_profile()
-
-    async def run_d5_set_profile_5000w(self):
-        return await self.test_steps.run_d5_set_profile_5000w()
-
-    async def run_d6_set_high_charging_profile(self):
-        return await self.test_steps.run_d6_set_high_charging_profile()
-
-    async def run_e1_remote_start_state_a(self):
-        return await self.test_steps.run_e1_remote_start_state_a()
-
-    async def run_e2_remote_start_state_b(self):
-        return await self.test_steps.run_e2_remote_start_state_b()
-
-    async def run_e3_remote_start_state_c(self):
-        return await self.test_steps.run_e3_remote_start_state_c()
-
-    async def run_e4_set_profile_6a(self):
-        return await self.test_steps.run_e4_set_profile_6a()
-
-    async def run_e5_set_profile_10a(self):
-        return await self.test_steps.run_e5_set_profile_10a()
-
-    async def run_e6_set_profile_16a(self):
-        return await self.test_steps.run_e6_set_profile_16a()
-
-    async def run_e7_clear_profile(self):
-        return await self.test_steps.run_e7_clear_profile()
-
-    async def run_e8_remote_stop_transaction(self):
-        return await self.test_steps.run_e8_remote_stop_transaction()
-
     async def run_x1_reboot_wallbox(self):
         return await self.test_steps.run_x1_reboot_wallbox()
-
-    async def run_e10_get_composite_schedule(self):
-        return await self.test_steps.run_e10_get_composite_schedule()
-
-    async def run_e11_clear_all_profiles(self):
-        return await self.test_steps.run_e11_clear_all_profiles()
 
 

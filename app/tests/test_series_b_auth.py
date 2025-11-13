@@ -10,9 +10,9 @@ This module contains all B-series tests per FSD specification.
 - B.4 (run_b4_offline_local_start_test): Plug & Charge / LocalPreAuthorize (no RFID needed)
 
 **Utility Functions (3 tests):**
-- B.6 (run_b6_clear_rfid_cache): Clear RFID authorization cache
-- B.7 (run_b7_send_rfid_list): Send local authorization list to wallbox
-- B.8 (run_b8_get_rfid_list_version): Get current list version
+- B.6 (run_b5_clear_rfid_cache): Clear RFID authorization cache
+- B.7 (run_b6_send_rfid_list): Send local authorization list to wallbox
+- B.8 (run_b7_get_rfid_list_version): Get current list version
 """
 
 import asyncio
@@ -141,10 +141,10 @@ class TestSeriesB(OcppTestBase):
             logger.warning("   💡 Test may fail - wallbox should be 'Available'")
             return False
 
-    async def run_b6_clear_rfid_cache(self):
-        """B.6: Clear RFID Cache - Clears the local authorization list (RFID cache) in the wallbox."""
-        logger.info(f"--- Step B.6: Clear RFID Cache for {self.charge_point_id} ---")
-        step_name = "run_b6_clear_rfid_cache"
+    async def run_b5_clear_rfid_cache(self):
+        """B.5: Clear RFID Cache - Clears the local authorization list (RFID cache) in the wallbox."""
+        logger.info(f"--- Step B.5: Clear RFID Cache for {self.charge_point_id} ---")
+        step_name = "run_b5_clear_rfid_cache"
         self._check_cancellation()
 
         logger.info("🗑️ Sending ClearCache command to wallbox...")
@@ -185,10 +185,10 @@ class TestSeriesB(OcppTestBase):
 
         logger.info(f"--- Step B.6 for {self.charge_point_id} complete. ---")
 
-    async def run_b7_send_rfid_list(self):
-        """B.7: Send RFID List - Sends a local authorization list with RFID cards to the wallbox."""
-        logger.info(f"--- Step B.7: Send RFID List for {self.charge_point_id} ---")
-        step_name = "run_b7_send_rfid_list"
+    async def run_b6_send_rfid_list(self):
+        """B.6: Send RFID List - Sends a local authorization list with RFID cards to the wallbox."""
+        logger.info(f"--- Step B.6: Send RFID List for {self.charge_point_id} ---")
+        step_name = "run_b6_send_rfid_list"
         self._check_cancellation()
 
         logger.info("📋 Sending local authorization list to wallbox...")
@@ -198,15 +198,15 @@ class TestSeriesB(OcppTestBase):
         # Create some example RFID cards for the authorization list
         rfid_cards = [
             AuthorizationData(
-                idTag="TEST_CARD_001",
+                idTag="1234567890",
                 idTagInfo=IdTagInfo(status="Accepted")
             ),
             AuthorizationData(
-                idTag="TEST_CARD_002",
+                idTag="9876543210",
                 idTagInfo=IdTagInfo(status="Accepted")
             ),
             AuthorizationData(
-                idTag="TEST_CARD_003",
+                idTag="5555555555",
                 idTagInfo=IdTagInfo(status="Blocked")
             ),
         ]
@@ -262,10 +262,10 @@ class TestSeriesB(OcppTestBase):
 
         logger.info(f"--- Step B.7 for {self.charge_point_id} complete. ---")
 
-    async def run_b8_get_rfid_list_version(self):
-        """B.8: Get RFID List Version - Gets the current version of the local authorization list."""
-        logger.info(f"--- Step B.8: Get RFID List Version for {self.charge_point_id} ---")
-        step_name = "run_b8_get_rfid_list_version"
+    async def run_b7_get_rfid_list_version(self):
+        """B.7: Get RFID List Version - Gets the current version of the local authorization list."""
+        logger.info(f"--- Step B.7: Get RFID List Version for {self.charge_point_id} ---")
+        step_name = "run_b7_get_rfid_list_version"
         self._check_cancellation()
 
         logger.info("📋 Requesting local authorization list version from wallbox...")
@@ -326,6 +326,11 @@ class TestSeriesB(OcppTestBase):
         step_name = "run_b1_rfid_public_charging_test"
         self._check_cancellation()
 
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("PREPARATION")
+        logger.info("=" * 80)
+        logger.info("")
         logger.info("🎫 RFID AUTHORIZATION BEFORE PLUG-IN TEST")
         logger.info("")
         logger.info("📋 Step 0: Preparing test environment...")
@@ -349,11 +354,6 @@ class TestSeriesB(OcppTestBase):
                 "key": "LocalAuthorizeOffline",
                 "value": "false",
                 "description": "No offline start"
-            },
-            {
-                "key": "AllowOfflineTxForUnknownId",
-                "value": "false",
-                "description": "No anonymous start"
             }
         ]
 
@@ -373,6 +373,10 @@ class TestSeriesB(OcppTestBase):
 
         logger.info("")
         logger.info("✅ Test environment ready!")
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("START TEST")
+        logger.info("=" * 80)
         logger.info("")
         logger.info("   📘 This tests the standard OCPP 1.6-J authorization flow:")
         logger.info("   📘 1. User taps RFID card → Wallbox sends Authorize request")
@@ -430,7 +434,8 @@ class TestSeriesB(OcppTestBase):
                         logger.info(f"✅ PHYSICAL RFID card detected and authorized: {authorized_card}")
                         logger.info("   Central System accepted the card")
                         logger.info("")
-                        logger.info("🔌 Automatically plugging in EV cable (setting State B)...")
+                        logger.info("🔌 Automatically plugging in EV cable...")
+                        logger.info("   🔧 EV SIMULATOR: Setting state to B (Cable Connected)")
 
                         # Set EV simulator to State B and wait for wallbox confirmation
                         success, message = await set_ev_state_and_wait_for_status(
@@ -449,7 +454,8 @@ class TestSeriesB(OcppTestBase):
 
                         # Set EV state to C (vehicle requesting power) to trigger transaction start
                         logger.info("")
-                        logger.info("   🔋 Setting EV state to 'C' (vehicle requesting power)...")
+                        logger.info("   🔋 Requesting power from wallbox...")
+                        logger.info("   🔧 EV SIMULATOR: Setting state to C (Vehicle Requesting Power)")
                         success_c, message_c = await set_ev_state_and_wait_for_status(
                             self.ocpp_server_logic,
                             self.charge_point_id,
@@ -584,6 +590,7 @@ class TestSeriesB(OcppTestBase):
                 logger.warning(f"   ⚠️  Could not stop transaction: {e}")
 
         # Reset EV state to A (unplugged)
+        logger.info("   🔧 EV SIMULATOR: Resetting state to A (Unplugged)")
         await self._set_ev_state("A")
         logger.info("   ✅ EV state reset to A (unplugged)")
 
@@ -599,49 +606,96 @@ class TestSeriesB(OcppTestBase):
     async def run_b2_local_cache_authorization_test(self):
         """B.2: RFID Authorization After Plug-in - Tests local cache authorization with EV already connected."""
         logger.info(f"--- Step B.2: RFID Authorization After Plug-in for {self.charge_point_id} ---")
+
+        # Log version info
+        try:
+            from app.version import get_version_string
+            logger.info(f"Code version: {get_version_string()}")
+        except:
+            logger.warning("Version information not available")
+
         step_name = "run_b2_local_cache_authorization_test"
         self._check_cancellation()
+
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("PREPARATION")
+        logger.info("=" * 80)
+        logger.info("")
 
         # Ensure wallbox is ready (stop running transactions, reset to Available)
         await self._ensure_ready_state()
         logger.info("")
-        logger.info("🎫 RFID AUTHORIZATION AFTER PLUG-IN TEST (Local Cache)")
-        logger.info("   📘 This tests OCPP local authorization list capability:")
+        logger.info("🎫 RFID AUTHORIZATION AFTER PLUG-IN TEST (Backend Authorization)")
+        logger.info("   📘 This tests OCPP authorization flow after plug-in:")
         logger.info("   📘 1. User plugs in EV first")
         logger.info("   📘 2. User taps RFID card")
-        logger.info("   📘 3. Wallbox checks local cache → immediate start if found")
-        logger.info("   📘 4. No network delay for known users")
+        logger.info("   📘 3. Wallbox sends Authorize.req to backend")
+        logger.info("   📘 4. Backend validates card and transaction starts")
         logger.info("")
 
-        # Step 0: Ensure local auth list is enabled
-        logger.info("🔧 Step 0: Verifying local authorization list configuration...")
+        # Step 0: Verify required configuration parameters
+        required_params = [
+            {
+                "key": "LocalAuthListEnabled",
+                "value": "false",
+                "description": "Disable local authorization cache (force backend auth)"
+            },
+            {
+                "key": "LocalAuthorizeOffline",
+                "value": "false",
+                "description": "Require backend authorization (prevent cache auto-start)"
+            },
+            {
+                "key": "LocalPreAuthorize",
+                "value": "false",
+                "description": "Wait for authorization (don't auto-start)"
+            }
+        ]
+
+        success, message = await ensure_test_configuration(
+            self.handler,
+            required_params,
+            test_name="B.2 RFID Authorization After Plug-in"
+        )
+        self._check_cancellation()
+
+        if not success:
+            logger.error(f"❌ Test prerequisites not met: {message}")
+            if "RebootRequired" in message:
+                logger.info("   💡 Wallbox configuration updated - please reboot wallbox and run test again")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        logger.info("")
+
+        # Prepare local authorization list for the test
+        logger.info("📋 Step 0: Preparing local authorization list...")
+        logger.info("   💡 Clearing wallbox RFID cache to prevent auto-start")
+        logger.info("   💡 Note: This test uses backend authorization (LocalAuthorizeOffline=false)")
+
+        # Clear existing local authorization cache to prevent auto-start
+        from app.messages import ClearCacheRequest
+
+        logger.info("   🗑️  Attempting to clear existing RFID cache...")
         try:
-            response = await self.handler.send_and_wait(
-                "GetConfiguration",
-                GetConfigurationRequest(key=["LocalAuthListEnabled", "LocalAuthorizeOffline"]),
-                timeout=OCPP_MESSAGE_TIMEOUT
-            )
-            self._check_cancellation()
-
-            local_list_enabled = None
-            local_auth_offline = None
-            if response and response.get("configurationKey"):
-                for key in response.get("configurationKey", []):
-                    if key.get("key") == "LocalAuthListEnabled":
-                        local_list_enabled = key.get("value", "").lower()
-                    elif key.get("key") == "LocalAuthorizeOffline":
-                        local_auth_offline = key.get("value", "").lower()
-
-            logger.info(f"   📋 LocalAuthListEnabled: {local_list_enabled}")
-            logger.info(f"   📋 LocalAuthorizeOffline: {local_auth_offline}")
-
-            if local_list_enabled != "true":
-                logger.warning("   ⚠️  LocalAuthListEnabled is not true - test may not work as expected")
-                logger.warning("   💡 Consider running B.7 (Send RFID List) first")
-
+            clear_response = await self.handler.send_and_wait("ClearCache", ClearCacheRequest(), timeout=10)
+            if clear_response and clear_response.get("status") == "Accepted":
+                logger.info("   ✅ Local RFID cache cleared successfully")
+                logger.info("   💡 This prevents auto-start from cached cards (like 'ElecqAutoStart')")
+            else:
+                status = clear_response.get("status", "Unknown") if clear_response else "No response"
+                logger.warning(f"   ⚠️  ClearCache returned: {status}")
+                logger.warning("   💡 Some wallboxes have protected cache entries that cannot be cleared")
+                logger.warning("   💡 This is OK - LocalAuthorizeOffline=false prevents cache usage")
         except Exception as e:
-            logger.warning(f"   ⚠️  Could not verify configuration: {e}")
+            logger.warning(f"   ⚠️  Error clearing cache: {e}")
 
+        await asyncio.sleep(1)
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("START TEST")
+        logger.info("=" * 80)
         logger.info("")
 
         # Enable RFID test mode - accept ANY card during B.2 test
@@ -651,23 +705,50 @@ class TestSeriesB(OcppTestBase):
         logger.debug("🔓 RFID test mode enabled - any card will be accepted")
 
         # Step 1: Plug in EV first (before RFID tap)
-        logger.info("📡 Step 1: Simulating EV cable connection (State B)...")
+        logger.info("📡 Step 1: Plugging in EV cable...")
+        logger.info("   🔧 EV SIMULATOR: Setting state to B (Cable Connected)")
         await self._set_ev_state("B")
         self._check_cancellation()
         await asyncio.sleep(2)  # Give wallbox time to process connection
+
+        # Check if wallbox auto-started transaction
+        for tx_id, tx_data in TRANSACTIONS.items():
+            if (tx_data.get("charge_point_id") == self.charge_point_id and
+                tx_data.get("status") == "Ongoing"):
+                auto_started_tag = tx_data.get("id_tag") or "anonymous"
+                logger.error(f"❌ Transaction auto-started with idTag '{auto_started_tag}' before RFID tap")
+                logger.error(f"   Configuration: LocalAuthListEnabled=false, LocalAuthorizeOffline=false, LocalPreAuthorize=false")
+                await self._set_ev_state("A")
+                self._set_test_result(step_name, "FAILED", f"Auto-started with '{auto_started_tag}' ignoring OCPP parameters")
+                return
+
         logger.info("   ✅ EV connected (cable plugged in)")
+        logger.info("   ✅ No auto-start detected - wallbox waiting for authorization")
         logger.info("")
 
         # Step 2: Wait for RFID tap
-        logger.info("👤 Step 2: USER ACTION (OPTIONAL):")
-        logger.info("   • TAP your RFID card on the wallbox reader")
-        logger.info("   • If no card tapped within 15 seconds, test continues in simulation mode")
-        logger.info("   💡 NOTE: RFID test mode enabled - ANY card will be accepted")
+        logger.info("👤 Step 2: Now waiting for RFID card tap...")
         logger.info("")
+        logger.info("🎫 MODAL DISPLAY:")
+        logger.info("   📘 This tests the RFID-after-plug-in workflow")
+        logger.info("   📘 1. Cable already connected (State B)")
+        logger.info("   📘 2. Now tap your RFID card on the wallbox")
+        logger.info("   📘 3. Wallbox sends Authorize.req to backend")
+        logger.info("")
+        logger.info("👤 USER ACTION (OPTIONAL):")
+        logger.info("   • TAP your RFID card on the wallbox reader")
+        logger.info("   • If no card tapped within 60 seconds, test continues in simulation mode")
+        logger.info("")
+        logger.info("🤖 AUTOMATIC ACTIONS:")
+        logger.info("   • Wallbox will send Authorize.req to backend for validation")
+        logger.info("   • Transaction will start after backend authorization")
+        logger.info("")
+        logger.info("⏳ Waiting for RFID card tap (timeout: 60 seconds)...")
+        logger.info("   💡 Test will proceed with simulated card if no physical card detected")
 
         # Wait for Authorize message
         start_time = asyncio.get_event_loop().time()
-        timeout = 15  # 15 seconds for user to tap card
+        timeout = 60  # 60 seconds for user to tap card
         authorized_id_tag = None
         physical_card_used = False
 
@@ -686,7 +767,7 @@ class TestSeriesB(OcppTestBase):
 
         # If no physical card, simulate one
         if not authorized_id_tag:
-            logger.warning("⏱️  TIMEOUT: No physical RFID card detected within 15 seconds")
+            logger.warning("⏱️  TIMEOUT: No physical RFID card detected within 60 seconds")
             logger.info("")
             logger.info("🔄 CONTINUING IN SIMULATION MODE (Development/Remote Testing)")
             logger.info("   💡 This allows testing the complete OCPP flow without lab access")
@@ -750,7 +831,8 @@ class TestSeriesB(OcppTestBase):
         logger.info("")
 
         # Step 4: Set EV state to charging
-        logger.info("📡 Step 4: Setting EV state to 'C' (requesting power)...")
+        logger.info("📡 Step 4: Requesting power from wallbox...")
+        logger.info("   🔧 EV SIMULATOR: Setting state to C (Vehicle Requesting Power)")
         await self._set_ev_state("C")
         self._check_cancellation()
         await asyncio.sleep(2)
@@ -827,6 +909,7 @@ class TestSeriesB(OcppTestBase):
                 logger.warning(f"   ⚠️  Could not stop transaction: {e}")
 
         # Reset EV state
+        logger.info("   🔧 EV SIMULATOR: Resetting state to A (Unplugged)")
         await self._set_ev_state("A")
         await asyncio.sleep(1)
 
@@ -872,8 +955,26 @@ class TestSeriesB(OcppTestBase):
         logger.info("   📘   3. CS responds Authorize.conf (Accepted)")
         logger.info("   📘   4. CP sends StartTransaction")
 
-        await ensure_configuration(self.handler, "AuthorizeRemoteTxRequests", "true")
+        required_params = [
+            {
+                "key": "AuthorizeRemoteTxRequests",
+                "value": "true",
+                "description": "Wallbox validates idTag for remote starts"
+            }
+        ]
+
+        success, message = await ensure_test_configuration(
+            self.handler,
+            required_params,
+            test_name="B.3 Remote Smart Charging"
+        )
         self._check_cancellation()
+
+        if not success:
+            logger.error(f"❌ Test prerequisites not met: {message}")
+            self._set_test_result(step_name, "FAILED")
+            return
+
         logger.info("")
 
         # Step 1: Prepare EV connection (State B)
@@ -1010,77 +1111,49 @@ class TestSeriesB(OcppTestBase):
         logger.info("💡 Use case: Private home chargers - just plug in and charge!")
         logger.info("")
 
-        # Step 1: Verify and enable LocalPreAuthorize if needed
-        logger.info("📤 Step 1: Checking LocalPreAuthorize configuration...")
+        # Step 0: Verify and enable LocalPreAuthorize
+        required_params = [
+            {
+                "key": "LocalPreAuthorize",
+                "value": "true",
+                "description": "Enable plug-and-charge (auto-start on plug-in)"
+            }
+        ]
 
-        try:
-            response = await self.handler.send_and_wait(
-                "GetConfiguration",
-                GetConfigurationRequest(key=["LocalPreAuthorize"]),
-                timeout=OCPP_MESSAGE_TIMEOUT
-            )
-            self._check_cancellation()
+        success, message = await ensure_test_configuration(
+            self.handler,
+            required_params,
+            test_name="B.4 Plug & Charge"
+        )
+        self._check_cancellation()
 
-            local_pre_authorize = None
-            if response and response.get("configurationKey"):
-                for key in response.get("configurationKey", []):
-                    if key.get("key") == "LocalPreAuthorize":
-                        local_pre_authorize = key.get("value", "").lower()
-                        break
-
-            if local_pre_authorize == "true":
-                logger.info("   ✅ LocalPreAuthorize is already enabled")
-            else:
-                logger.warning(f"   ⚠️  LocalPreAuthorize is '{local_pre_authorize}' - enabling it now...")
-
-                # Enable LocalPreAuthorize
-                config_response = await self.handler.send_and_wait(
-                    "ChangeConfiguration",
-                    ChangeConfigurationRequest(key="LocalPreAuthorize", value="true"),
-                    timeout=OCPP_MESSAGE_TIMEOUT
-                )
-                self._check_cancellation()
-
-                if config_response and config_response.get("status") == "Accepted":
-                    logger.info("   ✅ LocalPreAuthorize enabled successfully")
-                elif config_response and config_response.get("status") == "RebootRequired":
-                    logger.warning("   ⚠️  LocalPreAuthorize enabled but REBOOT REQUIRED")
-                    logger.info("   💡 Please run X.1: Reboot Wallbox and try B.12 again")
-                    self._set_test_result(step_name, "FAILED")
-                    return
-                else:
-                    status = config_response.get("status", "Unknown") if config_response else "No response"
-                    logger.error(f"   ❌ Failed to enable LocalPreAuthorize: {status}")
-                    logger.info("   💡 You may need to enable it manually or use B.4 test")
-                    self._set_test_result(step_name, "FAILED")
-                    return
-
-        except Exception as e:
-            logger.error(f"❌ Failed to configure LocalPreAuthorize: {e}")
-            logger.info("   💡 Try running B.4 test first or enable manually")
+        if not success:
+            logger.error(f"❌ Test prerequisites not met: {message}")
+            if "RebootRequired" in message:
+                logger.info("   💡 Please run X.1: Reboot Wallbox and try B.4 again")
             self._set_test_result(step_name, "FAILED")
             return
 
-        # Step 2: Ensure we're in idle state (State A)
+        # Step 1: Ensure we're in idle state (State A)
         logger.info("")
-        logger.info("🔄 Step 2: Ensuring wallbox is ready (State A)...")
+        logger.info("🔄 Step 1: Ensuring wallbox is ready (State A)...")
 
         await self._set_ev_state("A")
         await asyncio.sleep(2)
         logger.info("   ✅ Wallbox ready in idle state")
 
-        # Step 3: Plug in EV (State B) - this should automatically start charging
+        # Step 2: Plug in EV (State B) - this should automatically start charging
         logger.info("")
-        logger.info("🔌 Step 3: Plugging in EV...")
+        logger.info("🔌 Step 2: Plugging in EV...")
         logger.info("   💡 With LocalPreAuthorize enabled, wallbox should auto-start transaction")
 
         await self._set_ev_state("B")
         await asyncio.sleep(1)
         logger.info("   ✅ EV cable connected (State B)")
 
-        # Step 4: Wait for automatic transaction start
+        # Step 3: Wait for automatic transaction start
         logger.info("")
-        logger.info("⏳ Step 4: Waiting for automatic transaction start...")
+        logger.info("⏳ Step 3: Waiting for automatic transaction start...")
         logger.info("   💡 Wallbox should start transaction without RFID or remote command")
 
         transaction_id = None
@@ -1187,3 +1260,5 @@ class TestSeriesB(OcppTestBase):
             logger.warning("   ⚠️  Timeout waiting for Available status")
 
         logger.info(f"--- Step B.4 for {self.charge_point_id} complete. ---")
+
+
