@@ -290,6 +290,76 @@ async def configure_multiple_parameters(
     return success_count, total_count, reboot_required
 
 
+async def ensure_test_configuration(
+    handler,
+    parameters: List[Dict[str, str]],
+    test_name: str = "test",
+    timeout: int = OCPP_MESSAGE_TIMEOUT
+) -> Tuple[bool, str]:
+    """
+    Ensure required test configuration parameters are set correctly.
+
+    This function checks and sets multiple OCPP parameters required for a test.
+    If any parameter cannot be set, the test should fail.
+
+    Args:
+        handler: OCPP handler instance
+        parameters: List of dicts with 'key', 'value', and optional 'description'
+                   Example: [{"key": "LocalPreAuthorize", "value": "false", "description": "Wait for backend authorization"}]
+        test_name: Name of the test (for logging)
+        timeout: Timeout for each request
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if all parameters set successfully (or RebootRequired)
+        - message: Summary message or error description
+    """
+    logger.info(f"🔧 Verifying required configuration for {test_name}...")
+
+    total_count = len(parameters)
+    success_count = 0
+    failed_params = []
+    reboot_required = False
+
+    for param in parameters:
+        key = param.get("key")
+        value = param.get("value")
+        description = param.get("description", "")
+
+        # Log what we're checking
+        if description:
+            logger.info(f"   📋 {key}: {value} ({description})")
+        else:
+            logger.info(f"   📋 {key}: {value}")
+
+        # Check and set the parameter
+        success, status = await ensure_configuration(handler, key, value, timeout)
+
+        if success:
+            success_count += 1
+            if status == "RebootRequired":
+                reboot_required = True
+        else:
+            failed_params.append(f"{key} ({status})")
+
+    # Determine overall result
+    logger.info("")
+
+    if reboot_required:
+        logger.warning("⚠️  Configuration updated but WALLBOX REBOOT REQUIRED")
+        logger.info("   💡 Please reboot the wallbox and run the test again")
+        return False, "RebootRequired"
+
+    if success_count == total_count:
+        logger.info(f"✅ All {total_count} configuration parameters verified")
+        return True, "All parameters set"
+    else:
+        logger.error(f"❌ Configuration failed: {len(failed_params)}/{total_count} parameters could not be set")
+        for failed in failed_params:
+            logger.error(f"   ❌ {failed}")
+        return False, f"Failed to set: {', '.join(failed_params)}"
+
+
 # =============================================================================
 # STATUS AND STATE MANAGEMENT
 # =============================================================================
@@ -377,6 +447,75 @@ async def set_ev_state_safe(
     except Exception as e:
         logger.error(f"Failed to set EV state to '{state}': {e}")
         return False
+
+
+async def set_ev_state_and_wait_for_status(
+    ocpp_server_logic,
+    charge_point_id: str,
+    ev_state: str,
+    expected_status: str,
+    timeout: float = 15.0,
+    wait_before_check: float = 2.0
+) -> Tuple[bool, str]:
+    """
+    Set EV simulator state and wait for wallbox to confirm the status change.
+
+    This is the recommended way to change EV state in tests, as it ensures
+    the wallbox has processed the state change before continuing.
+
+    Args:
+        ocpp_server_logic: Instance of OcppServerLogic with _set_ev_state method
+        charge_point_id: The charge point identifier
+        ev_state: Target EV state (e.g., "A", "B", "C")
+        expected_status: Expected wallbox status (e.g., "Available", "Preparing", "Charging")
+        timeout: Maximum time to wait for status confirmation in seconds
+        wait_before_check: Time to wait after setting state before checking status
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success: True if status confirmed or simulator disabled
+        - message: Status message or error description
+
+    Example:
+        success, msg = await set_ev_state_and_wait_for_status(
+            self.ocpp_server_logic,
+            self.charge_point_id,
+            ev_state="B",
+            expected_status="Preparing",
+            timeout=15.0
+        )
+    """
+    using_simulator = is_using_simulator()
+
+    if not using_simulator:
+        logger.debug(f"Skipping EV state change to '{ev_state}'; simulator is disabled.")
+        return True, "Simulator disabled"
+
+    # Set the EV state
+    try:
+        await ocpp_server_logic._set_ev_state(ev_state)
+    except Exception as e:
+        logger.error(f"Failed to set EV state to '{ev_state}': {e}")
+        return False, f"Failed to set state: {e}"
+
+    # Wait a moment for wallbox to process
+    await asyncio.sleep(wait_before_check)
+
+    # Wait for wallbox to confirm the status change
+    logger.debug(f"Waiting for wallbox to confirm status: {expected_status}...")
+    status_confirmed = await wait_for_connector_status(
+        charge_point_id,
+        expected_status,
+        timeout=timeout
+    )
+
+    if status_confirmed:
+        logger.debug(f"✅ Wallbox confirmed '{expected_status}' status")
+        return True, f"Status confirmed: {expected_status}"
+    else:
+        current_status = get_connector_status(charge_point_id)
+        logger.warning(f"⚠️  Wallbox did not reach '{expected_status}' status within {timeout}s (current: {current_status})")
+        return False, f"Timeout waiting for '{expected_status}' (current: {current_status})"
 
 
 # =============================================================================

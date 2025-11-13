@@ -35,10 +35,14 @@ from app.test_helpers import (
     wait_for_transaction_start,
     # Configuration management
     ensure_configuration,
+    ensure_test_configuration,
     # EV connection management
     prepare_ev_connection,
+    set_ev_state_and_wait_for_status,
     # Cleanup operations
     cleanup_transaction_and_state,
+    # Status management
+    wait_for_connector_status,
 )
 from app.tests.test_base import OcppTestBase
 
@@ -311,13 +315,65 @@ class TestSeriesB(OcppTestBase):
     async def run_b1_rfid_public_charging_test(self):
         """B.1: RFID Authorization Before Plug-in - Tests online authorization before EV connection."""
         logger.info(f"--- Step B.1: RFID Authorization Before Plug-in for {self.charge_point_id} ---")
+
+        # Log version info
+        try:
+            from app.version import get_version_string
+            logger.info(f"Code version: {get_version_string()}")
+        except:
+            logger.warning("Version information not available")
+
         step_name = "run_b1_rfid_public_charging_test"
         self._check_cancellation()
+
+        logger.info("🎫 RFID AUTHORIZATION BEFORE PLUG-IN TEST")
+        logger.info("")
+        logger.info("📋 Step 0: Preparing test environment...")
+        logger.info("   • Stopping active transactions")
+        logger.info("   • Verifying OCPP parameters")
+        logger.info("   • Please wait...")
+        logger.info("")
 
         # Ensure wallbox is ready (stop running transactions, reset to Available)
         await self._ensure_ready_state()
         logger.info("")
-        logger.info("🎫 RFID AUTHORIZATION BEFORE PLUG-IN TEST")
+
+        # Step 1: Verify required configuration parameters
+        required_params = [
+            {
+                "key": "LocalPreAuthorize",
+                "value": "false",
+                "description": "Wait for backend authorization"
+            },
+            {
+                "key": "LocalAuthorizeOffline",
+                "value": "false",
+                "description": "No offline start"
+            },
+            {
+                "key": "AllowOfflineTxForUnknownId",
+                "value": "false",
+                "description": "No anonymous start"
+            }
+        ]
+
+        success, message = await ensure_test_configuration(
+            self.handler,
+            required_params,
+            test_name="B.1 RFID Authorization Before Plug-in"
+        )
+        self._check_cancellation()
+
+        if not success:
+            logger.error(f"❌ Test prerequisites not met: {message}")
+            if "RebootRequired" in message:
+                logger.info("   💡 Wallbox needs to be rebooted for configuration changes to take effect")
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        logger.info("")
+        logger.info("✅ Test environment ready!")
+        logger.info("")
         logger.info("   📘 This tests the standard OCPP 1.6-J authorization flow:")
         logger.info("   📘 1. User taps RFID card → Wallbox sends Authorize request")
         logger.info("   📘 2. Central System responds Accepted/Blocked")
@@ -334,6 +390,12 @@ class TestSeriesB(OcppTestBase):
         logger.info("")
         logger.info("⏳ Waiting for RFID card tap (timeout: 15 seconds)...")
         logger.info("   💡 Test will proceed with simulated card if no physical card detected")
+
+        # Clear any stale RFID data from early taps (before test was ready)
+        from app.core import CHARGE_POINTS
+        if self.charge_point_id in CHARGE_POINTS:
+            CHARGE_POINTS[self.charge_point_id]["accepted_rfid"] = None
+            logger.debug("🔄 Cleared stale RFID data - ready for fresh tap")
 
         # Enable RFID test mode - accept ANY card during B.1 test
         from app.ocpp_message_handlers import rfid_test_state
@@ -370,9 +432,38 @@ class TestSeriesB(OcppTestBase):
                         logger.info("")
                         logger.info("🔌 Automatically plugging in EV cable (setting State B)...")
 
-                        # Set EV simulator to State B (Connected) to trigger transaction
-                        await self._set_ev_state("B")
-                        logger.info("   ✅ EV cable plugged in")
+                        # Set EV simulator to State B and wait for wallbox confirmation
+                        success, message = await set_ev_state_and_wait_for_status(
+                            self.ocpp_server_logic,
+                            self.charge_point_id,
+                            ev_state="B",
+                            expected_status="Preparing",
+                            timeout=15.0
+                        )
+
+                        if success:
+                            logger.info("   ✅ EV cable connected - wallbox confirmed 'Preparing' state")
+                        else:
+                            logger.warning(f"   ⚠️  {message}")
+                            logger.warning("   ⚠️  Wallbox did not confirm state change - test may fail")
+
+                        # Set EV state to C (vehicle requesting power) to trigger transaction start
+                        logger.info("")
+                        logger.info("   🔋 Setting EV state to 'C' (vehicle requesting power)...")
+                        success_c, message_c = await set_ev_state_and_wait_for_status(
+                            self.ocpp_server_logic,
+                            self.charge_point_id,
+                            ev_state="C",
+                            expected_status="Charging",
+                            timeout=15.0
+                        )
+
+                        if success_c:
+                            logger.info("   ✅ Vehicle requesting power - wallbox should start transaction")
+                        else:
+                            logger.warning(f"   ⚠️  {message_c}")
+                            logger.info("   💡 Continuing anyway - checking for transaction...")
+
                         logger.info("   ⏳ Waiting for wallbox to start transaction...")
 
                     # Check for ongoing transaction

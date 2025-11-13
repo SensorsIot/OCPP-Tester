@@ -378,6 +378,16 @@ if __name__ == "__main__":
         SERVER_SETTINGS["charging_rate_unit_auto_detected"] = False
         SERVER_SETTINGS["auto_detection_completed"] = True
 
+    # Display version banner
+    from app.version import __version__, __build_date__, __test_helpers_version__, __test_series_b_version__
+    print("=" * 80)
+    print(f"  OCPP Tester v{__version__} (Build: {__build_date__})")
+    print("  Modules:")
+    print(f"    - test_helpers: v{__test_helpers_version__}")
+    print(f"    - test_series_b: v{__test_series_b_version__}")
+    print("=" * 80)
+    logging.info(f"OCPP Tester v{__version__} starting...")
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 

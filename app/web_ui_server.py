@@ -211,6 +211,22 @@ def get_server_settings():
     """Returns server-wide runtime settings, like the EV simulator mode."""
     return jsonify(SERVER_SETTINGS)
 
+@app.route("/api/version", methods=["GET"])
+def get_version():
+    """Returns version information for the OCPP Tester."""
+    try:
+        from app.version import get_version_info, get_version_string
+        import datetime
+
+        version_info = get_version_info()
+        version_info["startup_time"] = SERVER_SETTINGS.get("startup_time", datetime.datetime.now().isoformat())
+        version_info["version_string"] = get_version_string()
+
+        return jsonify(version_info)
+    except Exception as e:
+        logging.exception("Error getting version info")
+        return jsonify({"error": f"Failed to get version: {e}"}), 500
+
 @app.route("/api/discovered_charge_points", methods=["GET"])
 def get_discovered_charge_points():
     """Returns all discovered charge points with their status."""
