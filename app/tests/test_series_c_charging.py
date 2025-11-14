@@ -178,33 +178,8 @@ class TestSeriesC(OcppTestBase):
                     actual_phases = periods[0].get("numberPhases") if periods else "N/A"
 
                     # Compare expected vs actual
-                    # Note: Wallbox may convert W<->A based on voltage (OCPP allows this)
                     unit_match = actual_unit == charging_unit
-
-                    # Check if limit matches (allowing for unit conversion)
-                    limit_match = False
-                    conversion_info = ""
-
-                    if unit_match:
-                        # Same unit - direct comparison
-                        limit_match = abs(float(actual_limit) - limit) < 0.01 if actual_limit != "N/A" else False
-                    elif charging_unit == "W" and actual_unit == "A":
-                        # Wallbox converted W to A (P = U * I * phases)
-                        # Assuming 230V per phase
-                        expected_amps = limit / (230.0 * number_phases)
-                        limit_match = abs(float(actual_limit) - expected_amps) < 0.5 if actual_limit != "N/A" else False
-                        conversion_info = f" (converted from {limit}W at 230V)"
-                    elif charging_unit == "A" and actual_unit == "W":
-                        # Wallbox converted A to W
-                        expected_watts = limit * 230.0 * number_phases
-                        limit_match = abs(float(actual_limit) - expected_watts) < 100 if actual_limit != "N/A" else False
-                        conversion_info = f" (converted from {limit}A at 230V)"
-
-                    # Detect wallbox bug: same numeric value with different unit
-                    if not unit_match and abs(float(actual_limit) - limit) < 0.01:
-                        logger.warning(f"   ⚠️  WALLBOX BUG DETECTED: Kept value {limit} but changed unit from {charging_unit} to {actual_unit}")
-                        logger.warning(f"   💡 This is incorrect - wallbox should convert the value when changing units")
-                        limit_match = False
+                    limit_match = abs(float(actual_limit) - limit) < 0.01 if actual_limit != "N/A" else False
 
                     verification_results = [
                         {
@@ -222,22 +197,19 @@ class TestSeriesC(OcppTestBase):
                         {
                             "parameter": "Charging Rate Unit",
                             "expected": str(charging_unit),
-                            "actual": str(actual_unit) + (" (converted)" if not unit_match else ""),
-                            "status": "INFO"  # Unit conversion is allowed by OCPP
+                            "actual": str(actual_unit),
+                            "status": "OK" if unit_match else "NOT OK"
                         },
                         {
-                            "parameter": f"Power Limit ({actual_unit})",
-                            "expected": str(limit) + (" " + charging_unit if not unit_match else ""),
-                            "actual": str(actual_limit) + conversion_info,
+                            "parameter": f"Power Limit ({charging_unit})",
+                            "expected": str(limit),
+                            "actual": str(actual_limit),
                             "status": "OK" if limit_match else "NOT OK"
                         }
                     ]
 
-                    if limit_match:
-                        if unit_match:
-                            logger.info(f"   ✓ Verification passed: {limit}{charging_unit} profile applied correctly")
-                        else:
-                            logger.info(f"   ✓ Verification passed: {limit}{charging_unit} converted to {actual_limit}{actual_unit}{conversion_info}")
+                    if unit_match and limit_match:
+                        logger.info(f"   ✓ Verification passed: {limit}{charging_unit} profile applied correctly")
                     else:
                         logger.error(f"   ❌ Verification FAILED: Expected {limit}{charging_unit}, got {actual_limit}{actual_unit}")
                         test_passed = False
@@ -393,33 +365,8 @@ class TestSeriesC(OcppTestBase):
                     actual_phases = periods[0].get("numberPhases") if periods else "N/A"
 
                     # Compare expected vs actual
-                    # Note: Wallbox may convert W<->A based on voltage (OCPP allows this)
                     unit_match = actual_unit == charging_unit
-
-                    # Check if limit matches (allowing for unit conversion)
-                    limit_match = False
-                    conversion_info = ""
-
-                    if unit_match:
-                        # Same unit - direct comparison
-                        limit_match = abs(float(actual_limit) - limit) < 0.01 if actual_limit != "N/A" else False
-                    elif charging_unit == "W" and actual_unit == "A":
-                        # Wallbox converted W to A (P = U * I * phases)
-                        # Assuming 230V per phase
-                        expected_amps = limit / (230.0 * number_phases)
-                        limit_match = abs(float(actual_limit) - expected_amps) < 0.5 if actual_limit != "N/A" else False
-                        conversion_info = f" (converted from {limit}W at 230V)"
-                    elif charging_unit == "A" and actual_unit == "W":
-                        # Wallbox converted A to W
-                        expected_watts = limit * 230.0 * number_phases
-                        limit_match = abs(float(actual_limit) - expected_watts) < 100 if actual_limit != "N/A" else False
-                        conversion_info = f" (converted from {limit}A at 230V)"
-
-                    # Detect wallbox bug: same numeric value with different unit
-                    if not unit_match and abs(float(actual_limit) - limit) < 0.01:
-                        logger.warning(f"   ⚠️  WALLBOX BUG DETECTED: Kept value {limit} but changed unit from {charging_unit} to {actual_unit}")
-                        logger.warning(f"   💡 This is incorrect - wallbox should convert the value when changing units")
-                        limit_match = False
+                    limit_match = abs(float(actual_limit) - limit) < 0.01 if actual_limit != "N/A" else False
 
                     verification_results = [
                         {
@@ -437,22 +384,19 @@ class TestSeriesC(OcppTestBase):
                         {
                             "parameter": "Charging Rate Unit",
                             "expected": str(charging_unit),
-                            "actual": str(actual_unit) + (" (converted)" if not unit_match else ""),
-                            "status": "INFO"  # Unit conversion is allowed by OCPP
+                            "actual": str(actual_unit),
+                            "status": "OK" if unit_match else "NOT OK"
                         },
                         {
-                            "parameter": f"Power Limit ({actual_unit})",
-                            "expected": str(limit) + (" " + charging_unit if not unit_match else ""),
-                            "actual": str(actual_limit) + conversion_info,
+                            "parameter": f"Power Limit ({charging_unit})",
+                            "expected": str(limit),
+                            "actual": str(actual_limit),
                             "status": "OK" if limit_match else "NOT OK"
                         }
                     ]
 
-                    if limit_match:
-                        if unit_match:
-                            logger.info(f"   ✓ Verification passed: {limit}{charging_unit} profile applied correctly")
-                        else:
-                            logger.info(f"   ✓ Verification passed: {limit}{charging_unit} converted to {actual_limit}{actual_unit}{conversion_info}")
+                    if unit_match and limit_match:
+                        logger.info(f"   ✓ Verification passed: {limit}{charging_unit} profile applied correctly")
                     else:
                         logger.error(f"   ❌ Verification FAILED: Expected {limit}{charging_unit}, got {actual_limit}{actual_unit}")
                         test_passed = False
