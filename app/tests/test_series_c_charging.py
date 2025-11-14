@@ -455,16 +455,23 @@ class TestSeriesC(OcppTestBase):
         logger.info(f"--- Step C.4: Running ClearChargingProfile test for {self.charge_point_id} ---")
         step_name = "run_c4_clear_charging_profile_test"
         self._check_cancellation()
-        success = await self.handler.send_and_wait(
+        response = await self.handler.send_and_wait(
             "ClearChargingProfile",
             ClearChargingProfileRequest(connectorId=0, chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile)
         )
         self._check_cancellation()
-        if success:
-            logger.info("SUCCESS: ClearChargingProfile was acknowledged.")
+        if response and response.get("status") == "Accepted":
+            logger.info("✅ SUCCESS: ClearChargingProfile was accepted by the charge point.")
             self._set_test_result(step_name, "PASSED")
+        elif response and response.get("status") == "Unknown":
+            logger.warning("⚠️  WARNING: ClearChargingProfile returned 'Unknown' - no matching profile found.")
+            logger.info("   💡 This may indicate no TxDefaultProfile was set, which is acceptable.")
+            self._set_test_result(step_name, "PASSED")
+        elif response:
+            logger.error(f"❌ FAILURE: ClearChargingProfile returned unexpected status: {response.get('status')}")
+            self._set_test_result(step_name, "FAILED")
         else:
-            logger.error("FAILURE: ClearChargingProfile was not acknowledged.")
+            logger.error("❌ FAILURE: ClearChargingProfile - no response received.")
             self._set_test_result(step_name, "FAILED")
         logger.info(f"--- Step C.4 for {self.charge_point_id} complete. ---")
 
