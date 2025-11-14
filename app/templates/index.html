@@ -1277,7 +1277,7 @@
                     };
                 } else if (key === 'run_b1_rfid_public_charging_test' || key === 'run_b2_local_cache_authorization_test') {
                     btn.onclick = () => {
-                        openTapToChargeModal();
+                        openTapToChargeModal(key);  // Pass the test key
                     };
                 } else if (key === 'run_b3_remote_smart_charging_test') {
                     btn.onclick = () => {
@@ -2372,11 +2372,11 @@
     let tapToChargeModalResolver = null;  // Store resolver for Promise
     let waitingForBackendReady = false;  // Track if we're waiting for backend to be ready
 
-    async function openTapToChargeModal() {
+    async function openTapToChargeModal(testKey) {
         // Return a Promise that resolves when the modal closes
         return new Promise(async (resolve, reject) => {
             try {
-                console.log('🚀 [MODAL] openTapToChargeModal() called at', new Date().toISOString());
+                console.log(`🚀 [MODAL] openTapToChargeModal(${testKey}) called at`, new Date().toISOString());
 
                 // Store the resolver so closeTapToChargeModal can call it
                 tapToChargeModalResolver = resolve;
@@ -2402,8 +2402,8 @@
                 await resetTapToChargeModal();
 
                 // Start the test automatically
-                console.log('▶️  [MODAL] Calling startTapToChargeTest()...');
-                startTapToChargeTest();
+                console.log(`▶️  [MODAL] Calling startTapToChargeTest(${testKey})...`);
+                startTapToChargeTest(testKey);
             } catch (e) {
                 showStatusMessage(`Failed to check wallbox connection: ${e.message}`, true);
                 tapToChargeModalResolver = null;
@@ -2457,20 +2457,20 @@
         }
     }
 
-    async function startTapToChargeTest() {
-        console.log('▶️  [TEST] startTapToChargeTest() called at', new Date().toISOString());
+    async function startTapToChargeTest(testKey) {
+        console.log(`▶️  [TEST] startTapToChargeTest(${testKey}) called at`, new Date().toISOString());
         tapToChargeTestActive = true;
 
         // Start the backend test (fire and forget)
-        console.log('📡 [TEST] Sending POST /api/test/run_b1_rfid_public_charging_test...');
-        fetch('/api/test/run_b1_rfid_public_charging_test', { method: 'POST' })
+        console.log(`📡 [TEST] Sending POST /api/test/${testKey}...`);
+        fetch(`/api/test/${testKey}`, { method: 'POST' })
             .then(r => r.json())
             .then(result => {
-                console.log('✅ [TEST] Backend test API responded at', new Date().toISOString());
+                console.log(`✅ [TEST] Backend test API responded at`, new Date().toISOString());
                 console.log('✅ [TEST] Result:', result);
             })
             .catch(e => {
-                console.error('❌ [TEST] Failed to start B.1 test:', e);
+                console.error(`❌ [TEST] Failed to start ${testKey} test:`, e);
             });
 
         // Start polling for transaction status
