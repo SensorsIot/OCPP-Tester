@@ -340,6 +340,83 @@ Tests now validate actual implementation, not just command acceptance:
 - Active test tracking prevents color changes during execution
 - Clear Test Results button resets all colors to default
 
+### 5.3 Test Execution Protection (v1.1.1)
+
+**Problem Addressed:** Users could accidentally start multiple tests simultaneously by clicking buttons during active test execution, causing conflicts and race conditions.
+
+**Solution:** All test buttons are disabled during test execution.
+
+**Implementation:**
+- When any test starts, ALL test buttons (individual + "All Tests") are disabled
+- Buttons remain disabled throughout entire test duration
+- Disabled state enforced during polling intervals (3-second updates)
+- Buttons only re-enable after test completion response
+- Both CSS class ('disabled') and HTML attribute (disabled=true) applied
+- Visual feedback: grey appearance with reduced opacity
+
+**Timeline:**
+```
+00s - User clicks "Run Test B.4" → Button turns grey
+00s-12s - Test executes → All buttons remain disabled
+12s - Test completes → Buttons re-enable
+```
+
+**Benefits:**
+- Prevents accidental simultaneous test execution
+- Avoids OCPP message conflicts and race conditions
+- Clear visual indication that system is busy
+- Improves test reliability and result accuracy
+
+**Technical Details:**
+- Frontend disables buttons on test start
+- Polling function monitors activeTestKey
+- If any test active, all buttons remain disabled
+- Test completion clears activeTestKey and re-enables buttons
+
+**Files Modified:**
+- `/home/ocpp-tester/app/templates/index.html` - Button blocking logic
+
+### 5.4 Configuration Refresh Before Tests (v1.1.1)
+
+**Problem Addressed:** Test logs showed stale configuration data from previous test runs, making it difficult to debug configuration-related issues.
+
+**Solution:** Silent GetConfiguration request before each test refreshes the configuration cache.
+
+**Implementation:**
+- Before every test execution, server calls GetConfiguration with empty key array
+- Request is silent (not logged to test execution log to avoid clutter)
+- Uses 30-second timeout with graceful failure handling
+- Updates configuration_details cache in CHARGE_POINTS global state
+- Includes handling of unknown keys (displays as "N/A (Not Supported)")
+
+**Impact:**
+- Adds ~2-3 seconds to each test execution time
+- Ensures test logs show accurate current configuration
+- Configuration summary reflects wallbox state at test start time
+- Improves debugging of configuration-dependent test failures
+
+**Technical Details:**
+- Uses original_send_and_wait to bypass test log capture
+- Empty key array retrieves all available configuration keys
+- Handles both readonly and writable parameters
+- Graceful failure on timeout (logs debug message only)
+
+**Files Modified:**
+- `/home/ocpp-tester/app/web_ui_server.py` - Configuration refresh logic
+
+### 5.5 Extended Test Timeout (v1.1.1)
+
+**Change:** Test execution timeout increased from 120 seconds (2 minutes) to 300 seconds (5 minutes).
+
+**Rationale:**
+- Long-running tests (especially B-series with RFID modals) can take 2+ minutes
+- Configuration refresh adds 2-3 seconds per test
+- "All Tests" sequences can take several minutes
+- Prevents premature timeout errors during legitimate long operations
+
+**Files Modified:**
+- `/home/ocpp-tester/app/web_ui_server.py` - Timeout parameter in test execution endpoint
+
 ## 6. Real-time Monitoring
 
 ### 6.1 WebSocket Streaming
