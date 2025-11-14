@@ -242,39 +242,7 @@ class TestSeriesC(OcppTestBase):
         else:
             logger.error(f"FAILURE: SetChargingProfile was not acknowledged by the charge point. Response: {success}")
 
-        # Cleanup: Stop transaction and clear profile for test autonomy
-        logger.info("🧹 Cleaning up test state...")
-        try:
-            # Stop the transaction we started
-            if transaction_id:
-                logger.info(f"   Stopping transaction {transaction_id}...")
-                stop_response = await self.handler.send_and_wait(
-                    "RemoteStopTransaction",
-                    RemoteStopTransactionRequest(transactionId=transaction_id),
-                    timeout=OCPP_MESSAGE_TIMEOUT
-                )
-                if stop_response and stop_response.get("status") == "Accepted":
-                    logger.info("   ✓ Transaction stopped")
-                    await asyncio.sleep(2)  # Wait for stop to complete
-
-            # Clear the profile we set
-            logger.info("   Clearing charging profile...")
-            clear_response = await self.handler.send_and_wait(
-                "ClearChargingProfile",
-                ClearChargingProfileRequest()
-            )
-            if clear_response:
-                logger.info("   ✓ Profile cleared")
-
-            # Reset EV to state A
-            logger.info("   Resetting EV to state A...")
-            await self._set_ev_state("A")
-            logger.info("   ✓ EV reset to unplugged")
-
-        except Exception as e:
-            logger.warning(f"   ⚠️ Cleanup warning: {e}")
-
-        # Set final result after cleanup
+        # Set final result
         if test_passed:
             self._set_test_result(step_name, "PASSED")
         else:
@@ -429,20 +397,7 @@ class TestSeriesC(OcppTestBase):
         else:
             logger.error(f"FAILED: SetChargingProfile to {limit}{charging_unit} was not acknowledged. Response: {success}")
 
-        # Cleanup: Clear the default profile for test autonomy
-        logger.info("🧹 Cleaning up test state...")
-        try:
-            logger.info("   Clearing TxDefaultProfile...")
-            clear_response = await self.handler.send_and_wait(
-                "ClearChargingProfile",
-                ClearChargingProfileRequest(connectorId=0, chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile)
-            )
-            if clear_response:
-                logger.info("   ✓ TxDefaultProfile cleared")
-        except Exception as e:
-            logger.warning(f"   ⚠️ Cleanup warning: {e}")
-
-        # Set final result after cleanup
+        # Set final result
         if test_passed:
             self._set_test_result(step_name, "PASSED")
         else:
