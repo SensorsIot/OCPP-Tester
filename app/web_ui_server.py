@@ -557,6 +557,32 @@ def run_test_step(step_name):
             ocpp_handler.send_and_wait = wrapped_send_and_wait
             ocpp_handler.incoming_message_logger = log_message
 
+            # Refresh configuration before each test (silent - no logging to execution log)
+            from app.messages import GetConfigurationRequest
+            try:
+                config_response = await original_send_and_wait(
+                    "GetConfiguration",
+                    GetConfigurationRequest(key=[]),
+                    timeout=30
+                )
+                if config_response and config_response.get("configurationKey"):
+                    config_dict = {}
+                    for item in config_response["configurationKey"]:
+                        key = item["key"]
+                        value = item.get("value", "")
+                        readonly = item.get("readonly", False)
+                        display_value = f"{value} (RO)" if readonly else value
+                        config_dict[key] = display_value
+
+                    # Add unknown keys
+                    if config_response.get("unknownKey"):
+                        for key in config_response["unknownKey"]:
+                            config_dict[key] = "N/A (Not Supported)"
+
+                    CHARGE_POINTS[charge_point_id]["configuration_details"] = config_dict
+            except Exception as e:
+                logging.debug(f"Failed to refresh configuration before test: {e}")
+
             # Get current status only for tests that need it (skip A and B series)
             if not (step_name.startswith("run_a") or step_name.startswith("run_b")):
                 await ensure_status_known(ocpp_handler, charge_point_id)
