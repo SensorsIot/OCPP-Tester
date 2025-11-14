@@ -103,7 +103,8 @@ class TestSeriesB(OcppTestBase):
         for tx_id, tx_data in TRANSACTIONS.items():
             if (tx_data.get("charge_point_id") == self.charge_point_id and
                 tx_data.get("status") == "Ongoing"):
-                active_transaction_id = tx_id
+                # Use cp_transaction_id (integer) not dict key (string)
+                active_transaction_id = tx_data.get("cp_transaction_id")
                 break
 
         if active_transaction_id:
@@ -522,7 +523,8 @@ class TestSeriesB(OcppTestBase):
         for tx_id, tx_data in TRANSACTIONS.items():
             if (tx_data.get("charge_point_id") == self.charge_point_id and
                 tx_data.get("status") == "Ongoing"):
-                transaction_id = tx_id
+                # Use cp_transaction_id (integer) not dict key (string)
+                transaction_id = tx_data.get("cp_transaction_id")
                 break
 
         if transaction_id:
@@ -792,7 +794,9 @@ class TestSeriesB(OcppTestBase):
                 if (tx_data.get("charge_point_id") == self.charge_point_id and
                     tx_data.get("status") == "Ongoing" and
                     tx_data.get("id_tag") == authorized_id_tag):
-                    transaction_id = tx_id
+                    # Use cp_transaction_id (integer) for RemoteStopTransaction
+                    transaction_id = tx_data.get("cp_transaction_id")
+                    transaction_dict_key = tx_id  # Keep dict key for TRANSACTIONS lookup
                     if not start_transaction_time:
                         start_transaction_time = asyncio.get_event_loop().time()
                     transaction_start_delay = start_transaction_time - reference_time
@@ -852,8 +856,8 @@ class TestSeriesB(OcppTestBase):
         self._check_cancellation()
 
         # Check transaction is still active
-        if transaction_id in TRANSACTIONS:
-            tx_data = TRANSACTIONS[transaction_id]
+        if transaction_dict_key in TRANSACTIONS:
+            tx_data = TRANSACTIONS[transaction_dict_key]
             if tx_data.get("stop_timestamp") is None:
                 meter_values_count = len(tx_data.get("meter_values", []))
                 logger.info(f"   ✅ Transaction {transaction_id} active")
@@ -1160,7 +1164,8 @@ class TestSeriesB(OcppTestBase):
                     tx_data.get("connector_id") == 1 and
                     tx_data.get("stop_timestamp") is None and
                     not tx_data.get("remote_started", False)):  # Not remotely started
-                    transaction_id = tx_id
+                    # Use cp_transaction_id (integer) for RemoteStopTransaction
+                    transaction_id = tx_data.get("cp_transaction_id")
                     break
 
             if transaction_id:
