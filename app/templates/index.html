@@ -571,7 +571,7 @@
 <div id="tapToChargeModal" class="modal">
   <div class="modal-content">
     <span class="close" id="tap-to-charge-modal-close">&times;</span>
-    <h3>🎫 RFID Authorization Test</h3>
+    <h3 id="tap-to-charge-modal-title">🎫 RFID Authorization Test</h3>
     <div id="tap-to-charge-status">
         <div style="margin: 30px 0; text-align: center;">
             <div style="font-size: 48px; margin-bottom: 20px;">🎫</div>
@@ -2377,6 +2377,16 @@
         return new Promise(async (resolve, reject) => {
             try {
                 console.log(`🚀 [MODAL] openTapToChargeModal(${testKey}) called at`, new Date().toISOString());
+
+                // Set modal title based on test
+                const modalTitle = document.getElementById('tap-to-charge-modal-title');
+                if (testKey === 'run_b1_rfid_public_charging_test') {
+                    modalTitle.textContent = '🎫 B.1: RFID Authorization Before Plug-in';
+                } else if (testKey === 'run_b2_local_cache_authorization_test') {
+                    modalTitle.textContent = '🎫 B.2: RFID Authorization After Plug-in';
+                } else {
+                    modalTitle.textContent = '🎫 RFID Authorization Test';
+                }
 
                 // Store the resolver so closeTapToChargeModal can call it
                 tapToChargeModalResolver = resolve;

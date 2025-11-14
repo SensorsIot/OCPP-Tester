@@ -671,27 +671,71 @@ class TestSeriesB(OcppTestBase):
 
         # Prepare local authorization list for the test
         logger.info("📋 Step 0: Preparing local authorization list...")
-        logger.info("   💡 Clearing wallbox RFID cache to ensure clean test state")
+        logger.info("   💡 This test requires RFID cards in the local authorization cache")
         logger.info("   💡 Note: This test uses LOCAL cache authorization (LocalAuthListEnabled=true)")
 
-        # Clear existing local authorization cache to prevent auto-start
-        from app.messages import ClearCacheRequest
+        # Clear existing local authorization cache
+        from app.messages import ClearCacheRequest, SendLocalListRequest, AuthorizationData, IdTagInfo, UpdateType
+        from datetime import datetime, timezone, timedelta
 
-        logger.info("   🗑️  Attempting to clear existing RFID cache...")
+        logger.info("   🗑️  Step 0a: Clearing existing RFID cache...")
         try:
             clear_response = await self.handler.send_and_wait("ClearCache", ClearCacheRequest(), timeout=10)
             if clear_response and clear_response.get("status") == "Accepted":
                 logger.info("   ✅ Local RFID cache cleared successfully")
-                logger.info("   💡 This prevents auto-start from cached cards (like 'ElecqAutoStart')")
             else:
                 status = clear_response.get("status", "Unknown") if clear_response else "No response"
                 logger.warning(f"   ⚠️  ClearCache returned: {status}")
-                logger.warning("   💡 Some wallboxes have protected cache entries that cannot be cleared")
-                logger.warning("   💡 This test will proceed - card may need to be in local list already")
         except Exception as e:
             logger.warning(f"   ⚠️  Error clearing cache: {e}")
 
         await asyncio.sleep(1)
+
+        # Send local authorization list with test cards
+        logger.info("   📤 Step 0b: Sending local authorization list to wallbox...")
+        logger.info("   💡 Adding test RFID cards to local cache for offline authorization")
+
+        # Create authorization list with multiple test cards
+        expiry_date = (datetime.now(timezone.utc) + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        auth_list = [
+            AuthorizationData(
+                idTag="DEV_SIMULATED_CARD_002",
+                idTagInfo=IdTagInfo(status="Accepted", expiryDate=expiry_date)
+            ),
+            AuthorizationData(
+                idTag="TEST_CARD_B2",
+                idTagInfo=IdTagInfo(status="Accepted", expiryDate=expiry_date)
+            )
+        ]
+
+        # Also add any physical RFID card that might be used
+        # Note: Real cards will be added dynamically when detected
+
+        try:
+            send_list_request = SendLocalListRequest(
+                listVersion=1,
+                updateType=UpdateType.Full,
+                localAuthorizationList=auth_list
+            )
+
+            send_list_response = await self.handler.send_and_wait(
+                "SendLocalList",
+                send_list_request,
+                timeout=15
+            )
+
+            if send_list_response and send_list_response.get("status") == "Accepted":
+                logger.info(f"   ✅ Local authorization list sent successfully ({len(auth_list)} cards)")
+                logger.info("   💡 Cards can now be authorized offline (no backend required)")
+            else:
+                status = send_list_response.get("status", "Unknown") if send_list_response else "No response"
+                logger.warning(f"   ⚠️  SendLocalList returned: {status}")
+                logger.warning("   💡 Test may fail if wallbox doesn't support local authorization lists")
+        except Exception as e:
+            logger.warning(f"   ⚠️  Error sending local list: {e}")
+            logger.warning("   💡 Test will continue but may fail without local authorization list")
+
+        await asyncio.sleep(2)
         logger.info("")
         logger.info("=" * 80)
         logger.info("START TEST")
@@ -730,23 +774,31 @@ class TestSeriesB(OcppTestBase):
         logger.info("👤 Step 2: Now waiting for RFID card tap...")
         logger.info("")
         logger.info("🎫 MODAL DISPLAY:")
-        logger.info("   📘 This tests the RFID-after-plug-in workflow")
+        logger.info("   📘 This tests the RFID-after-plug-in workflow (LOCAL CACHE)")
         logger.info("   📘 1. Cable already connected (State B)")
         logger.info("   📘 2. Now tap your RFID card on the wallbox")
-        logger.info("   📘 3. Wallbox sends Authorize.req to backend")
+        logger.info("   📘 3. Wallbox checks LOCAL cache (< 200ms lookup)")
+        logger.info("   📘 4. Transaction starts IMMEDIATELY (no backend wait)")
         logger.info("")
         logger.info("👤 USER ACTION (OPTIONAL):")
         logger.info("   • TAP your RFID card on the wallbox reader")
         logger.info("   • If no card tapped within 60 seconds, test continues in simulation mode")
         logger.info("")
-        logger.info("🤖 AUTOMATIC ACTIONS:")
-        logger.info("   • Wallbox will send Authorize.req to backend for validation")
-        logger.info("   • Transaction will start after backend authorization")
+        logger.info("🤖 EXPECTED OCPP BEHAVIOR (Local Cache Authorization):")
+        logger.info("   • Wallbox checks LOCAL authorization list (instant)")
+        logger.info("   • StartTransaction sent IMMEDIATELY (< 1 second)")
+        logger.info("   • Authorize.req MAY be sent to backend (asynchronously, after StartTransaction)")
+        logger.info("   • Backend response NOT required for charging to start")
         logger.info("")
         logger.info("⏳ Waiting for RFID card tap (timeout: 60 seconds)...")
         logger.info("   💡 Test will proceed with simulated card if no physical card detected")
 
-        # Wait for Authorize message
+        # Track message timestamps for order verification
+        rfid_tap_time = None
+        start_transaction_time = None
+        authorize_conf_time = None
+
+        # Wait for Authorize message or StartTransaction
         start_time = asyncio.get_event_loop().time()
         timeout = 60  # 60 seconds for user to tap card
         authorized_id_tag = None
@@ -760,7 +812,8 @@ class TestSeriesB(OcppTestBase):
             cp_data = CHARGE_POINTS.get(self.charge_point_id, {})
             authorized_id_tag = cp_data.get("accepted_rfid")
 
-            if authorized_id_tag:
+            if authorized_id_tag and not rfid_tap_time:
+                rfid_tap_time = asyncio.get_event_loop().time()
                 physical_card_used = True
                 logger.info(f"   ✅ PHYSICAL RFID card detected: {authorized_id_tag}")
                 break
@@ -789,7 +842,7 @@ class TestSeriesB(OcppTestBase):
         logger.info("⏳ Step 3: Waiting for transaction to start...")
         logger.info("   💡 With local cache, this should be immediate (< 1 second)")
 
-        transaction_start_time = asyncio.get_event_loop().time()
+        reference_time = rfid_tap_time if rfid_tap_time else asyncio.get_event_loop().time()
         transaction_id = None
         start_wait_time = asyncio.get_event_loop().time()
         tx_timeout = 10  # 10 seconds max
@@ -804,7 +857,9 @@ class TestSeriesB(OcppTestBase):
                     tx_data.get("status") == "Ongoing" and
                     tx_data.get("id_tag") == authorized_id_tag):
                     transaction_id = tx_id
-                    transaction_start_delay = asyncio.get_event_loop().time() - transaction_start_time
+                    if not start_transaction_time:
+                        start_transaction_time = asyncio.get_event_loop().time()
+                    transaction_start_delay = start_transaction_time - reference_time
                     break
 
             if transaction_id:
@@ -823,10 +878,15 @@ class TestSeriesB(OcppTestBase):
         logger.info(f"   ✅ Transaction started! (ID: {transaction_id})")
         logger.info(f"   ⚡ Start delay: {transaction_start_delay:.2f} seconds")
 
-        if transaction_start_delay < 2.0:
-            logger.info("   🚀 Fast start detected - local cache working correctly!")
+        # Verify OCPP Scenario 3 compliance: Fast start from local cache
+        if transaction_start_delay < 1.0:
+            logger.info("   🚀 EXCELLENT: Fast start (< 1s) - local cache working perfectly!")
+        elif transaction_start_delay < 2.0:
+            logger.info("   ✅ GOOD: Fast start (< 2s) - local cache working correctly")
         else:
-            logger.warning(f"   ⚠️  Slow start ({transaction_start_delay:.2f}s) - may indicate online authorization")
+            logger.warning(f"   ⚠️  SLOW START ({transaction_start_delay:.2f}s)")
+            logger.warning("   💡 This indicates the wallbox may be waiting for backend Authorize.conf")
+            logger.warning("   💡 OCPP Scenario 3 requires immediate start with local cache")
 
         logger.info("")
 
