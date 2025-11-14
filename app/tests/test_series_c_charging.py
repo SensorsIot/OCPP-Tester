@@ -451,28 +451,65 @@ class TestSeriesC(OcppTestBase):
         logger.info(f"--- Step C.2 for {self.charge_point_id} complete. ---")
 
     async def run_c4_clear_charging_profile_test(self):
-        """C.4: ClearChargingProfile - Clears any default charging profiles."""
+        """C.4: ClearChargingProfile - Clears ALL charging profiles."""
         logger.info(f"--- Step C.4: Running ClearChargingProfile test for {self.charge_point_id} ---")
         step_name = "run_c4_clear_charging_profile_test"
         self._check_cancellation()
+
+        logger.info("🧹 Clearing ALL charging profiles...")
         response = await self.handler.send_and_wait(
             "ClearChargingProfile",
-            ClearChargingProfileRequest(connectorId=0, chargingProfilePurpose=ChargingProfilePurposeType.TxDefaultProfile)
+            ClearChargingProfileRequest()  # No parameters = clear ALL profiles
         )
         self._check_cancellation()
+
+        test_passed = False
         if response and response.get("status") == "Accepted":
-            logger.info("✅ SUCCESS: ClearChargingProfile was accepted by the charge point.")
-            self._set_test_result(step_name, "PASSED")
+            logger.info("✅ ClearChargingProfile was accepted by the charge point.")
+
+            # Verify profiles were actually cleared
+            logger.info("🔍 Verifying profiles were cleared with GetCompositeSchedule...")
+            await asyncio.sleep(1)  # Give wallbox time to clear profiles
+
+            verify_response = await self.handler.send_and_wait(
+                "GetCompositeSchedule",
+                GetCompositeScheduleRequest(connectorId=1, duration=3600),
+                timeout=OCPP_MESSAGE_TIMEOUT
+            )
+
+            if verify_response and verify_response.get("status") == "Accepted":
+                schedule = verify_response.get("chargingSchedule")
+                if schedule:
+                    # There's still a schedule - profiles not fully cleared
+                    logger.error("❌ VERIFICATION FAILED: Charging profiles still present after clear")
+                    logger.error(f"   Active schedule: {schedule}")
+                    logger.info("   💡 The wallbox may have a default profile that cannot be cleared")
+                    logger.info("   💡 Or ChargePointMaxProfile which is not clearable")
+                    test_passed = False
+                else:
+                    logger.info("✅ VERIFICATION PASSED: No charging profiles active")
+                    test_passed = True
+            else:
+                logger.warning(f"⚠️  Could not verify profile clearing: {verify_response}")
+                logger.info("   💡 Assuming clear was successful since wallbox accepted the command")
+                test_passed = True
+
         elif response and response.get("status") == "Unknown":
             logger.warning("⚠️  WARNING: ClearChargingProfile returned 'Unknown' - no matching profile found.")
-            logger.info("   💡 This may indicate no TxDefaultProfile was set, which is acceptable.")
-            self._set_test_result(step_name, "PASSED")
+            logger.info("   💡 This indicates no profiles were set, which is acceptable.")
+            test_passed = True
         elif response:
             logger.error(f"❌ FAILURE: ClearChargingProfile returned unexpected status: {response.get('status')}")
-            self._set_test_result(step_name, "FAILED")
+            test_passed = False
         else:
             logger.error("❌ FAILURE: ClearChargingProfile - no response received.")
+            test_passed = False
+
+        if test_passed:
+            self._set_test_result(step_name, "PASSED")
+        else:
             self._set_test_result(step_name, "FAILED")
+
         logger.info(f"--- Step C.4 for {self.charge_point_id} complete. ---")
 
     async def run_c5_cleanup_test(self):
