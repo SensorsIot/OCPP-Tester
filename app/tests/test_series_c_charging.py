@@ -61,8 +61,10 @@ class TestSeriesC(OcppTestBase):
         self._check_cancellation()
 
         # Check if transaction exists, if not, start one
-        transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
+        # Get the actual cp_transaction_id (integer) not the dict key (string)
+        transaction_data = next((tdata for tid, tdata in TRANSACTIONS.items() if
                                tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
+        transaction_id = transaction_data.get("cp_transaction_id") if transaction_data else None
 
         if not transaction_id:
             logger.info("⚠️ No active transaction found. Starting transaction first...")
@@ -92,11 +94,13 @@ class TestSeriesC(OcppTestBase):
             for _ in range(30):
                 await asyncio.sleep(0.5)
                 self._check_cancellation()
-                transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
+                transaction_data = next((tdata for tid, tdata in TRANSACTIONS.items() if
                                        tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
-                if transaction_id:
-                    logger.info(f"✓ Transaction {transaction_id} started successfully")
-                    break
+                if transaction_data:
+                    transaction_id = transaction_data.get("cp_transaction_id")
+                    if transaction_id:
+                        logger.info(f"✓ Transaction {transaction_id} started successfully")
+                        break
 
             if not transaction_id:
                 logger.error("FAILURE: Transaction did not start within 15 seconds")
@@ -476,8 +480,12 @@ class TestSeriesC(OcppTestBase):
         cleanup_failed = False
 
         # 1. Stop any active transactions
-        transaction_id = next((tid for tid, tdata in TRANSACTIONS.items() if
+        # Get the actual cp_transaction_id (integer) not the dict key (string)
+        transaction_data = next((tdata for tid, tdata in TRANSACTIONS.items() if
                                tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
+        transaction_dict_key = next((tid for tid, tdata in TRANSACTIONS.items() if
+                               tdata.get("charge_point_id") == self.charge_point_id and tdata.get("status") == "Ongoing"), None)
+        transaction_id = transaction_data.get("cp_transaction_id") if transaction_data else None
 
         if transaction_id:
             logger.info(f"🛑 Stopping active transaction {transaction_id}...")
@@ -495,7 +503,7 @@ class TestSeriesC(OcppTestBase):
                     for _ in range(20):
                         await asyncio.sleep(0.5)
                         self._check_cancellation()
-                        tx_data = TRANSACTIONS.get(transaction_id)
+                        tx_data = TRANSACTIONS.get(transaction_dict_key)
                         if tx_data and tx_data.get("status") != "Ongoing":
                             logger.info("✓ Transaction stopped successfully")
                             break

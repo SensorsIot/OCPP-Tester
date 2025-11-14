@@ -856,10 +856,13 @@
                 const isRunning = btn.classList.contains('btn-running');
                 const isActiveTest = (typeof activeTestKey !== 'undefined' && stepKey === activeTestKey);
 
-                // Keep ALL buttons disabled if any test is running
+                // Keep ALL buttons disabled if any test is running, enable if not
                 if (anyTestRunning) {
                     btn.disabled = true;
                     btn.classList.add('disabled');
+                } else {
+                    btn.disabled = false;
+                    btn.classList.remove('disabled');
                 }
 
                 if (!isRunning && !isActiveTest) {
@@ -878,13 +881,16 @@
                 }
             });
 
-            // Also keep "All Tests" buttons disabled during test execution
-            if (anyTestRunning) {
-                document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+            // Also keep "All Tests" buttons disabled during test execution, enable if not
+            document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+                if (anyTestRunning) {
                     allBtn.disabled = true;
                     allBtn.classList.add('disabled');
-                });
-            }
+                } else {
+                    allBtn.disabled = false;
+                    allBtn.classList.remove('disabled');
+                }
+            });
 
             // Restore composite schedule update logic
             const scheduleContainer = document.getElementById('composite-schedule-content');
