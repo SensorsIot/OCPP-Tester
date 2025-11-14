@@ -480,6 +480,7 @@
                 <option value="A">A (Amperes)</option>
                 <option value="W">W (Watts)</option>
             </select>
+            <small id="wallbox-supported-unit-note" style="display: block; margin-top: 5px; color: #666;"></small>
         </div>
         <div class="form-group">
             <label for="limit">Limit</label>
@@ -1058,6 +1059,40 @@
             }
         } catch (error) {
             console.error('Failed to fetch charging profile defaults:', error);
+        }
+
+        // Fetch wallbox configuration to show supported unit
+        const unitNote = document.getElementById('wallbox-supported-unit-note');
+        try {
+            const cpResponse = await fetch('/api/charge_points');
+            if (cpResponse.ok) {
+                const cpData = await cpResponse.json();
+                const activeId = cpData.active_charge_point_id;
+                if (activeId && cpData.charge_points[activeId]) {
+                    const config = cpData.charge_points[activeId].configuration || {};
+                    const supportedUnit = config.ChargingScheduleAllowedChargingRateUnit || 'Unknown';
+
+                    if (supportedUnit === 'A') {
+                        unitNote.textContent = 'Wallbox supports: Ampere only';
+                        unitNote.style.color = '#ff6b35';
+                    } else if (supportedUnit === 'W') {
+                        unitNote.textContent = 'Wallbox supports: Watt only';
+                        unitNote.style.color = '#0066cc';
+                    } else if (supportedUnit.includes('A') && supportedUnit.includes('W')) {
+                        unitNote.textContent = 'Wallbox supports: Both Ampere and Watt';
+                        unitNote.style.color = '#28a745';
+                    } else {
+                        unitNote.textContent = `Wallbox supports: ${supportedUnit}`;
+                        unitNote.style.color = '#666';
+                    }
+                } else {
+                    unitNote.textContent = 'Connect wallbox to see supported units';
+                    unitNote.style.color = '#999';
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch wallbox configuration:', error);
+            unitNote.textContent = '';
         }
 
         // Set defaults based on the test case
