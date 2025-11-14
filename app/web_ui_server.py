@@ -615,7 +615,7 @@ def run_test_step(step_name):
 
     try:
         future = asyncio.run_coroutine_threadsafe(run_test_with_lock(), app.loop)
-        future.result(timeout=120)
+        future.result(timeout=300)  # 5 minutes timeout for long tests
 
         # Write comprehensive log file
         with open(log_file, "w") as f:

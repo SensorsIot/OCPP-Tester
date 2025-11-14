@@ -832,10 +832,14 @@
                 btn.classList.remove('disabled');
             });
 
-            // Enable all analysis buttons (quick action buttons)
+            // Check if ANY test is currently running
+            const anyTestRunning = (typeof activeTestKey !== 'undefined' && activeTestKey !== null);
+
+            // Enable all analysis buttons (quick action buttons) only if no test is running
             document.querySelectorAll('.analysis-btn').forEach(btn => {
-                btn.disabled = false;
+                btn.disabled = anyTestRunning;
             });
+
             const testResults = cp.test_results || {};
             document.querySelectorAll('[data-step-key]').forEach(btn => {
                 const stepKey = btn.dataset.stepKey;
@@ -850,6 +854,12 @@
                 // Check both the CSS class AND the activeTestKey flag for extra protection
                 const isRunning = btn.classList.contains('btn-running');
                 const isActiveTest = (typeof activeTestKey !== 'undefined' && stepKey === activeTestKey);
+
+                // Keep ALL buttons disabled if any test is running
+                if (anyTestRunning) {
+                    btn.disabled = true;
+                    btn.classList.add('disabled');
+                }
 
                 if (!isRunning && !isActiveTest) {
                     btn.classList.remove('btn-success', 'btn-failure', 'btn-skipped', 'btn-partial', 'btn-not-supported');
@@ -866,6 +876,14 @@
                     }
                 }
             });
+
+            // Also keep "All Tests" buttons disabled during test execution
+            if (anyTestRunning) {
+                document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+                    allBtn.disabled = true;
+                    allBtn.classList.add('disabled');
+                });
+            }
 
             // Restore composite schedule update logic
             const scheduleContainer = document.getElementById('composite-schedule-content');
