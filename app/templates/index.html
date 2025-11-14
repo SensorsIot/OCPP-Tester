@@ -1088,11 +1088,16 @@
         btn.classList.add('btn-running', 'disabled');
         activeTestKey = stepKey;  // Mark this test as active
 
-        // Disable other buttons during test
+        // Disable ALL test buttons during test execution
         document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
-            if (otherBtn !== btn) {
-                otherBtn.classList.add('disabled');
-            }
+            otherBtn.classList.add('disabled');
+            otherBtn.disabled = true;  // Also set HTML disabled attribute
+        });
+
+        // Also disable "All Tests" buttons
+        document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+            allBtn.classList.add('disabled');
+            allBtn.disabled = true;
         });
 
         try {
@@ -1140,11 +1145,16 @@
                 }
             }
 
-            // Re-enable other buttons
+            // Re-enable ALL test buttons
             document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
-                if (otherBtn !== btn) {
-                    otherBtn.classList.remove('disabled');
-                }
+                otherBtn.classList.remove('disabled');
+                otherBtn.disabled = false;  // Remove HTML disabled attribute
+            });
+
+            // Re-enable "All Tests" buttons
+            document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+                allBtn.classList.remove('disabled');
+                allBtn.disabled = false;
             });
 
             // Show verification results popup for C.1 and C.2 tests if they passed
@@ -1271,11 +1281,16 @@
                         btn.classList.add('btn-running', 'disabled');
                         activeTestKey = key;  // Mark this test as active
 
-                        // Disable other buttons during test
+                        // Disable ALL test buttons during test execution
                         document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
-                            if (otherBtn !== btn) {
-                                otherBtn.classList.add('disabled');
-                            }
+                            otherBtn.classList.add('disabled');
+                            otherBtn.disabled = true;
+                        });
+
+                        // Also disable "All Tests" buttons
+                        document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+                            allBtn.classList.add('disabled');
+                            allBtn.disabled = true;
                         });
 
                         try {
@@ -1319,11 +1334,16 @@
                                 }
                             }
 
-                            // Re-enable other buttons
+                            // Re-enable ALL test buttons
                             document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
-                                if (otherBtn !== btn) {
-                                    otherBtn.classList.remove('disabled');
-                                }
+                                otherBtn.classList.remove('disabled');
+                                otherBtn.disabled = false;
+                            });
+
+                            // Re-enable "All Tests" buttons
+                            document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+                                allBtn.classList.remove('disabled');
+                                allBtn.disabled = false;
                             });
                         }
                     };
@@ -1352,11 +1372,16 @@
                     allTestsBtn.classList.add('btn-running', 'disabled');
                     allTestsBtn.style.backgroundColor = '#6c757d';  // Override inline style to grey
 
-                    // Disable other buttons during test
+                    // Disable ALL test buttons during test execution
                     document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
-                        if (otherBtn !== allTestsBtn) {
-                            otherBtn.classList.add('disabled');
-                        }
+                        otherBtn.classList.add('disabled');
+                        otherBtn.disabled = true;
+                    });
+
+                    // Disable all "All Tests" buttons
+                    document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+                        allBtn.classList.add('disabled');
+                        allBtn.disabled = true;
                     });
 
                     const logFiles = [];
@@ -1473,11 +1498,16 @@
                         // Remove running state
                         allTestsBtn.classList.remove('btn-running', 'disabled');
 
-                        // Re-enable other buttons
+                        // Re-enable ALL test buttons
                         document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
-                            if (otherBtn !== allTestsBtn) {
-                                otherBtn.classList.remove('disabled');
-                            }
+                            otherBtn.classList.remove('disabled');
+                            otherBtn.disabled = false;
+                        });
+
+                        // Re-enable all "All Tests" buttons
+                        document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+                            allBtn.classList.remove('disabled');
+                            allBtn.disabled = false;
                         });
                     }
                 };
@@ -1505,11 +1535,16 @@
                     allTestsBtn.classList.add('btn-running', 'disabled');
                     allTestsBtn.style.backgroundColor = '#6c757d';  // Override inline style to grey
 
-                    // Disable other buttons during test
+                    // Disable ALL test buttons during test execution
                     document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
-                        if (otherBtn !== allTestsBtn) {
-                            otherBtn.classList.add('disabled');
-                        }
+                        otherBtn.classList.add('disabled');
+                        otherBtn.disabled = true;
+                    });
+
+                    // Disable all "All Tests" buttons
+                    document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+                        allBtn.classList.add('disabled');
+                        allBtn.disabled = true;
                     });
 
                     try {
@@ -1554,11 +1589,16 @@
                         // Remove running state
                         allTestsBtn.classList.remove('btn-running', 'disabled');
 
-                        // Re-enable other buttons
+                        // Re-enable ALL test buttons
                         document.querySelectorAll('.test-category .button-group button').forEach(otherBtn => {
-                            if (otherBtn !== allTestsBtn) {
-                                otherBtn.classList.remove('disabled');
-                            }
+                            otherBtn.classList.remove('disabled');
+                            otherBtn.disabled = false;
+                        });
+
+                        // Re-enable all "All Tests" buttons
+                        document.querySelectorAll('.all-tests-btn').forEach(allBtn => {
+                            allBtn.classList.remove('disabled');
+                            allBtn.disabled = false;
                         });
                     }
                 };
