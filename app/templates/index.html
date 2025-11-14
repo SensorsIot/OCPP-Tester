@@ -839,7 +839,12 @@
             const testResults = cp.test_results || {};
             document.querySelectorAll('[data-step-key]').forEach(btn => {
                 const stepKey = btn.dataset.stepKey;
-                const result = testResults[stepKey];
+                let result = testResults[stepKey];
+
+                // Handle dictionary result format (e.g., {result: 'FAILED', reason: '...'})
+                if (typeof result === 'object' && result !== null && result.result) {
+                    result = result.result;
+                }
 
                 // Only update colors if button is not currently running a test
                 // Check both the CSS class AND the activeTestKey flag for extra protection
@@ -1116,7 +1121,11 @@
             // Manually apply the result color from the fetched data
             const cpData = chargePointsData[Object.keys(chargePointsData)[0]];
             if (cpData && cpData.test_results) {
-                const result = cpData.test_results[stepKey];
+                let result = cpData.test_results[stepKey];
+                // Handle dictionary result format (e.g., {result: 'FAILED', reason: '...'})
+                if (typeof result === 'object' && result !== null && result.result) {
+                    result = result.result;
+                }
                 btn.classList.remove('btn-success', 'btn-failure', 'btn-skipped', 'btn-partial', 'btn-not-supported');
                 if (result === 'PASSED') {
                     btn.classList.add('btn-success');
@@ -1291,7 +1300,11 @@
                             // Manually apply the result color from the fetched data
                             const cpData = chargePointsData[Object.keys(chargePointsData)[0]];
                             if (cpData && cpData.test_results) {
-                                const result = cpData.test_results[key];
+                                let result = cpData.test_results[key];
+                                // Handle dictionary result format (e.g., {result: 'FAILED', reason: '...'})
+                                if (typeof result === 'object' && result !== null && result.result) {
+                                    result = result.result;
+                                }
                                 btn.classList.remove('btn-success', 'btn-failure', 'btn-skipped', 'btn-partial', 'btn-not-supported');
                                 if (result === 'PASSED') {
                                     btn.classList.add('btn-success');
