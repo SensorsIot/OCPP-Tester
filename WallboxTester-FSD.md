@@ -69,8 +69,8 @@ Tests standard OCPP 1.6-J "tap-first" authorization flow.
 - Wallbox sends Authorize to CS
 - CS responds Authorize.conf (Accepted/Blocked)
 - If accepted: User plugs in EV and transaction starts
-- Interactive modal with countdown and real-time status
-- **Simulation Mode**: 15-second RFID timeout - if no physical card detected, falls back to RemoteStartTransaction simulation (result: PARTIAL)
+- Interactive modal with 30-second countdown and real-time status
+- **Physical RFID Required**: Test fails if no RFID card presented within 30 seconds
 - **Use Case**: Public charging stations, fleet management, access control
 
 #### B.2: RFID Authorization After Plug-in (Local Cache)
@@ -80,9 +80,9 @@ Tests local authorization cache with "plug-first" workflow.
 - User taps RFID card
 - Wallbox checks local authorization cache (instant validation)
 - Transaction starts within 2 seconds (no network delay)
-- Interactive modal with countdown and real-time status
+- Interactive modal with 30-second countdown and real-time status
 - **Configuration**: LocalAuthListEnabled=true, LocalAuthorizeOffline=true
-- **Simulation Mode**: 15-second RFID timeout - if no physical card detected, falls back to RemoteStartTransaction simulation (result: PARTIAL)
+- **Physical RFID Required**: Test fails if no RFID card presented within 30 seconds
 - **Use Case**: Parking garages with unreliable connectivity, offline authorization
 
 #### B.3: Remote Smart Charging

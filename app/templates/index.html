@@ -1772,7 +1772,7 @@
                                 console.log('✅ [LOG-HANDLER] RFID test mode enabled at', new Date().toISOString());
                                 // Update modal message
                                 document.getElementById('tap-to-charge-timer').textContent = '🎫 Please present your RFID card to the wallbox';
-                                document.getElementById('tap-to-charge-countdown').textContent = 'Time remaining: 60s';
+                                document.getElementById('tap-to-charge-countdown').textContent = 'Time remaining: 30s';
                                 console.log('📝 [LOG-HANDLER] Modal text updated to "Please present RFID"');
                             }
                         })
@@ -2493,7 +2493,7 @@
 
         tapToChargeInterval = setInterval(async () => {
             const elapsed = Math.floor((Date.now() - tapToChargeTestStartTime) / 1000);
-            const remaining = Math.max(0, 60 - elapsed);
+            const remaining = Math.max(0, 30 - elapsed);
 
             // Update countdown
             document.getElementById('tap-to-charge-countdown').textContent = `Time remaining: ${remaining}s`;
