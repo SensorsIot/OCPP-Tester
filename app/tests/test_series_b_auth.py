@@ -626,25 +626,25 @@ class TestSeriesB(OcppTestBase):
         # Ensure wallbox is ready (stop running transactions, reset to Available)
         await self._ensure_ready_state()
         logger.info("")
-        logger.info("🎫 RFID AUTHORIZATION AFTER PLUG-IN TEST (Backend Authorization)")
-        logger.info("   📘 This tests OCPP authorization flow after plug-in:")
+        logger.info("🎫 RFID AUTHORIZATION AFTER PLUG-IN TEST (Local Cache Authorization)")
+        logger.info("   📘 This tests OCPP local cache authorization after plug-in:")
         logger.info("   📘 1. User plugs in EV first")
         logger.info("   📘 2. User taps RFID card")
-        logger.info("   📘 3. Wallbox sends Authorize.req to backend")
-        logger.info("   📘 4. Backend validates card and transaction starts")
+        logger.info("   📘 3. Wallbox checks LOCAL cache (instant validation)")
+        logger.info("   📘 4. Transaction starts within 2 seconds (no network delay)")
         logger.info("")
 
         # Step 0: Verify required configuration parameters
         required_params = [
             {
                 "key": "LocalAuthListEnabled",
-                "value": "false",
-                "description": "Disable local authorization cache (force backend auth)"
+                "value": "true",
+                "description": "Enable local authorization cache"
             },
             {
                 "key": "LocalAuthorizeOffline",
-                "value": "false",
-                "description": "Require backend authorization (prevent cache auto-start)"
+                "value": "true",
+                "description": "Allow offline authorization from cache"
             },
             {
                 "key": "LocalPreAuthorize",
@@ -671,8 +671,8 @@ class TestSeriesB(OcppTestBase):
 
         # Prepare local authorization list for the test
         logger.info("📋 Step 0: Preparing local authorization list...")
-        logger.info("   💡 Clearing wallbox RFID cache to prevent auto-start")
-        logger.info("   💡 Note: This test uses backend authorization (LocalAuthorizeOffline=false)")
+        logger.info("   💡 Clearing wallbox RFID cache to ensure clean test state")
+        logger.info("   💡 Note: This test uses LOCAL cache authorization (LocalAuthListEnabled=true)")
 
         # Clear existing local authorization cache to prevent auto-start
         from app.messages import ClearCacheRequest
@@ -687,7 +687,7 @@ class TestSeriesB(OcppTestBase):
                 status = clear_response.get("status", "Unknown") if clear_response else "No response"
                 logger.warning(f"   ⚠️  ClearCache returned: {status}")
                 logger.warning("   💡 Some wallboxes have protected cache entries that cannot be cleared")
-                logger.warning("   💡 This is OK - LocalAuthorizeOffline=false prevents cache usage")
+                logger.warning("   💡 This test will proceed - card may need to be in local list already")
         except Exception as e:
             logger.warning(f"   ⚠️  Error clearing cache: {e}")
 
@@ -814,8 +814,8 @@ class TestSeriesB(OcppTestBase):
             logger.error("❌ Transaction did not start")
             logger.info("   💡 Possible reasons:")
             logger.info("   • RFID card not in local authorization list")
-            logger.info("   • LocalAuthListEnabled is false")
-            logger.info("   • Run B.7 (Send RFID List) to add your card")
+            logger.info("   • LocalAuthListEnabled was not set correctly")
+            logger.info("   • Run B.6 (Send RFID List) to add your card to local cache")
             await self._set_ev_state("A")
             self._set_test_result(step_name, "FAILED")
             return
