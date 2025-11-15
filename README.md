@@ -1,5 +1,7 @@
 # ⚡ OCPP 1.6-J Wallbox Tester
 
+**Version 1.3.20** | Last Updated: 2025-11-15
+
 A comprehensive OCPP 1.6-J test server for validating electric vehicle charge point implementations with real-time monitoring and automated test sequences.
 
 ## 📋 Overview
@@ -14,7 +16,8 @@ WallboxTester provides a complete suite of OCPP 1.6-J protocol tests through a W
 - **📊 Real-time Monitoring**: WebSocket-streamed logs and live EV status updates
 - **✅ Profile Verification**: Automatic verification of charging profiles using GetCompositeSchedule
 - **🎨 Visual Feedback**: 7 button states (success/failure/running/skipped/partial/not-supported/disabled)
-- **📝 Combined Logging**: GetConfiguration + test parameters + verification results + OCPP messages
+- **📝 Smart Log Filtering**: Test-specific filtering - full trace for debugging (A.6, C-series), filtered noise for other tests
+- **⚡ Optimized Performance**: Fast test execution with intelligent configuration caching
 - **🚗 EV Simulator Integration**: External EV state simulation for realistic testing
 
 ## 🚀 Quick Start
@@ -65,10 +68,10 @@ Environment variables (defaults in `app/core.py`):
 
 ### B. Authorization & Transaction Management (7 tests)
 - **B.1**: RFID Authorization Before Plug-in - Standard authorization flow with modal
-- **B.2**: RFID Authorization After Plug-in - Local cache authorization with modal
+- **B.2**: RFID Authorization After Plug-in - Backend authorization flow with modal
 - **B.3**: Remote Smart Charging - RemoteStartTransaction with authorization
 - **B.4**: Plug & Charge - Automated charging with pre-authorization
-- **B.5**: Clear RFID Cache - ClearCache command
+- **B.5**: Local Stop - RFID tap to stop transaction
 - **B.6**: Send RFID List - SendLocalList command
 - **B.7**: Get RFID List Version - GetLocalListVersion command
 
@@ -165,6 +168,21 @@ Structure:
 3. **Test Results Summary**: Pass/fail status for each test
 4. **Verification Results**: Expected vs actual comparison (C All Tests only)
 5. **OCPP Messages**: Timestamped request/response pairs
+
+### Smart Message Filtering
+
+**Test A.6 (EVCC Reboot Behavior):**
+- Logs ALL messages including Heartbeat, StatusNotification, MeterValues
+- Complete OCPP trace for reconnection debugging
+
+**C-Series Tests (Charging Sessions):**
+- Logs ALL messages including MeterValues
+- Needed for energy consumption verification
+
+**Other Tests (A-series, B-series, X-series):**
+- Filters background noise: Heartbeat, StatusNotification, MeterValues
+- Logs all REQUEST/RESPONSE pairs and triggered messages
+- Cleaner logs focused on test-relevant information
 
 ## 🏗️ Architecture
 
