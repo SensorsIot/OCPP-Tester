@@ -82,3 +82,6 @@ nohup.out
 
 # Temporary restart logs
 /tmp/restart.log
+
+# OCPP documentation (available online)
+OCPP_1.6_documentation/
