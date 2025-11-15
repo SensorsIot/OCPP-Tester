@@ -1309,10 +1309,6 @@
                     btn.onclick = () => {
                         openTapToChargeModal(key);  // Pass the test key
                     };
-                } else if (key === 'run_b3_remote_smart_charging_test') {
-                    btn.onclick = () => {
-                        openRemoteStartModal();
-                    };
                 } else {
                     btn.onclick = async () => {
                         const r = await fetch('/api/discovered_charge_points');
