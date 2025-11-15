@@ -419,22 +419,18 @@ class TestSeriesA(OcppTestBase):
         step_name = "run_a6_evcc_reboot_behavior"
         self._check_cancellation()
 
-        # Check if current connection is the EV simulator (skip if yes)
-        ev_sim_id = SERVER_SETTINGS.get("ev_simulator_charge_point_id", "Wallbox001")
-        if self.charge_point_id == ev_sim_id:
-            logger.warning(f"Skipping test: Current connection is EV simulator ({ev_sim_id}), not a real wallbox.")
-            self._set_test_result(
-                step_name,
-                "SKIPPED",
-                f"Test requires a real OCPP wallbox. Current connection is EV simulator ({ev_sim_id})."
-            )
-            logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
-            return
-
         all_success = True
         results = {}
 
         from app.messages import ChangeConfigurationRequest
+
+        # Set EV simulator to state A if available (optional, helps ensure clean state)
+        if SERVER_SETTINGS.get("ev_simulator_available"):
+            logger.info("Setting EV simulator to state A (disconnected)...")
+            try:
+                await self._set_ev_state("A")
+            except Exception as e:
+                logger.debug(f"Could not set EV state (non-critical): {e}")
 
         logger.info("=" * 80)
         logger.info("EVCC REBOOT EMULATION TEST")
