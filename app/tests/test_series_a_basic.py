@@ -414,8 +414,8 @@ class TestSeriesA(OcppTestBase):
         logger.info(f"--- Step A.5 for {self.charge_point_id} complete. ---")
 
     async def run_a6_evcc_reboot_behavior(self):
-        """A.6: Tests EVCC reboot behavior - verifies wallbox properly handles EVCC restart."""
-        logger.info(f"--- Step A.6: Testing EVCC reboot behavior for {self.charge_point_id} ---")
+        """A.6: Emulates EVCC reboot behavior - tests wallbox response to Central System restart."""
+        logger.info(f"--- Step A.6: Emulating EVCC reboot for {self.charge_point_id} ---")
         step_name = "run_a6_evcc_reboot_behavior"
         self._check_cancellation()
 
@@ -425,7 +425,7 @@ class TestSeriesA(OcppTestBase):
             self._set_test_result(
                 step_name,
                 "SKIPPED",
-                "Test requires a real OCPP wallbox connection to an EVCC server. Not applicable for EV simulator."
+                "Test requires a real OCPP wallbox connection. Not applicable for EV simulator."
             )
             logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
             return
@@ -433,166 +433,237 @@ class TestSeriesA(OcppTestBase):
         all_success = True
         results = {}
 
+        from app.messages import ChangeConfigurationRequest
+
         logger.info("=" * 80)
-        logger.info("EVCC REBOOT TEST - Manual Procedure")
+        logger.info("EVCC REBOOT EMULATION TEST")
         logger.info("=" * 80)
-        logger.info("")
-        logger.info("This test verifies that the wallbox correctly handles EVCC server restarts.")
-        logger.info("The test will:")
-        logger.info("  1. Monitor current connection state")
-        logger.info("  2. Wait for you to restart EVCC")
-        logger.info("  3. Detect the WebSocket disconnection")
-        logger.info("  4. Verify wallbox reconnects automatically")
-        logger.info("  5. Verify correct OCPP message sequence after reconnection")
-        logger.info("")
-        logger.info("Expected OCPP message flow after EVCC restart:")
-        logger.info("  - BootNotification (must be first message)")
-        logger.info("  - StatusNotification")
-        logger.info("  - GetConfiguration from EVCC")
-        logger.info("  - ChangeConfiguration from EVCC")
-        logger.info("  - TriggerMessage requests from EVCC")
-        logger.info("")
-        logger.info("To restart EVCC on Home Assistant (192.168.0.202):")
-        logger.info("  SSH method: sshpass -p 'hd*yT1680' ssh root@192.168.0.202 \"ha addons restart 49686a9f_evcc\"")
-        logger.info("  OR use Home Assistant web UI to restart the EVCC addon")
-        logger.info("")
+        logger.info("This test emulates EVCC rebooting to verify wallbox behavior:")
+        logger.info("  Phase 1: Close WebSocket connection (simulate EVCC closing connections)")
+        logger.info("  Phase 2: Wait 15 seconds (simulate EVCC startup)")
+        logger.info("  Phase 3: Wallbox reconnects automatically")
+        logger.info("  Phase 4: Verify BootNotification → StatusNotification sequence")
+        logger.info("  Phase 5: Send EVCC configuration commands")
         logger.info("=" * 80)
-        logger.info("")
-        logger.info("⏳ Waiting for EVCC restart... Please restart EVCC now.")
-        logger.info("   The test will automatically detect the disconnect and monitor the reconnection.")
         logger.info("")
 
-        # Wait for disconnection with timeout
-        logger.info("Monitoring WebSocket connection...")
-        disconnected = False
+        # Phase 1: Close WebSocket connection
+        logger.info("Phase 1: Closing WebSocket connection (emulating EVCC shutdown)...")
+        try:
+            if self.handler and self.handler.websocket:
+                await self.handler.websocket.close()
+                logger.info("  ✅ Connection closed successfully")
+                results["Connection Closed"] = "PASSED"
+            else:
+                logger.error("  ❌ No active WebSocket connection to close")
+                results["Connection Closed"] = "FAILED"
+                all_success = False
+                self._set_test_result(step_name, "FAILED", "No WebSocket connection available")
+                logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
+                return
+        except Exception as e:
+            logger.error(f"  ❌ Error closing connection: {e}")
+            results["Connection Closed"] = "FAILED"
+            all_success = False
+            self._set_test_result(step_name, "FAILED", f"Connection close error: {e}")
+            logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
+            return
+
+        # Phase 2: Wait for simulated EVCC startup
+        evcc_startup_delay = 15  # seconds
+        logger.info(f"Phase 2: Waiting {evcc_startup_delay} seconds (emulating EVCC startup)...")
+        await asyncio.sleep(evcc_startup_delay)
+        logger.info("  ✅ Startup delay complete")
+        results["Startup Delay"] = "PASSED"
+
+        # Phase 3: Wait for wallbox reconnection
+        logger.info("Phase 3: Waiting for wallbox to reconnect...")
         reconnected = False
-
-        # Maximum wait time: 5 minutes for user to restart EVCC
-        max_wait_seconds = 300
-        check_interval = 2
+        reconnect_timeout = 60  # seconds
+        check_interval = 1  # second
         elapsed = 0
 
-        # Phase 1: Wait for disconnection
-        while not disconnected and elapsed < max_wait_seconds:
+        while not reconnected and elapsed < reconnect_timeout:
             await asyncio.sleep(check_interval)
             self._check_cancellation()
             elapsed += check_interval
 
-            # Check if connection is still active
-            if self.charge_point_id not in CHARGE_POINTS or not CHARGE_POINTS[self.charge_point_id].get("connected", False):
-                logger.info("")
-                logger.info("🔌 WebSocket disconnection detected!")
-                logger.info(f"   Time elapsed: {elapsed} seconds")
-                disconnected = True
-                results["Connection Disconnect Detected"] = "PASSED"
-                break
-
-            # Progress indicator every 30 seconds
-            if elapsed % 30 == 0:
-                logger.info(f"   Still waiting for EVCC restart... ({elapsed}/{max_wait_seconds}s elapsed)")
-
-        if not disconnected:
-            logger.error("❌ Timeout: No disconnection detected within 5 minutes")
-            logger.error("   Please ensure you restart EVCC during the test")
-            results["Connection Disconnect Detected"] = "FAILED"
-            all_success = False
-            self._set_test_result(step_name, "FAILED", "Timeout waiting for EVCC restart")
-            logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
-            return
-
-        # Phase 2: Wait for reconnection
-        logger.info("")
-        logger.info("⏳ Waiting for wallbox to reconnect...")
-        logger.info("   Expected: Wallbox should retry connection every 5-10 seconds")
-
-        reconnect_wait = 0
-        max_reconnect_wait = 120  # 2 minutes for reconnection
-
-        while not reconnected and reconnect_wait < max_reconnect_wait:
-            await asyncio.sleep(check_interval)
-            self._check_cancellation()
-            reconnect_wait += check_interval
-
             # Check if wallbox has reconnected
             if self.charge_point_id in CHARGE_POINTS and CHARGE_POINTS[self.charge_point_id].get("connected", False):
-                logger.info("")
-                logger.info(f"🔌 Wallbox reconnected successfully!")
-                logger.info(f"   Reconnection time: {reconnect_wait} seconds after disconnect")
+                logger.info(f"  ✅ Wallbox reconnected after {elapsed} seconds")
+                results["Wallbox Reconnected"] = "PASSED"
                 reconnected = True
-                results["Wallbox Reconnection"] = "PASSED"
                 break
 
-            if reconnect_wait % 15 == 0:
-                logger.info(f"   Waiting for reconnection... ({reconnect_wait}/{max_reconnect_wait}s)")
+            if elapsed % 10 == 0:
+                logger.info(f"  ⏳ Still waiting... ({elapsed}/{reconnect_timeout}s)")
 
         if not reconnected:
-            logger.error("❌ Timeout: Wallbox did not reconnect within 2 minutes")
-            results["Wallbox Reconnection"] = "FAILED"
+            logger.error(f"  ❌ Wallbox did not reconnect within {reconnect_timeout} seconds")
+            results["Wallbox Reconnected"] = "FAILED"
             all_success = False
             self._set_test_result(step_name, "FAILED", "Wallbox failed to reconnect")
             logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
             return
 
-        # Phase 3: Verify OCPP message sequence
-        logger.info("")
-        logger.info("📋 Verifying OCPP message sequence after reconnection...")
-        logger.info("")
-
-        # Monitor messages for 30 seconds after reconnection
-        message_monitor_duration = 30
-        logger.info(f"   Monitoring OCPP messages for {message_monitor_duration} seconds...")
-
-        await asyncio.sleep(message_monitor_duration)
-        self._check_cancellation()
-
-        # Verify BootNotification was sent (check if wallbox info is present)
+        # Get the new handler instance after reconnection
         if self.charge_point_id in CHARGE_POINTS:
-            cp_info = CHARGE_POINTS[self.charge_point_id]
-            if cp_info.get("model") or cp_info.get("vendor"):
-                results["BootNotification Sent"] = "PASSED"
-                logger.info("  ✅ BootNotification verified (wallbox info present)")
+            new_handler = CHARGE_POINTS[self.charge_point_id].get("handler")
+            if new_handler:
+                self.handler = new_handler
+                logger.info("  ✅ Handler updated to new connection")
             else:
-                results["BootNotification Sent"] = "FAILED"
-                all_success = False
-                logger.error("  ❌ BootNotification not confirmed")
+                logger.warning("  ⚠️  No handler found, using original")
 
-        # Verify StatusNotification was sent (check if status is present)
+        # Phase 4: Verify message sequence (BootNotification and StatusNotification already received during reconnection)
+        logger.info("Phase 4: Verifying OCPP message sequence...")
+
+        # Check if BootNotification was received (wallbox info should be present)
         if self.charge_point_id in CHARGE_POINTS:
             cp_info = CHARGE_POINTS[self.charge_point_id]
+            if cp_info.get("model") and cp_info.get("vendor"):
+                logger.info("  ✅ BootNotification received and processed")
+                results["BootNotification Received"] = "PASSED"
+            else:
+                logger.error("  ❌ BootNotification not confirmed (missing wallbox info)")
+                results["BootNotification Received"] = "FAILED"
+                all_success = False
+
+            # Check if StatusNotification was received
             if cp_info.get("status"):
-                results["StatusNotification Sent"] = "PASSED"
-                logger.info(f"  ✅ StatusNotification verified (status: {cp_info.get('status')})")
+                logger.info(f"  ✅ StatusNotification received (status: {cp_info.get('status')})")
+                results["StatusNotification Received"] = "PASSED"
             else:
-                results["StatusNotification Sent"] = "FAILED"
+                logger.error("  ❌ StatusNotification not confirmed (missing status)")
+                results["StatusNotification Received"] = "FAILED"
                 all_success = False
-                logger.error("  ❌ StatusNotification not confirmed")
 
+        # Phase 5: Send EVCC configuration commands
+        logger.info("Phase 5: Sending EVCC configuration commands...")
+
+        # 5.1: GetConfiguration
+        logger.info("  Sending GetConfiguration...")
+        try:
+            config_response = await self.handler.send_and_wait(
+                "GetConfiguration",
+                GetConfigurationRequest(key=[]),
+                timeout=OCPP_MESSAGE_TIMEOUT
+            )
+            if config_response and config_response.get("configurationKey"):
+                logger.info(f"    ✅ GetConfiguration: Received {len(config_response['configurationKey'])} keys")
+                results["GetConfiguration"] = "PASSED"
+            else:
+                logger.error("    ❌ GetConfiguration: No response or empty")
+                results["GetConfiguration"] = "FAILED"
+                all_success = False
+        except Exception as e:
+            logger.error(f"    ❌ GetConfiguration error: {e}")
+            results["GetConfiguration"] = "FAILED"
+            all_success = False
+
+        # 5.2: ChangeConfiguration for MeterValuesSampledData
+        logger.info("  Sending ChangeConfiguration (MeterValuesSampledData)...")
+        try:
+            meter_values_config = "Power.Active.Import,Energy.Active.Import.Register,Current.Import,Voltage,Current.Offered,Power.Offered,SoC"
+            change_response = await self.handler.send_and_wait(
+                "ChangeConfiguration",
+                ChangeConfigurationRequest(key="MeterValuesSampledData", value=meter_values_config),
+                timeout=OCPP_MESSAGE_TIMEOUT
+            )
+            if change_response and change_response.get("status") in ["Accepted", "RebootRequired"]:
+                logger.info(f"    ✅ ChangeConfiguration (MeterValuesSampledData): {change_response.get('status')}")
+                results["ChangeConfiguration MeterValuesSampledData"] = "PASSED"
+            else:
+                status = change_response.get("status") if change_response else "NO_RESPONSE"
+                logger.error(f"    ❌ ChangeConfiguration (MeterValuesSampledData): {status}")
+                results["ChangeConfiguration MeterValuesSampledData"] = "FAILED"
+                all_success = False
+        except Exception as e:
+            logger.error(f"    ❌ ChangeConfiguration error: {e}")
+            results["ChangeConfiguration MeterValuesSampledData"] = "FAILED"
+            all_success = False
+
+        # 5.3: ChangeConfiguration for MeterValueSampleInterval
+        logger.info("  Sending ChangeConfiguration (MeterValueSampleInterval)...")
+        try:
+            change_response = await self.handler.send_and_wait(
+                "ChangeConfiguration",
+                ChangeConfigurationRequest(key="MeterValueSampleInterval", value="10"),
+                timeout=OCPP_MESSAGE_TIMEOUT
+            )
+            if change_response and change_response.get("status") in ["Accepted", "RebootRequired"]:
+                logger.info(f"    ✅ ChangeConfiguration (MeterValueSampleInterval): {change_response.get('status')}")
+                results["ChangeConfiguration MeterValueSampleInterval"] = "PASSED"
+            else:
+                status = change_response.get("status") if change_response else "NO_RESPONSE"
+                logger.error(f"    ❌ ChangeConfiguration (MeterValueSampleInterval): {status}")
+                results["ChangeConfiguration MeterValueSampleInterval"] = "FAILED"
+                all_success = False
+        except Exception as e:
+            logger.error(f"    ❌ ChangeConfiguration error: {e}")
+            results["ChangeConfiguration MeterValueSampleInterval"] = "FAILED"
+            all_success = False
+
+        # 5.4: TriggerMessage for BootNotification
+        logger.info("  Sending TriggerMessage (BootNotification)...")
+        try:
+            trigger_response = await self.handler.send_and_wait(
+                "TriggerMessage",
+                TriggerMessageRequest(requestedMessage="BootNotification"),
+                timeout=OCPP_MESSAGE_TIMEOUT
+            )
+            if trigger_response and trigger_response.get("status") == "Accepted":
+                logger.info("    ✅ TriggerMessage (BootNotification): Accepted")
+                results["TriggerMessage BootNotification"] = "PASSED"
+            else:
+                status = trigger_response.get("status") if trigger_response else "NO_RESPONSE"
+                logger.error(f"    ❌ TriggerMessage (BootNotification): {status}")
+                results["TriggerMessage BootNotification"] = "FAILED"
+                all_success = False
+        except Exception as e:
+            logger.error(f"    ❌ TriggerMessage error: {e}")
+            results["TriggerMessage BootNotification"] = "FAILED"
+            all_success = False
+
+        # 5.5: TriggerMessage for MeterValues
+        logger.info("  Sending TriggerMessage (MeterValues)...")
+        try:
+            trigger_response = await self.handler.send_and_wait(
+                "TriggerMessage",
+                TriggerMessageRequest(requestedMessage="MeterValues", connectorId=1),
+                timeout=OCPP_MESSAGE_TIMEOUT
+            )
+            if trigger_response and trigger_response.get("status") == "Accepted":
+                logger.info("    ✅ TriggerMessage (MeterValues): Accepted")
+                results["TriggerMessage MeterValues"] = "PASSED"
+            else:
+                status = trigger_response.get("status") if trigger_response else "NO_RESPONSE"
+                logger.error(f"    ❌ TriggerMessage (MeterValues): {status}")
+                results["TriggerMessage MeterValues"] = "FAILED"
+                all_success = False
+        except Exception as e:
+            logger.error(f"    ❌ TriggerMessage error: {e}")
+            results["TriggerMessage MeterValues"] = "FAILED"
+            all_success = False
+
+        # Summary
         logger.info("")
         logger.info("=" * 80)
-        logger.info("EVCC REBOOT TEST - Summary")
+        logger.info("EVCC REBOOT EMULATION TEST - Summary")
         logger.info("=" * 80)
-
         for key, result in results.items():
             if result == "PASSED":
                 logger.info(f"  ✅ {key}: {result}")
             else:
                 logger.error(f"  ❌ {key}: {result}")
-
-        logger.info("")
-        logger.info("Expected behavior verified:")
-        logger.info("  1. ✅ Wallbox detected EVCC disconnect")
-        logger.info("  2. ✅ Wallbox automatically reconnected")
-        logger.info("  3. ✅ BootNotification sent after reconnection")
-        logger.info("  4. ✅ StatusNotification sent after BootNotification")
-        logger.info("")
-        logger.info("This confirms the wallbox properly handles EVCC restarts as described in")
-        logger.info("the EVCC Reboot Behavior specification (evcc_reboot_behavior.md)")
         logger.info("=" * 80)
 
         if all_success:
             self._set_test_result(step_name, "PASSED")
+            logger.info("✅ Test PASSED: Wallbox correctly handles EVCC reboot")
         else:
             self._set_test_result(step_name, "FAILED")
+            logger.error("❌ Test FAILED: Check results above for details")
 
         logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
 
