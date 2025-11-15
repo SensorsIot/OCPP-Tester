@@ -41,6 +41,10 @@ _active_transaction_id: Optional[int] = None
 _discovered_charge_points: Dict[str, Dict[str, Any]] = {}
 _autodiscovery_enabled: bool = True
 
+# Charge points that should have connections rejected (for testing)
+_blocked_charge_points: set = set()
+_block_all_connections: bool = False
+
 def get_active_charge_point_id() -> Optional[str]:
     return _active_charge_point_id
 
@@ -85,6 +89,32 @@ def set_autodiscovery_enabled(enabled: bool):
     global _autodiscovery_enabled
     _autodiscovery_enabled = enabled
 
+def block_charge_point(cp_id: str):
+    """Block reconnections from a specific charge point (for testing)."""
+    _blocked_charge_points.add(cp_id)
+    logger.info(f"🚫 Blocking reconnections from charge point: {cp_id}")
+
+def unblock_charge_point(cp_id: str):
+    """Allow reconnections from a specific charge point."""
+    _blocked_charge_points.discard(cp_id)
+    logger.info(f"✅ Allowing reconnections from charge point: {cp_id}")
+
+def is_charge_point_blocked(cp_id: str) -> bool:
+    """Check if a charge point is currently blocked."""
+    return cp_id in _blocked_charge_points or _block_all_connections
+
+def block_all_connections():
+    """Block all OCPP connections (simulates port not listening)."""
+    global _block_all_connections
+    _block_all_connections = True
+    logger.info("🚫 Blocking ALL connections - simulating server offline")
+
+def unblock_all_connections():
+    """Allow all OCPP connections again."""
+    global _block_all_connections
+    _block_all_connections = False
+    logger.info("✅ Allowing ALL connections - server back online")
+
 def get_active_transaction_id() -> Optional[int]:
     return _active_transaction_id
 
@@ -100,6 +130,57 @@ def get_shutdown_event() -> Optional[asyncio.Event]:
 def set_shutdown_event(event: asyncio.Event):
     global _shutdown_event
     _shutdown_event = event
+
+# WebSocket server control for testing
+_ws_server: Optional[Any] = None
+_ws_server_factory: Optional[Any] = None
+
+def set_ws_server(server: Any):
+    """Store reference to WebSocket server for test control."""
+    global _ws_server
+    _ws_server = server
+
+def get_ws_server() -> Optional[Any]:
+    """Get reference to WebSocket server."""
+    return _ws_server
+
+def set_ws_server_factory(factory: Any):
+    """Store factory function to recreate WebSocket server."""
+    global _ws_server_factory
+    _ws_server_factory = factory
+
+async def stop_ocpp_server():
+    """Stop the OCPP WebSocket server (for testing - simulates EVCC offline)."""
+    global _ws_server
+    if _ws_server is None:
+        logger.warning("⚠️ Cannot stop OCPP server - no server reference stored")
+        return False
+
+    try:
+        logger.info("🛑 Stopping OCPP WebSocket server (closing port 8888)...")
+        _ws_server.close()
+        await _ws_server.wait_closed()
+        logger.info("✅ OCPP WebSocket server stopped - port 8888 closed")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Failed to stop OCPP server: {e}")
+        return False
+
+async def start_ocpp_server():
+    """Restart the OCPP WebSocket server (for testing - simulates EVCC back online)."""
+    global _ws_server, _ws_server_factory
+    if _ws_server_factory is None:
+        logger.warning("⚠️ Cannot start OCPP server - no factory function stored")
+        return False
+
+    try:
+        logger.info("🚀 Restarting OCPP WebSocket server (opening port 8888)...")
+        _ws_server = await _ws_server_factory()
+        logger.info("✅ OCPP WebSocket server restarted - port 8888 listening")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Failed to start OCPP server: {e}")
+        return False
 
 EV_SIMULATOR_STATE: Dict[str, Any] = {}
 
@@ -179,7 +260,8 @@ async def auto_detect_charging_rate_unit(ocpp_handler) -> None:
     logger = logging.getLogger(__name__)
 
     try:
-        logger.info("🔍 Auto-detecting charging rate unit from charge point configuration...")
+        logger.info("🔍 AUTO-DETECT: Requesting all configuration from charge point to detect charging rate unit...")
+        logger.debug("🔍 AUTO-DETECT: This is a blocking request with 65s timeout")
 
         response = await ocpp_handler.send_and_wait(
             "GetConfiguration",
@@ -190,13 +272,15 @@ async def auto_detect_charging_rate_unit(ocpp_handler) -> None:
         if response:
             if process_configuration_response(response):
                 return
+            logger.info("ℹ️ AUTO-DETECT: 'ChargingScheduleAllowedChargingRateUnit' key not found in configuration, keeping default unit 'A'")
+        else:
+            logger.warning("⚠️ AUTO-DETECT: GetConfiguration request timed out or returned no response, keeping default unit 'A'")
 
-        logger.info("ℹ️ ChargingScheduleAllowedChargingRateUnit not found, keeping default unit 'A'")
         SERVER_SETTINGS["auto_detection_completed"] = True
 
     except Exception as e:
-        logger.error(f"❌ Failed to auto-detect charging rate unit: {e}")
-        logger.info("ℹ️ Keeping default charging rate unit 'A'")
+        logger.error(f"❌ AUTO-DETECT: Failed to auto-detect charging rate unit: {e}")
+        logger.info("ℹ️ AUTO-DETECT: Keeping default charging rate unit 'A'")
         SERVER_SETTINGS["auto_detection_completed"] = True
 
 def process_configuration_response(response_payload: dict) -> bool:
@@ -240,11 +324,11 @@ def process_configuration_response(response_payload: dict) -> bool:
                 SERVER_SETTINGS["auto_detection_completed"] = True
 
                 if len(mapped_units) > 1:
-                    logger.info(f"✅ Auto-detected charging rate unit: {chosen_unit} (wallbox supports: {', '.join(mapped_units)}, chose {chosen_unit}, was: {old_unit})")
+                    logger.info(f"✅ AUTO-DETECT: Successfully detected charging rate unit: {chosen_unit} (wallbox supports: {', '.join(mapped_units)}, chose {chosen_unit} over {[u for u in mapped_units if u != chosen_unit]}, previous: {old_unit})")
                 else:
-                    logger.info(f"✅ Auto-detected charging rate unit: {chosen_unit} (from '{value}', was: {old_unit})")
+                    logger.info(f"✅ AUTO-DETECT: Successfully detected charging rate unit: {chosen_unit} (from value '{value}', previous: {old_unit})")
                 return True
             else:
-                logger.warning(f"⚠️ Unsupported charging rate unit: {value}, keeping default")
+                logger.warning(f"⚠️ AUTO-DETECT: Unsupported charging rate unit value '{value}' in configuration, keeping default 'A'")
 
     return False

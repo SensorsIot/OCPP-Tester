@@ -104,7 +104,9 @@ class TestSeriesB(OcppTestBase):
             if (tx_data.get("charge_point_id") == self.charge_point_id and
                 tx_data.get("status") == "Ongoing"):
                 # Use cp_transaction_id (integer) not dict key (string)
-                active_transaction_id = tx_data.get("cp_transaction_id")
+                cp_tx_id = tx_data.get("cp_transaction_id")
+                # Ensure it's an integer (OCPP requires number, not string)
+                active_transaction_id = int(cp_tx_id) if cp_tx_id else None
                 break
 
         if active_transaction_id:
@@ -148,7 +150,44 @@ class TestSeriesB(OcppTestBase):
         step_name = "run_b5_clear_rfid_cache"
         self._check_cancellation()
 
-        logger.info("🗑️ Sending ClearCache command to wallbox...")
+        # Step 1: Enable AuthorizationCacheEnabled
+        logger.info("📋 Step 1: Enabling AuthorizationCacheEnabled...")
+        from app.test_helpers import get_configuration_value
+
+        # Get current value
+        current_value = await get_configuration_value(self.handler, "AuthorizationCacheEnabled")
+        logger.info(f"   Current AuthorizationCacheEnabled value: {current_value}")
+
+        # Set to true if not already
+        if current_value != "true":
+            logger.info("   📝 Setting AuthorizationCacheEnabled to 'true'...")
+            change_request = ChangeConfigurationRequest(
+                key="AuthorizationCacheEnabled",
+                value="true"
+            )
+
+            try:
+                change_response = await self.handler.send_and_wait(
+                    "ChangeConfiguration",
+                    change_request,
+                    timeout=OCPP_MESSAGE_TIMEOUT
+                )
+
+                if change_response and change_response.get("status") == "Accepted":
+                    logger.info("   ✅ AuthorizationCacheEnabled set to 'true'")
+                else:
+                    status = change_response.get("status", "Unknown") if change_response else "No response"
+                    logger.warning(f"   ⚠️ ChangeConfiguration status: {status}")
+
+            except Exception as e:
+                logger.error(f"   ❌ Error setting AuthorizationCacheEnabled: {e}")
+        else:
+            logger.info("   ✅ AuthorizationCacheEnabled already set to 'true'")
+
+        logger.info("")
+
+        # Step 2: Clear the cache
+        logger.info("🗑️ Step 2: Sending ClearCache command to wallbox...")
         logger.info("   📘 This command clears the local authorization list (RFID memory)")
         logger.info("   📘 After clearing, only RFID cards in the Central System's authorization list will be accepted")
 
@@ -340,9 +379,8 @@ class TestSeriesB(OcppTestBase):
         logger.info("   • Please wait...")
         logger.info("")
 
-        # Ensure wallbox is ready (stop running transactions, reset to Available)
-        await self._ensure_ready_state()
-        logger.info("")
+        # Note: B.1 doesn't need _ensure_ready_state() since RFID can be tapped in any wallbox state
+        # The configuration verification below is sufficient
 
         # Step 1: Verify required configuration parameters
         required_params = [
@@ -355,6 +393,11 @@ class TestSeriesB(OcppTestBase):
                 "key": "LocalAuthorizeOffline",
                 "value": "false",
                 "description": "No offline start"
+            },
+            {
+                "key": "LocalAuthListEnabled",
+                "value": "false",
+                "description": "Disable local cache (online authorization only)"
             }
         ]
 
@@ -606,6 +649,11 @@ class TestSeriesB(OcppTestBase):
                 "key": "LocalPreAuthorize",
                 "value": "false",
                 "description": "Wait for authorization (don't auto-start)"
+            },
+            {
+                "key": "AuthorizationCacheEnabled",
+                "value": "false",
+                "description": "Disable authorization cache to avoid stray cached tags"
             }
         ]
 
@@ -712,9 +760,11 @@ class TestSeriesB(OcppTestBase):
                 tx_data.get("status") == "Ongoing"):
                 auto_started_tag = tx_data.get("id_tag") or "anonymous"
                 logger.error(f"❌ Transaction auto-started with idTag '{auto_started_tag}' before RFID tap")
-                logger.error(f"   Configuration: LocalAuthListEnabled=false, LocalAuthorizeOffline=false, LocalPreAuthorize=false")
+                logger.error(f"   💡 This indicates TxCtrlrTxStartPoint may be set to 'PowerPathClosed' (auto-start on plug-in)")
+                logger.error(f"   💡 For B.2 test, TxCtrlrTxStartPoint should be 'Authorized' (wait for RFID)")
+                logger.error(f"   💡 Please change this setting manually via the wallbox vendor app/interface")
                 await self._set_ev_state("A")
-                self._set_test_result(step_name, "FAILED", f"Auto-started with '{auto_started_tag}' ignoring OCPP parameters")
+                self._set_test_result(step_name, "FAILED", f"Auto-started with '{auto_started_tag}' - check TxCtrlrTxStartPoint setting")
                 return
 
         logger.info("   ✅ EV connected (cable plugged in)")
@@ -1105,15 +1155,49 @@ class TestSeriesB(OcppTestBase):
         logger.info("💡 Use case: Private home chargers - just plug in and charge!")
         logger.info("")
 
-        # Step 0: Verify and enable LocalPreAuthorize
+        # Step 0: Try to configure proper OCPP 1.6 Plug & Charge
+        logger.info("📋 Step 0: Configuring OCPP Plug & Charge parameters...")
+        logger.info("")
+
+        # Check if AllowOfflineTxForUnknownId is supported
+        logger.info("🔍 Checking for AllowOfflineTxForUnknownId support...")
+        config_check = await self.handler.send_and_wait(
+            "GetConfiguration",
+            {"key": ["AllowOfflineTxForUnknownId"]}
+        )
+
+        supports_anonymous = False
+        if config_check and "unknownKey" in config_check and "AllowOfflineTxForUnknownId" in config_check.get("unknownKey", []):
+            logger.warning("⚠️  Wallbox does not support 'AllowOfflineTxForUnknownId'")
+            logger.info("   💡 This is required for true OCPP anonymous Plug & Charge")
+            logger.info("   💡 Wallbox may use vendor-specific auto-start instead")
+        else:
+            supports_anonymous = True
+            logger.info("   ✅ AllowOfflineTxForUnknownId is supported")
+
+        # Configure required parameters
         required_params = [
             {
                 "key": "LocalPreAuthorize",
                 "value": "true",
                 "description": "Enable plug-and-charge (auto-start on plug-in)"
+            },
+            {
+                "key": "LocalAuthorizeOffline",
+                "value": "true",
+                "description": "Allow offline authorization"
             }
         ]
 
+        # Add AllowOfflineTxForUnknownId if supported
+        if supports_anonymous:
+            required_params.insert(0, {
+                "key": "AllowOfflineTxForUnknownId",
+                "value": "true",
+                "description": "Allow anonymous transactions (no idTag)"
+            })
+
+        logger.info("")
         success, message = await ensure_test_configuration(
             self.handler,
             required_params,
@@ -1136,23 +1220,32 @@ class TestSeriesB(OcppTestBase):
         await asyncio.sleep(2)
         logger.info("   ✅ Wallbox ready in idle state")
 
-        # Step 2: Plug in EV (State B) - this should automatically start charging
+        # Step 2: Plug in EV (State B) - cable connected
         logger.info("")
-        logger.info("🔌 Step 2: Plugging in EV...")
-        logger.info("   💡 With LocalPreAuthorize enabled, wallbox should auto-start transaction")
+        logger.info("🔌 Step 2: Plugging in EV cable...")
+        logger.info("   💡 Connecting cable to wallbox (State B)")
 
         await self._set_ev_state("B")
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
         logger.info("   ✅ EV cable connected (State B)")
 
-        # Step 3: Wait for automatic transaction start
+        # Step 3: Request power (State C) - this should trigger automatic transaction start
         logger.info("")
-        logger.info("⏳ Step 3: Waiting for automatic transaction start...")
+        logger.info("⚡ Step 3: EV requesting power...")
+        logger.info("   💡 With LocalPreAuthorize enabled, wallbox should auto-start transaction")
+
+        await self._set_ev_state("C")
+        await asyncio.sleep(2)
+        logger.info("   ✅ EV requesting power (State C)")
+
+        # Step 4: Wait for automatic transaction start
+        logger.info("")
+        logger.info("⏳ Step 4: Waiting for automatic transaction start...")
         logger.info("   💡 Wallbox should start transaction without RFID or remote command")
 
         transaction_id = None
         start_time = asyncio.get_event_loop().time()
-        timeout = 20  # Wait up to 20 seconds for auto-start
+        timeout = 15  # Wait up to 15 seconds for auto-start
 
         while (asyncio.get_event_loop().time() - start_time) < timeout:
             self._check_cancellation()
@@ -1180,20 +1273,72 @@ class TestSeriesB(OcppTestBase):
         # Wait a moment for transaction details to be fully populated
         await asyncio.sleep(0.5)
 
-        # Get transaction details
-        tx_data = TRANSACTIONS.get(transaction_id, {})
+        # Get transaction details and verify OCPP compliance
+        tx_dict_key = next((tid for tid, tdata in TRANSACTIONS.items() if
+                           tdata.get("cp_transaction_id") == transaction_id), None)
+        tx_data = TRANSACTIONS.get(tx_dict_key, {}) if tx_dict_key else {}
         id_tag = tx_data.get("id_tag", "Unknown")
 
         logger.info(f"   ✅ Transaction automatically started!")
         logger.info(f"   ⚡ Transaction ID: {transaction_id}")
-        logger.info(f"   🏷️  Default idTag: '{id_tag}'")
+        logger.info(f"   🏷️  idTag used: '{id_tag}'")
         logger.info("")
-        logger.info("💡 This is the default idTag used for plug-and-charge")
-        logger.info("   (Common values: 'ElecqAutoStart', 'AutoStart', etc.)")
 
-        # Step 5: Verify charging is active
+        # Verify OCPP compliance - STRICT: Only accept proper OCPP anonymous transactions
+        logger.info("🔍 Step 5: Verifying OCPP Plug & Charge compliance...")
+
+        # Check if idTag is null/empty/unknown (proper OCPP)
+        is_anonymous = (id_tag is None or
+                       id_tag == "" or
+                       id_tag.lower() in ["unknown", "null", "none"])
+
+        if is_anonymous:
+            logger.info("   ✅ OCPP COMPLIANT: Transaction started with anonymous idTag")
+            logger.info("   💡 This is the correct OCPP 1.6 Plug & Charge behavior")
+            if supports_anonymous:
+                logger.info("   ✅ AllowOfflineTxForUnknownId is working correctly")
+        else:
+            logger.error(f"   ❌ OCPP NON-COMPLIANT: Transaction used vendor-specific idTag '{id_tag}'")
+            logger.error("   ❌ Proper OCPP 1.6 Plug & Charge MUST use null/empty idTag for anonymous charging")
+            logger.error("   ❌ This wallbox uses vendor-specific implementation instead of OCPP standard")
+            if not supports_anonymous:
+                logger.error("   ❌ Wallbox doesn't support AllowOfflineTxForUnknownId parameter")
+            logger.error("")
+            logger.error("   💡 To pass this test, wallbox must:")
+            logger.error("      1. Support AllowOfflineTxForUnknownId configuration parameter")
+            logger.error("      2. Send StartTransaction with idTag: null or empty")
+            logger.error("      3. Follow OCPP 1.6-J specification for Plug & Charge")
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("❌ TEST FAILED: Vendor-specific implementation not accepted")
+            logger.info("=" * 60)
+            self._set_test_result(step_name, "FAILED")
+
+            # Cleanup before returning
+            if transaction_id:
+                try:
+                    await self.handler.send_and_wait(
+                        "RemoteStopTransaction",
+                        RemoteStopTransactionRequest(transactionId=transaction_id),
+                        timeout=OCPP_MESSAGE_TIMEOUT
+                    )
+                    logger.info("🧹 Stopped test transaction")
+                except:
+                    pass
+
+            try:
+                await self._set_ev_state("A")
+                logger.info("🧹 Reset EV to disconnected state")
+            except:
+                pass
+
+            return
+
         logger.info("")
-        logger.info("⚡ Step 5: Verifying charging session is active...")
+
+        # Step 6: Verify charging is active
+        logger.info("")
+        logger.info("⚡ Step 6: Verifying charging session is active...")
 
         await asyncio.sleep(2)
 

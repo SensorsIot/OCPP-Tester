@@ -27,7 +27,7 @@ from app import web_ui_server
 from app.ocpp_handler import OCPPHandler
 from app.streamers import LogStreamer, WebSocketLogHandler, EVStatusStreamer
 
-from app.core import SERVER_SETTINGS, get_shutdown_event, set_shutdown_event
+from app.core import SERVER_SETTINGS, get_shutdown_event, set_shutdown_event, set_ws_server, set_ws_server_factory
 SERVER_SETTINGS["auto_detection_completed"] = False
 from app.ev_simulator_manager import EVSimulatorManager
 import uvicorn
@@ -110,7 +110,7 @@ class FileLogFormatter(logging.Formatter):
 
 async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: asyncio.Event, ev_sim_manager: EVSimulatorManager):
     from datetime import datetime, timezone
-    from app.core import register_discovered_charge_point, unregister_charge_point
+    from app.core import register_discovered_charge_point, unregister_charge_point, is_charge_point_blocked
 
     charge_point_id = path.strip("/")
     logger.info(f"🔌 OCPP connection received from {websocket.remote_address} on path '{path}'")
@@ -120,6 +120,12 @@ async def handle_ocpp(websocket: ServerConnection, path: str, refresh_trigger: a
         logger.warning(f"❌ Invalid OCPP path '{path}' or conflicts with reserved paths. Closing connection.")
         logger.warning(f"🔍 LOG_WS_PATH.strip('/'): '{LOG_WS_PATH.strip('/')}'")
         logger.warning(f"🔍 EV_STATUS_WS_PATH.strip('/'): '{EV_STATUS_WS_PATH.strip('/')}'")
+        await websocket.close()
+        return
+
+    # Check if this charge point is blocked (for testing purposes)
+    if is_charge_point_blocked(charge_point_id):
+        logger.info(f"🚫 Rejecting connection from blocked charge point '{charge_point_id}' (test in progress)")
         await websocket.close()
         return
 
@@ -278,13 +284,24 @@ async def main():
         logger.info(f"📍 Listening on all interfaces (0.0.0.0) - accessible from network")
     except Exception as e:
         logger.warning(f"Could not determine network info: {e}")
-    ws_server = await serve(
-        lambda ws: ws_router(ws, log_streamer, ev_status_streamer, ev_refresh_trigger, ev_sim_manager),
-        OCPP_HOST,
-        OCPP_PORT,
-        ping_interval=None,
-        max_size=2**22,
-    )
+    # Create server factory function that can be used to restart server during tests
+    async def create_ws_server():
+        return await serve(
+            lambda ws: ws_router(ws, log_streamer, ev_status_streamer, ev_refresh_trigger, ev_sim_manager),
+            OCPP_HOST,
+            OCPP_PORT,
+            ping_interval=None,
+            max_size=2**22,
+        )
+
+    # Store factory for test control
+    set_ws_server_factory(create_ws_server)
+
+    # Create initial server
+    ws_server = await create_ws_server()
+
+    # Store server reference for test control
+    set_ws_server(ws_server)
 
     tasks = [
         http_task,

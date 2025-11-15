@@ -108,6 +108,9 @@ class OcppMessageHandlers:
         elif payload.idTag in VALID_ID_TAGS:
             status = "Accepted"
             logger.info(f"    ✅ Legacy ID Tag: {payload.idTag} → Status: {status}")
+        elif payload.idTag.startswith(("C1_", "C2_", "C3_", "C4_", "TEST_CARD_", "B1_", "B2_", "B3_", "B4_", "B5_", "B6_", "B7_")):
+            status = "Accepted"
+            logger.info(f"    🧪 Test ID Tag: {payload.idTag} → Status: {status}")
         else:
             status = "Invalid"
             logger.info(f"    ❌ Unknown ID Tag: {payload.idTag} → Status: {status}")
@@ -144,7 +147,8 @@ class OcppMessageHandlers:
         if (is_first_status and
             not SERVER_SETTINGS.get("auto_detection_completed", False) and
             "auto_detection_triggered" not in CHARGE_POINTS[charge_point_id]):
-            logger.info("🔍 Triggering GetConfiguration for auto-detection (fire-and-forget) on FIRST StatusNotification...")
+            logger.info("🔍 AUTO-DETECT: Sending GetConfiguration request to detect charging rate unit (W or A)...")
+            logger.debug("🔍 AUTO-DETECT: This is a fire-and-forget request triggered by first StatusNotification")
             CHARGE_POINTS[charge_point_id]["auto_detection_triggered"] = True
             asyncio.create_task(self._trigger_get_configuration())
 
@@ -414,6 +418,8 @@ class OcppMessageHandlers:
             request_payload = GetConfigurationRequest(key=["ChargingScheduleAllowedChargingRateUnit"])
             message = create_ocpp_message(2, unique_id, request_payload, "GetConfiguration", self.charge_point_id)
             await self.handler.websocket.send(message)
-            logger.debug(f"🔍 Sent GetConfiguration for ChargingScheduleAllowedChargingRateUnit (auto-detection) from {self.charge_point_id}")
+            logger.debug(f"🔍 AUTO-DETECT: Sent GetConfiguration request for 'ChargingScheduleAllowedChargingRateUnit' key (id={unique_id[:8]}...)")
+            logger.debug(f"🔍 AUTO-DETECT: This request does not block other operations. Response will be processed when received.")
         except Exception as e:
-            logger.warning(f"⚠️ Failed to send GetConfiguration for auto-detection: {e}")
+            logger.warning(f"⚠️ AUTO-DETECT: Failed to send GetConfiguration request: {e}")
+            SERVER_SETTINGS["auto_detection_completed"] = True

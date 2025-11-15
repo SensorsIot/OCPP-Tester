@@ -46,7 +46,7 @@ Retrieves 35 OCPP 1.6-J standard configuration parameters individually.
 
 #### A.4: Trigger All Messages
 Tests TriggerMessage functionality for all supported message types.
-- Requires RemoteTrigger feature profile
+- Assumes RemoteTrigger feature profile is supported (standard OCPP 1.6-J requirement)
 - Tests StatusNotification, BootNotification, DiagnosticsStatusNotification triggers
 - Tests FirmwareStatusNotification, Heartbeat, and MeterValues triggers
 - Validates essential runtime messages (Heartbeat, MeterValues, StatusNotification)
@@ -387,33 +387,6 @@ Tests now validate actual implementation, not just command acceptance:
 **Files Modified:**
 - `/home/ocpp-tester/app/templates/index.html` - Button blocking logic
 
-### 5.4 Configuration Refresh Before Tests (v1.1.1)
-
-**Problem Addressed:** Test logs showed stale configuration data from previous test runs, making it difficult to debug configuration-related issues.
-
-**Solution:** Silent GetConfiguration request before each test refreshes the configuration cache.
-
-**Implementation:**
-- Before every test execution, server calls GetConfiguration with empty key array
-- Request is silent (not logged to test execution log to avoid clutter)
-- Uses 30-second timeout with graceful failure handling
-- Updates configuration_details cache in CHARGE_POINTS global state
-- Includes handling of unknown keys (displays as "N/A (Not Supported)")
-
-**Impact:**
-- Adds ~2-3 seconds to each test execution time
-- Ensures test logs show accurate current configuration
-- Configuration summary reflects wallbox state at test start time
-- Improves debugging of configuration-dependent test failures
-
-**Technical Details:**
-- Uses original_send_and_wait to bypass test log capture
-- Empty key array retrieves all available configuration keys
-- Handles both readonly and writable parameters
-- Graceful failure on timeout (logs debug message only)
-
-**Files Modified:**
-- `/home/ocpp-tester/app/web_ui_server.py` - Configuration refresh logic
 
 ### 5.5 Extended Test Timeout (v1.1.1)
 
@@ -676,18 +649,20 @@ All test logs must follow a sequence-based structure that groups related OCPP me
 - Use `---` to separate sequences for visual clarity
 - Maintains readability when scanning through long logs
 
-#### 10.4.3 Message Filtering Implementation
+#### 10.4.3 Smart Message Filtering
 
-**Filter unsolicited messages by:**
-1. Message type check (Heartbeat, StatusNotification, MeterValues)
-2. Test context (is message explicitly expected?)
-3. Test phase (preparation, execution, cleanup)
+**Filtering Strategy:**
+Filtering is applied based on test type to balance debugging visibility with log readability.
 
-**Always log if:**
-- Message is a direct result of test action
-- Message is explicitly waited for by test
-- Message indicates transaction state change
-- Message is part of expected OCPP flow for test scenario
+**Test-Specific Rules:**
+
+1. **Test A.6 (EVCC Reboot Behavior):** Logs ALL messages including Heartbeat, StatusNotification, MeterValues (complete OCPP trace for reconnection debugging)
+
+2. **C-Series Tests (Charging Sessions):** Logs ALL messages including MeterValues (needed for energy consumption verification)
+
+3. **Other Tests (A-series, B-series, X-series):** Filters background noise (Heartbeat, StatusNotification, MeterValues) unless explicitly triggered by the test
+
+**Exception:** When a test explicitly triggers a message (e.g., TriggerMessage for StatusNotification), that message is logged regardless of filtering rules
 
 #### 10.4.4 Rationale
 
@@ -699,9 +674,8 @@ All test logs must follow a sequence-based structure that groups related OCPP me
 
 ---
 
-*Log Requirements Added: 2025-11-13*
-*Version: 1.3.0*
-*Applies to: All individual test logs and combined test logs*
+*Version: 1.3.20*
+*Last Updated: 2025-11-15*
 
 ## 11. API Endpoints
 

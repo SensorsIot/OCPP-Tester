@@ -480,17 +480,14 @@ def run_test_step(step_name):
     # Track triggered messages
     triggered_messages = set()
 
-    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None):
-        """Helper to log OCPP messages with full OCPP message format."""
-        # Filter out passive StatusNotification and BootNotification unless explicitly triggered
-        if msg_type == "RECEIVED" and action in ["StatusNotification", "BootNotification"]:
-            # Only log if this message type was triggered by TriggerMessage
-            if action not in triggered_messages:
-                return  # Skip logging this passive status update
-            else:
-                # Clear the trigger flag after logging
-                triggered_messages.discard(action)
+    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None, test_name: str = None):
+        """Helper to log OCPP messages with full OCPP message format.
 
+        Smart filtering:
+        - A.6 test: Log ALL messages (complete OCPP trace needed)
+        - Other tests: Filter out Heartbeat, StatusNotification, MeterValues unless explicitly triggered
+        - Always log REQUEST/RESPONSE (test-initiated actions)
+        """
         if is_dataclass(payload):
             payload_dict = asdict(payload)
         elif isinstance(payload, dict):
@@ -518,6 +515,19 @@ def run_test_step(step_name):
         else:
             full_ocpp_message = None
 
+        # Smart filtering for RECEIVED messages (from charge point)
+        if msg_type == "RECEIVED":
+            # A.6 test: log ALL messages (needs complete trace of reconnection behavior)
+            if test_name and "a6" in test_name.lower():
+                pass  # Don't filter - log everything
+            # Other tests: filter noise unless explicitly triggered
+            elif action in ["Heartbeat", "StatusNotification", "MeterValues"]:
+                # Don't log unless this message was explicitly triggered by the test
+                if action not in triggered_messages:
+                    return  # Skip logging this message
+                # If it was triggered, log it and remove from triggered set
+                triggered_messages.discard(action)
+
         message_log.append({
             "timestamp": timestamp_str,
             "type": msg_type,
@@ -537,7 +547,7 @@ def run_test_step(step_name):
         message_id = str(uuid.uuid4())
 
         request_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        log_message("REQUEST", action, payload, request_timestamp, message_id)
+        log_message("REQUEST", action, payload, request_timestamp, message_id, test_name=step_name)
 
         response = await original_send_and_wait(action, payload, timeout)
 
@@ -545,9 +555,9 @@ def run_test_step(step_name):
 
         # Check if timeout occurred (response is None)
         if response is None:
-            log_message("RESPONSE_TIMEOUT", action, {"error": f"Timeout after {timeout}s - no response received from charge point"}, response_timestamp, message_id)
+            log_message("RESPONSE_TIMEOUT", action, {"error": f"Timeout after {timeout}s - no response received from charge point"}, response_timestamp, message_id, test_name=step_name)
         else:
-            log_message("RESPONSE", action, response, response_timestamp, message_id)
+            log_message("RESPONSE", action, response, response_timestamp, message_id, test_name=step_name)
 
         return response
 
@@ -557,31 +567,10 @@ def run_test_step(step_name):
             ocpp_handler.send_and_wait = wrapped_send_and_wait
             ocpp_handler.incoming_message_logger = log_message
 
-            # Refresh configuration before each test (silent - no logging to execution log)
-            from app.messages import GetConfigurationRequest
-            try:
-                config_response = await original_send_and_wait(
-                    "GetConfiguration",
-                    GetConfigurationRequest(key=[]),
-                    timeout=30
-                )
-                if config_response and config_response.get("configurationKey"):
-                    config_dict = {}
-                    for item in config_response["configurationKey"]:
-                        key = item["key"]
-                        value = item.get("value", "")
-                        readonly = item.get("readonly", False)
-                        display_value = f"{value} (RO)" if readonly else value
-                        config_dict[key] = display_value
-
-                    # Add unknown keys
-                    if config_response.get("unknownKey"):
-                        for key in config_response["unknownKey"]:
-                            config_dict[key] = "N/A (Not Supported)"
-
-                    CHARGE_POINTS[charge_point_id]["configuration_details"] = config_dict
-            except Exception as e:
-                logging.debug(f"Failed to refresh configuration before test: {e}")
+            # Store wrappers as attributes so they can be transferred if handler changes (e.g., during A.6 test)
+            ocpp_handler._test_wrapped_send_and_wait = wrapped_send_and_wait
+            ocpp_handler._test_log_message = log_message
+            ocpp_handler._original_send_and_wait = original_send_and_wait
 
             # Get current status only for tests that need it (skip A and B series)
             if not (step_name.startswith("run_a") or step_name.startswith("run_b")):
@@ -864,23 +853,7 @@ def run_test_step(step_name):
             # Helper function to check if message should be filtered
             def should_filter_message(msg):
                 """Returns True if message should be filtered out (not logged)"""
-                msg_type = msg.get('type')
-                action = msg.get('action', '')
-
-                # Never filter REQUEST or RESPONSE messages
-                if msg_type in ['REQUEST', 'RESPONSE', 'RESPONSE_TIMEOUT']:
-                    return False
-
-                # Filter unsolicited messages from charge point
-                if msg_type == 'RECEIVED':
-                    # Always keep these transaction-related messages
-                    if action in ['StartTransaction', 'StopTransaction', 'Authorize']:
-                        return False
-
-                    # Filter out background noise
-                    if action in ['Heartbeat', 'StatusNotification', 'MeterValues']:
-                        return True
-
+                # Show ALL messages for ALL tests (no filtering)
                 return False
 
             # Helper to clean emoji from message
@@ -947,11 +920,11 @@ def run_test_step(step_name):
                 ]
                 return any(pattern in message for pattern in description_patterns)
 
-            # Process messages chronologically - show only JSON messages
+            # Process messages chronologically - show execution logs AND JSON messages
             sequence_num = 0
 
             for log_entry in all_logs:
-                # Skip execution logs (INFO/WARNING/ERROR messages)
+                # Skip execution logs (INFO/WARNING/ERROR messages) - only show JSON
                 if log_entry["log_type"] == "EXECUTION":
                     continue
 
@@ -1108,20 +1081,21 @@ def run_c_all_tests():
     # Message log storage
     message_log = []
 
+    # Define test name for filtering (C-series needs MeterValues, so won't filter them out)
+    step_name = "c_all_tests"
+
     # Track triggered messages
     triggered_messages = set()
 
-    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None):
-        """Helper to log OCPP messages with full OCPP message format."""
-        # Filter out passive StatusNotification and BootNotification unless explicitly triggered
-        if msg_type == "RECEIVED" and action in ["StatusNotification", "BootNotification"]:
-            # Only log if this message type was triggered by TriggerMessage
-            if action not in triggered_messages:
-                return  # Skip logging this passive status update
-            else:
-                # Clear the trigger flag after logging
-                triggered_messages.discard(action)
+    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None, test_name: str = None):
+        """Helper to log OCPP messages with full OCPP message format.
 
+        Smart filtering:
+        - A.6 test: Log ALL messages (complete OCPP trace needed)
+        - C-series tests: Log ALL messages (needs MeterValues)
+        - Other tests: Filter out Heartbeat, StatusNotification, MeterValues unless explicitly triggered
+        - Always log REQUEST/RESPONSE (test-initiated actions)
+        """
         # Convert dataclass to dict if needed
         if is_dataclass(payload):
             payload_dict = asdict(payload)
@@ -1150,6 +1124,20 @@ def run_c_all_tests():
         else:
             full_ocpp_message = None
 
+        # Smart filtering for RECEIVED messages (from charge point)
+        # C-series tests need MeterValues, so don't filter for them
+        if msg_type == "RECEIVED":
+            # A.6 or C-series tests: log ALL messages
+            if test_name and ("a6" in test_name.lower() or "c_" in test_name.lower() or test_name.startswith("c")):
+                pass  # Don't filter - log everything
+            # Other tests: filter noise unless explicitly triggered
+            elif action in ["Heartbeat", "StatusNotification", "MeterValues"]:
+                # Don't log unless this message was explicitly triggered by the test
+                if action not in triggered_messages:
+                    return  # Skip logging this message
+                # If it was triggered, log it and remove from triggered set
+                triggered_messages.discard(action)
+
         message_log.append({
             "timestamp": timestamp_str,
             "type": msg_type,
@@ -1169,7 +1157,7 @@ def run_c_all_tests():
         message_id = str(uuid.uuid4())
 
         request_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        log_message("REQUEST", action, payload, request_timestamp, message_id)
+        log_message("REQUEST", action, payload, request_timestamp, message_id, test_name=step_name)
 
         response = await original_send_and_wait(action, payload, timeout)
 
@@ -1177,9 +1165,9 @@ def run_c_all_tests():
 
         # Check if timeout occurred (response is None)
         if response is None:
-            log_message("RESPONSE_TIMEOUT", action, {"error": f"Timeout after {timeout}s - no response received from charge point"}, response_timestamp, message_id)
+            log_message("RESPONSE_TIMEOUT", action, {"error": f"Timeout after {timeout}s - no response received from charge point"}, response_timestamp, message_id, test_name=step_name)
         else:
-            log_message("RESPONSE", action, response, response_timestamp, message_id)
+            log_message("RESPONSE", action, response, response_timestamp, message_id, test_name=step_name)
 
         return response
 
@@ -1514,20 +1502,21 @@ def run_b_all_tests():
     # Message log storage
     message_log = []
 
+    # Define test name for filtering (B-series tests will filter Heartbeat/StatusNotification/MeterValues)
+    step_name = "b_all_tests"
+
     # Track triggered messages
     triggered_messages = set()
 
-    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None):
-        """Helper to log OCPP messages with full OCPP message format."""
-        # Filter out passive StatusNotification and BootNotification unless explicitly triggered
-        if msg_type == "RECEIVED" and action in ["StatusNotification", "BootNotification"]:
-            # Only log if this message type was triggered by TriggerMessage
-            if action not in triggered_messages:
-                return  # Skip logging this passive status update
-            else:
-                # Clear the trigger flag after logging
-                triggered_messages.discard(action)
+    def log_message(msg_type: str, action: str, payload: Any, timestamp_str: str, message_id: str = None, test_name: str = None):
+        """Helper to log OCPP messages with full OCPP message format.
 
+        Smart filtering:
+        - A.6 test: Log ALL messages (complete OCPP trace needed)
+        - C-series tests: Log ALL messages (needs MeterValues)
+        - Other tests: Filter out Heartbeat, StatusNotification, MeterValues unless explicitly triggered
+        - Always log REQUEST/RESPONSE (test-initiated actions)
+        """
         # Convert dataclass to dict if needed
         if is_dataclass(payload):
             payload_dict = asdict(payload)
@@ -1556,6 +1545,20 @@ def run_b_all_tests():
         else:
             full_ocpp_message = None
 
+        # Smart filtering for RECEIVED messages (from charge point)
+        # C-series tests need MeterValues, so don't filter for them
+        if msg_type == "RECEIVED":
+            # A.6 or C-series tests: log ALL messages
+            if test_name and ("a6" in test_name.lower() or "c_" in test_name.lower() or test_name.startswith("c")):
+                pass  # Don't filter - log everything
+            # Other tests: filter noise unless explicitly triggered
+            elif action in ["Heartbeat", "StatusNotification", "MeterValues"]:
+                # Don't log unless this message was explicitly triggered by the test
+                if action not in triggered_messages:
+                    return  # Skip logging this message
+                # If it was triggered, log it and remove from triggered set
+                triggered_messages.discard(action)
+
         message_log.append({
             "timestamp": timestamp_str,
             "type": msg_type,
@@ -1575,7 +1578,7 @@ def run_b_all_tests():
         message_id = str(uuid.uuid4())
 
         request_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        log_message("REQUEST", action, payload, request_timestamp, message_id)
+        log_message("REQUEST", action, payload, request_timestamp, message_id, test_name=step_name)
 
         response = await original_send_and_wait(action, payload, timeout)
 
@@ -1583,9 +1586,9 @@ def run_b_all_tests():
 
         # Check if timeout occurred (response is None)
         if response is None:
-            log_message("RESPONSE_TIMEOUT", action, {"error": f"Timeout after {timeout}s - no response received from charge point"}, response_timestamp, message_id)
+            log_message("RESPONSE_TIMEOUT", action, {"error": f"Timeout after {timeout}s - no response received from charge point"}, response_timestamp, message_id, test_name=step_name)
         else:
-            log_message("RESPONSE", action, response, response_timestamp, message_id)
+            log_message("RESPONSE", action, response, response_timestamp, message_id, test_name=step_name)
 
         return response
 

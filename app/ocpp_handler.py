@@ -168,7 +168,7 @@ class OCPPHandler:
             await asyncio.wait_for(event.wait(), timeout=timeout)
             return pending_request.get("response_payload")
         except asyncio.TimeoutError:
-            logger.error(f"Timeout: No response for {action} (id={unique_id}) within {timeout}s.")
+            logger.error(f"⏱️ Timeout: No response received for {action} request (id={unique_id[:8]}...) from {self.charge_point_id} within {timeout}s. The charge point may not support this command or is not responding.")
             return None
         finally:
             self.pending_requests.pop(unique_id, None)
