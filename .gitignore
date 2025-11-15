@@ -72,3 +72,13 @@ index.html
 
 # Test execution logs
 logs/
+
+# System files
+.sudo_as_admin_successful
+
+# Runtime files
+nohup.out
+*.pid
+
+# Temporary restart logs
+/tmp/restart.log
