@@ -64,17 +64,17 @@ class OcppTestSteps:
         """A.3: Check Single Parameters"""
         return await self.series_a.run_a3_check_single_parameters()
 
-    async def run_a4_check_initial_state(self):
-        """A.4: Check Initial State"""
-        return await self.series_a.run_a4_check_initial_state()
+    async def run_a4_trigger_all_messages_test(self):
+        """A.4: Trigger All Messages Test"""
+        return await self.series_a.run_a4_trigger_all_messages_test()
 
-    async def run_a5_trigger_all_messages_test(self):
-        """A.5: Trigger All Messages Test"""
-        return await self.series_a.run_a5_trigger_all_messages_test()
+    async def run_a5_status_and_meter_value_acquisition(self):
+        """A.5: Status and Meter Value Acquisition"""
+        return await self.series_a.run_a5_status_and_meter_value_acquisition()
 
-    async def run_a6_status_and_meter_value_acquisition(self):
-        """A.6: Status and Meter Value Acquisition"""
-        return await self.series_a.run_a6_status_and_meter_value_acquisition()
+    async def run_a6_evcc_reboot_behavior(self):
+        """A.6: EVCC Reboot Behavior"""
+        return await self.series_a.run_a6_evcc_reboot_behavior()
 
     async def run_b1_rfid_public_charging_test(self):
         """B.1: RFID Authorization Before Plug-in (tap-first authorization)"""
@@ -127,7 +127,3 @@ class OcppTestSteps:
     async def run_x1_reboot_wallbox(self):
         """X.1: Reboot Wallbox"""
         return await self.series_x.run_x1_reboot_wallbox()
-
-    async def run_x2_dump_all_configuration(self):
-        """X.2: Dump All Configuration"""
-        return await self.series_x.run_x2_dump_all_configuration()

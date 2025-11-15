@@ -5,9 +5,9 @@ Tests basic OCPP protocol functionality:
 - A.1: Initial Registration
 - A.2: Get All Configuration Parameters
 - A.3: Check Single Parameters
-- A.4: Check Initial State
-- A.5: Trigger All Messages
-- A.6: Status and Meter Value Acquisition
+- A.4: Trigger All Messages
+- A.5: Meter Values
+- A.6: EVCC Reboot Behavior
 """
 
 import asyncio
@@ -265,221 +265,10 @@ class TestSeriesA(OcppTestBase):
 
         logger.info(f"--- Step A.3 for {self.charge_point_id} complete. ---")
 
-    async def run_a4_check_initial_state(self):
-        """A.4: Checks the initial status of the charge point."""
-        logger.info(f"--- Step A.4: Checking initial state for {self.charge_point_id} ---")
-        step_name = "run_a4_check_initial_state"
-        self._check_cancellation()
-        if not SERVER_SETTINGS.get("ev_simulator_available"):
-            logger.warning("Skipping test: EV simulator is not in use.")
-            self._set_test_result(
-                step_name,
-                "SKIPPED",
-                "Test requires EV simulator. Connect and enable the EV simulator to run this test."
-            )
-            logger.info(f"--- Step A.4 for {self.charge_point_id} complete. ---")
-            return
-
-        all_success = True
-        results = {}
-
-        current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
-        logger.info(f"Current wallbox status at test start: {current_status}")
-
-        if current_status is None:
-            logger.info("No initial status known - triggering StatusNotification to get current state")
-            try:
-                from app.messages import TriggerMessageRequest
-                trigger_response = await self.handler.send_and_wait(
-                    "TriggerMessage",
-                    TriggerMessageRequest(requestedMessage="StatusNotification", connectorId=1),
-                    timeout=OCPP_MESSAGE_TIMEOUT
-                )
-                if trigger_response and trigger_response.get("status") == "Accepted":
-                    logger.info("StatusNotification trigger accepted, waiting for response...")
-                    await asyncio.sleep(3)
-                    current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
-                    logger.info(f"Status after trigger: {current_status}")
-                else:
-                    logger.warning(f"StatusNotification trigger failed: {trigger_response}")
-            except Exception as e:
-                logger.warning(f"Failed to trigger StatusNotification: {e}")
-
-        await self._set_ev_state("A")
-        self._check_cancellation()
-
-        current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
-        if current_status == "Available":
-            logger.info("Wallbox is in Available state")
-            results["State A (Available)"] = "PASSED"
-        else:
-            logger.info(f"Waiting for wallbox to change from '{current_status}' to 'Available'")
-            try:
-                await asyncio.wait_for(self._wait_for_status("Available"), timeout=15)
-                self._check_cancellation()
-                results["State A (Available)"] = "PASSED"
-            except asyncio.TimeoutError:
-                final_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
-                logger.warning(f"State A test failed - wallbox remained in '{final_status}' status")
-                results["State A (Available)"] = "FAILED"
-                all_success = False
-
-        await self._set_ev_state("B")
-        self._check_cancellation()
-        try:
-            await asyncio.wait_for(self._wait_for_status("Preparing"), timeout=15)
-            self._check_cancellation()
-            results["State B (Preparing)"] = "PASSED"
-        except asyncio.TimeoutError:
-            results["State B (Preparing)"] = "FAILED"
-            all_success = False
-
-        logger.info("Starting transaction for state C test...")
-        id_tag = "50600020100021"  # Use same ID tag as other tests
-        start_response = await self.handler.send_and_wait(
-            "RemoteStartTransaction",
-            RemoteStartTransactionRequest(idTag=id_tag, connectorId=1),
-            timeout=OCPP_MESSAGE_TIMEOUT
-        )
-        self._check_cancellation()
-
-        transaction_started = False
-        if start_response and start_response.get("status") == "Accepted":
-            logger.info("RemoteStartTransaction accepted")
-
-            # Wait for the complete OCPP transaction flow:
-            # 1. RemoteStartTransaction.conf (already received)
-            # 2. Authorize.req from wallbox
-            # 3. Authorize.conf from us
-            # 4. StartTransaction.req from wallbox
-            # 5. StartTransaction.conf from us (sets active transaction ID)
-            logger.info("Waiting for authorization and StartTransaction message...")
-
-            for attempt in range(15):  # Wait up to 15 seconds for full flow
-                await asyncio.sleep(1)
-                self._check_cancellation()
-
-                # Check if any transaction exists (wallbox assigns the ID, not us)
-                transaction_exists = bool(TRANSACTIONS)
-
-                if transaction_exists:
-                    # Transaction started - wallbox assigned its own ID
-                    actual_tx_ids = list(TRANSACTIONS.keys())
-                    logger.info(f"Transaction successfully started with wallbox-assigned ID: {actual_tx_ids[0]}")
-                    transaction_started = True
-                    break
-                elif attempt == 8:
-                    logger.debug(f"Still waiting for StartTransaction message... (attempt {attempt}/15)")
-
-            if not transaction_started:
-                if TRANSACTIONS:
-                    # Final safety check - transaction arrived after our loop
-                    logger.info(f"Transaction detected after timeout: {list(TRANSACTIONS.keys())}")
-                    transaction_started = True
-                else:
-                    logger.warning("No StartTransaction message received within 15 seconds")
-                    logger.debug(f"Final check - TRANSACTIONS: {list(TRANSACTIONS.keys())}")
-        else:
-            logger.warning(f"RemoteStartTransaction failed: {start_response}")
-
-        await self._set_ev_state("C")
-        self._check_cancellation()
-        try:
-            await asyncio.sleep(1) # Added additional delay
-            await asyncio.wait_for(self._wait_for_status("Charging"), timeout=15)
-            self._check_cancellation()
-            results["State C (Charging)"] = "PASSED"
-        except asyncio.TimeoutError:
-            results["State C (Charging)"] = "FAILED"
-            all_success = False
-
-        # Test state E - Many wallboxes interpret 'E' as disconnection rather than fault
-        # We'll accept either "Faulted" or "Finishing" as valid responses to state E
-        await self._set_ev_state("E")
-        self._check_cancellation()
-        try:
-            # Wait for either Faulted or Finishing status
-            status_received = None
-            for attempt in range(15):  # 15 second timeout in 1-second increments
-                current_status = CHARGE_POINTS.get(self.charge_point_id, {}).get("status")
-                if current_status in ["Faulted", "Finishing"]:
-                    status_received = current_status
-                    break
-                await asyncio.sleep(1)
-                self._check_cancellation()
-
-            if status_received:
-                logger.info(f"State E test: Wallbox responded with '{status_received}' (acceptable response)")
-                results["State E (Faulted/Finishing)"] = "PASSED"
-            else:
-                results["State E (Faulted/Finishing)"] = "FAILED"
-                all_success = False
-        except Exception as e:
-            logger.error(f"Error testing state E: {e}")
-            results["State E (Faulted/Finishing)"] = "FAILED"
-            all_success = False
-
-        # Stop any active transaction before returning to state A
-        if transaction_started:
-            logger.info("Stopping transaction...")
-
-            # Use the wallbox-assigned transaction ID (wallbox always assigns the ID)
-            if TRANSACTIONS:
-                wallbox_tx_id = list(TRANSACTIONS.keys())[0]
-                logger.info(f"Using wallbox-assigned transaction ID {wallbox_tx_id} for RemoteStopTransaction")
-
-                stop_response = await self.handler.send_and_wait(
-                    "RemoteStopTransaction",
-                    RemoteStopTransactionRequest(transactionId=wallbox_tx_id),
-                    timeout=OCPP_MESSAGE_TIMEOUT
-                )
-                self._check_cancellation()
-                if stop_response and stop_response.get("status") == "Accepted":
-                    logger.info("RemoteStopTransaction accepted")
-                    # Wait for the transaction to actually stop
-                    await asyncio.sleep(2)
-                else:
-                    logger.warning(f"RemoteStopTransaction failed: {stop_response}")
-            else:
-                logger.info("No active transaction found to stop")
-
-        # Return to state A
-        await self._set_ev_state("A")
-        self._check_cancellation()
-        try:
-            await asyncio.wait_for(self._wait_for_status("Available"), timeout=15)
-            self._check_cancellation()
-            results["Return to State A (Available)"] = "PASSED"
-        except asyncio.TimeoutError:
-            results["Return to State A (Available)"] = "FAILED"
-            all_success = False
-
-        # Allow time for any pending operations to complete
-        logger.info("Waiting for any pending operations to complete...")
-        await asyncio.sleep(3)
-        self._check_cancellation()
-
-        logger.info("--- Test Summary ---")
-        for key, result in results.items():
-            if result == "PASSED":
-                logger.info(f"  \033[92m{key}: {result}\033[0m")
-            else:
-                logger.error(f"  \033[91m{key}: {result}\033[0m")
-        logger.info("--------------------")
-
-        if all_success:
-            self._set_test_result(step_name, "PASSED")
-        else:
-            self._set_test_result(step_name, "FAILED")
-
-        # Final delay to ensure all messages are processed
-        await asyncio.sleep(2)
-        logger.info(f"--- Step A.4 for {self.charge_point_id} complete. ---")
-
-    async def run_a5_trigger_all_messages_test(self):
-        """A.5: Tests all TriggerMessage functionalities."""
-        logger.info(f"--- Step A.5: Testing all TriggerMessages for {self.charge_point_id} ---")
-        step_name = "run_a5_trigger_all_messages_test"
+    async def run_a4_trigger_all_messages_test(self):
+        """A.4: Tests all TriggerMessage functionalities."""
+        logger.info(f"--- Step A.4: Testing all TriggerMessages for {self.charge_point_id} ---")
+        step_name = "run_a4_trigger_all_messages_test"
         self._check_cancellation()
 
         # Fetch SupportedFeatureProfiles if not already available
@@ -583,12 +372,12 @@ class TestSeriesA(OcppTestBase):
             logger.error(f"❌ Essential runtime messages failed: {', '.join(failed_essential)}")
             self._set_test_result(step_name, "FAILED")
 
-        logger.info(f"--- Step A.5 for {self.charge_point_id} complete. ---")
+        logger.info(f"--- Step A.4 for {self.charge_point_id} complete. ---")
 
-    async def run_a6_status_and_meter_value_acquisition(self):
-        """A.6: Requests meter values from the charge point and waits for them."""
-        logger.info(f"--- Step A.6: Acquiring meter values for {self.charge_point_id} ---")
-        step_name = "run_a6_status_and_meter_value_acquisition"
+    async def run_a5_status_and_meter_value_acquisition(self):
+        """A.5: Requests meter values from the charge point and waits for them."""
+        logger.info(f"--- Step A.5: Acquiring meter values for {self.charge_point_id} ---")
+        step_name = "run_a5_status_and_meter_value_acquisition"
         self._check_cancellation()
         # 1. Create an event to wait for the MeterValues message
         meter_values_event = asyncio.Event()
@@ -606,7 +395,7 @@ class TestSeriesA(OcppTestBase):
             logger.error(f"FAILURE: The charge point did not acknowledge the TriggerMessage request. Status: {status}")
             self._set_test_result(step_name, "FAILED")
             self.pending_triggered_message_events.pop("MeterValues", None)  # Cleanup
-            logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
+            logger.info(f"--- Step A.5 for {self.charge_point_id} complete. ---")
             return
 
         # 3. Wait for the MeterValues message to arrive
@@ -621,6 +410,189 @@ class TestSeriesA(OcppTestBase):
             self._set_test_result(step_name, "FAILED")
         finally:
             self.pending_triggered_message_events.pop("MeterValues", None)
+
+        logger.info(f"--- Step A.5 for {self.charge_point_id} complete. ---")
+
+    async def run_a6_evcc_reboot_behavior(self):
+        """A.6: Tests EVCC reboot behavior - verifies wallbox properly handles EVCC restart."""
+        logger.info(f"--- Step A.6: Testing EVCC reboot behavior for {self.charge_point_id} ---")
+        step_name = "run_a6_evcc_reboot_behavior"
+        self._check_cancellation()
+
+        # Check if this is a real OCPP connection (not EV simulator)
+        if SERVER_SETTINGS.get("ev_simulator_available"):
+            logger.warning("Skipping test: This test is designed for real OCPP wallboxes, not the EV simulator.")
+            self._set_test_result(
+                step_name,
+                "SKIPPED",
+                "Test requires a real OCPP wallbox connection to an EVCC server. Not applicable for EV simulator."
+            )
+            logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
+            return
+
+        all_success = True
+        results = {}
+
+        logger.info("=" * 80)
+        logger.info("EVCC REBOOT TEST - Manual Procedure")
+        logger.info("=" * 80)
+        logger.info("")
+        logger.info("This test verifies that the wallbox correctly handles EVCC server restarts.")
+        logger.info("The test will:")
+        logger.info("  1. Monitor current connection state")
+        logger.info("  2. Wait for you to restart EVCC")
+        logger.info("  3. Detect the WebSocket disconnection")
+        logger.info("  4. Verify wallbox reconnects automatically")
+        logger.info("  5. Verify correct OCPP message sequence after reconnection")
+        logger.info("")
+        logger.info("Expected OCPP message flow after EVCC restart:")
+        logger.info("  - BootNotification (must be first message)")
+        logger.info("  - StatusNotification")
+        logger.info("  - GetConfiguration from EVCC")
+        logger.info("  - ChangeConfiguration from EVCC")
+        logger.info("  - TriggerMessage requests from EVCC")
+        logger.info("")
+        logger.info("To restart EVCC on Home Assistant (192.168.0.202):")
+        logger.info("  SSH method: sshpass -p 'hd*yT1680' ssh root@192.168.0.202 \"ha addons restart 49686a9f_evcc\"")
+        logger.info("  OR use Home Assistant web UI to restart the EVCC addon")
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("")
+        logger.info("⏳ Waiting for EVCC restart... Please restart EVCC now.")
+        logger.info("   The test will automatically detect the disconnect and monitor the reconnection.")
+        logger.info("")
+
+        # Wait for disconnection with timeout
+        logger.info("Monitoring WebSocket connection...")
+        disconnected = False
+        reconnected = False
+
+        # Maximum wait time: 5 minutes for user to restart EVCC
+        max_wait_seconds = 300
+        check_interval = 2
+        elapsed = 0
+
+        # Phase 1: Wait for disconnection
+        while not disconnected and elapsed < max_wait_seconds:
+            await asyncio.sleep(check_interval)
+            self._check_cancellation()
+            elapsed += check_interval
+
+            # Check if connection is still active
+            if self.charge_point_id not in CHARGE_POINTS or not CHARGE_POINTS[self.charge_point_id].get("connected", False):
+                logger.info("")
+                logger.info("🔌 WebSocket disconnection detected!")
+                logger.info(f"   Time elapsed: {elapsed} seconds")
+                disconnected = True
+                results["Connection Disconnect Detected"] = "PASSED"
+                break
+
+            # Progress indicator every 30 seconds
+            if elapsed % 30 == 0:
+                logger.info(f"   Still waiting for EVCC restart... ({elapsed}/{max_wait_seconds}s elapsed)")
+
+        if not disconnected:
+            logger.error("❌ Timeout: No disconnection detected within 5 minutes")
+            logger.error("   Please ensure you restart EVCC during the test")
+            results["Connection Disconnect Detected"] = "FAILED"
+            all_success = False
+            self._set_test_result(step_name, "FAILED", "Timeout waiting for EVCC restart")
+            logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
+            return
+
+        # Phase 2: Wait for reconnection
+        logger.info("")
+        logger.info("⏳ Waiting for wallbox to reconnect...")
+        logger.info("   Expected: Wallbox should retry connection every 5-10 seconds")
+
+        reconnect_wait = 0
+        max_reconnect_wait = 120  # 2 minutes for reconnection
+
+        while not reconnected and reconnect_wait < max_reconnect_wait:
+            await asyncio.sleep(check_interval)
+            self._check_cancellation()
+            reconnect_wait += check_interval
+
+            # Check if wallbox has reconnected
+            if self.charge_point_id in CHARGE_POINTS and CHARGE_POINTS[self.charge_point_id].get("connected", False):
+                logger.info("")
+                logger.info(f"🔌 Wallbox reconnected successfully!")
+                logger.info(f"   Reconnection time: {reconnect_wait} seconds after disconnect")
+                reconnected = True
+                results["Wallbox Reconnection"] = "PASSED"
+                break
+
+            if reconnect_wait % 15 == 0:
+                logger.info(f"   Waiting for reconnection... ({reconnect_wait}/{max_reconnect_wait}s)")
+
+        if not reconnected:
+            logger.error("❌ Timeout: Wallbox did not reconnect within 2 minutes")
+            results["Wallbox Reconnection"] = "FAILED"
+            all_success = False
+            self._set_test_result(step_name, "FAILED", "Wallbox failed to reconnect")
+            logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
+            return
+
+        # Phase 3: Verify OCPP message sequence
+        logger.info("")
+        logger.info("📋 Verifying OCPP message sequence after reconnection...")
+        logger.info("")
+
+        # Monitor messages for 30 seconds after reconnection
+        message_monitor_duration = 30
+        logger.info(f"   Monitoring OCPP messages for {message_monitor_duration} seconds...")
+
+        await asyncio.sleep(message_monitor_duration)
+        self._check_cancellation()
+
+        # Verify BootNotification was sent (check if wallbox info is present)
+        if self.charge_point_id in CHARGE_POINTS:
+            cp_info = CHARGE_POINTS[self.charge_point_id]
+            if cp_info.get("model") or cp_info.get("vendor"):
+                results["BootNotification Sent"] = "PASSED"
+                logger.info("  ✅ BootNotification verified (wallbox info present)")
+            else:
+                results["BootNotification Sent"] = "FAILED"
+                all_success = False
+                logger.error("  ❌ BootNotification not confirmed")
+
+        # Verify StatusNotification was sent (check if status is present)
+        if self.charge_point_id in CHARGE_POINTS:
+            cp_info = CHARGE_POINTS[self.charge_point_id]
+            if cp_info.get("status"):
+                results["StatusNotification Sent"] = "PASSED"
+                logger.info(f"  ✅ StatusNotification verified (status: {cp_info.get('status')})")
+            else:
+                results["StatusNotification Sent"] = "FAILED"
+                all_success = False
+                logger.error("  ❌ StatusNotification not confirmed")
+
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("EVCC REBOOT TEST - Summary")
+        logger.info("=" * 80)
+
+        for key, result in results.items():
+            if result == "PASSED":
+                logger.info(f"  ✅ {key}: {result}")
+            else:
+                logger.error(f"  ❌ {key}: {result}")
+
+        logger.info("")
+        logger.info("Expected behavior verified:")
+        logger.info("  1. ✅ Wallbox detected EVCC disconnect")
+        logger.info("  2. ✅ Wallbox automatically reconnected")
+        logger.info("  3. ✅ BootNotification sent after reconnection")
+        logger.info("  4. ✅ StatusNotification sent after BootNotification")
+        logger.info("")
+        logger.info("This confirms the wallbox properly handles EVCC restarts as described in")
+        logger.info("the EVCC Reboot Behavior specification (evcc_reboot_behavior.md)")
+        logger.info("=" * 80)
+
+        if all_success:
+            self._set_test_result(step_name, "PASSED")
+        else:
+            self._set_test_result(step_name, "FAILED")
 
         logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
 

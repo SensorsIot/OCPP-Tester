@@ -56,12 +56,12 @@ Environment variables (defaults in `app/core.py`):
 ## 📊 Test Categories
 
 ### A. Core Communication & Status (6 tests)
-- **A.1**: ChangeConfiguration - Modify HeartbeatInterval
-- **A.2**: Get All Configuration - Retrieve all config keys
-- **A.3**: Get OCPP Standard Keys - Get 35 OCPP 1.6-J standard parameters
-- **A.4**: Check Initial State - Test EV state transitions (A→B→C→E)
-- **A.5**: Trigger All Messages - Test TriggerMessage functionality
-- **A.6**: Status and Meter Value Acquisition - Trigger and wait for MeterValues
+- **A.1**: Initial Registration - Verify charge point registration via BootNotification
+- **A.2**: Get All Configuration - Retrieve all config keys with empty array
+- **A.3**: Check Single Parameters - Get 35 OCPP 1.6-J standard parameters individually
+- **A.4**: Trigger All Messages - Test TriggerMessage functionality for all message types
+- **A.5**: Meter Values - Trigger and wait for MeterValues messages
+- **A.6**: EVCC Reboot Behavior - Test wallbox reconnection during EVCC server restart (manual)
 
 ### B. Authorization & Transaction Management (7 tests)
 - **B.1**: RFID Authorization Before Plug-in - Standard authorization flow with modal

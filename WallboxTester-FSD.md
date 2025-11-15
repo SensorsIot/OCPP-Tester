@@ -25,38 +25,49 @@ WallboxTester is an OCPP 1.6-J compliant test server for validating electric veh
 
 ### A. Core Communication & Status (6 tests)
 
-#### A.1: ChangeConfiguration
-Tests configuration modification via OCPP ChangeConfiguration command.
-- Modifies HeartbeatInterval parameter
-- Validates accepted/rejected/not-supported responses
+#### A.1: Initial Registration
+Verifies that the charge point has registered itself.
+- Sends TriggerMessage for BootNotification
+- Validates accepted status response
+- Confirms charge point is properly connected
 
 #### A.2: Get All Configuration
 Retrieves all configuration keys using GetConfiguration with empty key array.
 - May be limited by GetConfigurationMaxKeys parameter
 - Returns all available configuration parameters
+- Parses SupportedFeatureProfiles for capability detection
 
-#### A.3: Get OCPP Standard Keys
-Retrieves 35 OCPP 1.6-J standard configuration parameters.
-- Explicitly requests each standard key
+#### A.3: Check Single Parameters
+Retrieves 35 OCPP 1.6-J standard configuration parameters individually.
+- Explicitly requests each standard key with sliding window (max 5 concurrent)
 - Includes Core, Local Auth List, and Smart Charging profiles
 - Displays results in UI Parameter Info section
+- Tests configuration parameter availability
 
-#### A.4: Check Initial State
-Tests EV state transitions using EV simulator.
-- State A → Available (disconnected)
-- State B → Preparing (connected)
-- State C → Charging (charging)
-- State E → Faulted/Finishing (error)
-
-#### A.5: Trigger All Messages
+#### A.4: Trigger All Messages
 Tests TriggerMessage functionality for all supported message types.
 - Requires RemoteTrigger feature profile
-- Tests StatusNotification, MeterValues, BootNotification triggers
+- Tests StatusNotification, BootNotification, DiagnosticsStatusNotification triggers
+- Tests FirmwareStatusNotification, Heartbeat, and MeterValues triggers
+- Validates essential runtime messages (Heartbeat, MeterValues, StatusNotification)
 
-#### A.6: Status and Meter Value Acquisition
+#### A.5: Meter Values
 Triggers and waits for MeterValues messages.
-- Validates real-time metering data
-- Tests MeterValueSampleInterval configuration
+- Sends TriggerMessage for MeterValues on connector 1
+- Validates real-time metering data acquisition
+- Tests immediate data retrieval capability
+
+#### A.6: EVCC Reboot Behavior
+Tests wallbox behavior during EVCC server restart (manual test).
+- Monitors WebSocket connection state
+- Waits for user to restart EVCC server
+- Detects connection disconnection
+- Verifies automatic wallbox reconnection (within 2 minutes)
+- Validates correct OCPP message sequence after reconnection:
+  - BootNotification (must be first message)
+  - StatusNotification
+- Confirms compliance with EVCC reboot specification
+- **Note**: Designed for real OCPP wallboxes only, not EV simulator
 
 ### B. Authorization & Transaction Management (7 tests)
 
