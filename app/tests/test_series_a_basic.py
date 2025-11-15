@@ -419,13 +419,14 @@ class TestSeriesA(OcppTestBase):
         step_name = "run_a6_evcc_reboot_behavior"
         self._check_cancellation()
 
-        # Check if this is a real OCPP connection (not EV simulator)
-        if SERVER_SETTINGS.get("ev_simulator_available"):
-            logger.warning("Skipping test: This test is designed for real OCPP wallboxes, not the EV simulator.")
+        # Check if current connection is the EV simulator (skip if yes)
+        ev_sim_id = SERVER_SETTINGS.get("ev_simulator_charge_point_id", "Wallbox001")
+        if self.charge_point_id == ev_sim_id:
+            logger.warning(f"Skipping test: Current connection is EV simulator ({ev_sim_id}), not a real wallbox.")
             self._set_test_result(
                 step_name,
                 "SKIPPED",
-                "Test requires a real OCPP wallbox connection. Not applicable for EV simulator."
+                f"Test requires a real OCPP wallbox. Current connection is EV simulator ({ev_sim_id})."
             )
             logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
             return
