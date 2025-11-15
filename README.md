@@ -64,7 +64,7 @@ Environment variables (defaults in `app/core.py`):
 - **A.3**: Check Single Parameters - Get 35 OCPP 1.6-J standard parameters individually
 - **A.4**: Trigger All Messages - Test TriggerMessage functionality for all message types
 - **A.5**: Meter Values - Trigger and wait for MeterValues messages
-- **A.6**: EVCC Reboot Behavior - Test wallbox reconnection during EVCC server restart (manual)
+- **A.6**: EVCC Reboot Behavior - Automated test simulating EVCC reboot (server stop/restart, wallbox reconnection)
 
 ### B. Authorization & Transaction Management (7 tests)
 - **B.1**: RFID Authorization Before Plug-in - Standard authorization flow with modal
