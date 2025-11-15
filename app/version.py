@@ -4,7 +4,7 @@ OCPP Tester Version Information
 Update these constants whenever you make significant changes to the code.
 """
 
-__version__ = "1.3.20"
+__version__ = "1.3.21"
 __build_date__ = "2025-11-15"
 
 # Module-specific versions for tracking critical changes
@@ -14,6 +14,17 @@ __test_series_a_version__ = "1.1.2"  # Fixed A.6: Extended Phase 5 timeout to 60
 
 # Change log
 CHANGELOG = {
+    "1.3.21": {
+        "date": "2025-11-15",
+        "changes": [
+            "Removed cached configuration from all test logs",
+            "Configuration no longer shown in individual test logs",
+            "Configuration no longer shown in B All Tests logs",
+            "Configuration no longer shown in C All Tests logs",
+            "Configuration no longer shown in combined logs",
+            "Cleaner logs - configuration available from Test A.2 if needed"
+        ]
+    },
     "1.3.20": {
         "date": "2025-11-15",
         "changes": [

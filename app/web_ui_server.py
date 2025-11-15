@@ -660,15 +660,7 @@ def run_test_step(step_name):
 
             import json
 
-            # Write configuration summary at the top for ALL tests
-            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
-            if config_details:
-                f.write("CHARGE POINT CONFIGURATION SUMMARY\n")
-                f.write("=" * 80 + "\n")
-                f.write(json.dumps(config_details, indent=2))
-                f.write("\n" + "=" * 80 + "\n\n")
-
-            # For A.3 test, also write raw GetConfiguration response
+            # For A.3 test, write raw GetConfiguration response
             if step_name == "run_a3_check_single_parameters":
                 # Find GetConfiguration response in message log
                 for msg in message_log:
@@ -1314,16 +1306,6 @@ def run_c_all_tests():
 
             import json
 
-            # Get GetConfiguration response from charge point configuration
-            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
-            if config_details:
-                f.write("CHARGE POINT CONFIGURATION (from GetConfiguration)\n")
-                f.write("=" * 80 + "\n")
-                # Display as a formatted list
-                for key, value in sorted(config_details.items()):
-                    f.write(f"{key}: {value}\n")
-                f.write("=" * 80 + "\n\n")
-
             # Extract and display test parameters at the top
             f.write("TEST PARAMETERS\n")
             f.write("=" * 80 + "\n")
@@ -1711,15 +1693,6 @@ def run_b_all_tests():
             f.write(f"B.4: {b4_result}\n")
             f.write("-" * 80 + "\n\n")
 
-            # Write configuration details (from A.3) if available
-            config_details = CHARGE_POINTS[charge_point_id].get("configuration_details", {})
-            if config_details:
-                f.write("CHARGE POINT CONFIGURATION (A.3 Result)\n")
-                f.write("-" * 80 + "\n")
-                import json
-                f.write(json.dumps(config_details, indent=2))
-                f.write("\n" + "-" * 80 + "\n\n")
-
             # Write all OCPP messages
             f.write("OCPP MESSAGE LOG\n")
             f.write("=" * 80 + "\n\n")
@@ -1844,16 +1817,6 @@ def combine_logs():
             outfile.write(f"Combined Log Created: {timestamp}\n")
             outfile.write(f"Number of Individual Tests: {len(log_files)}\n")
             outfile.write("=" * 80 + "\n\n")
-
-            # Add GetConfiguration results if available
-            config_details = CHARGE_POINTS[active_charge_point_id].get("configuration_details", {})
-            if config_details:
-                outfile.write("CHARGE POINT CONFIGURATION (from GetConfiguration)\n")
-                outfile.write("=" * 80 + "\n")
-                # Display as a formatted list
-                for key, value in sorted(config_details.items()):
-                    outfile.write(f"{key}: {value}\n")
-                outfile.write("=" * 80 + "\n\n")
 
             # Append each log file
             for idx, log_file in enumerate(log_files, 1):
