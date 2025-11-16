@@ -625,20 +625,26 @@ class TestSeriesB(OcppTestBase):
         # Ensure wallbox is ready (stop running transactions, reset to Available)
         await self._ensure_ready_state()
         logger.info("")
-        logger.info("🎫 RFID AUTHORIZATION AFTER PLUG-IN TEST (Local Cache Authorization)")
-        logger.info("   📘 This tests OCPP local cache authorization after plug-in:")
-        logger.info("   📘 1. User plugs in EV first")
-        logger.info("   📘 2. User taps RFID card")
-        logger.info("   📘 3. Wallbox checks LOCAL cache (instant validation)")
-        logger.info("   📘 4. Transaction starts within 2 seconds (no network delay)")
+        logger.info("🎫 RFID AUTHORIZATION AFTER PLUG-IN TEST (Authorization Cache)")
+        logger.info("   📘 This tests OCPP authorization cache after plug-in:")
+        logger.info("   📘 1. Card is authorized online first (cached)")
+        logger.info("   📘 2. User plugs in EV")
+        logger.info("   📘 3. User taps RFID card")
+        logger.info("   📘 4. Wallbox checks AuthorizationCache (< 200ms lookup)")
+        logger.info("   📘 5. Transaction starts within 2 seconds (no network delay)")
         logger.info("")
 
         # Step 0: Verify required configuration parameters
         required_params = [
             {
-                "key": "LocalAuthListEnabled",
+                "key": "AuthorizationCacheEnabled",
                 "value": "true",
-                "description": "Enable local authorization cache"
+                "description": "Enable authorization cache for offline use"
+            },
+            {
+                "key": "LocalAuthListEnabled",
+                "value": "false",
+                "description": "Disable local authorization list (not using SendLocalList)"
             },
             {
                 "key": "LocalAuthorizeOffline",
@@ -649,11 +655,6 @@ class TestSeriesB(OcppTestBase):
                 "key": "LocalPreAuthorize",
                 "value": "false",
                 "description": "Wait for authorization (don't auto-start)"
-            },
-            {
-                "key": "AuthorizationCacheEnabled",
-                "value": "false",
-                "description": "Disable authorization cache to avoid stray cached tags"
             }
         ]
 
@@ -673,66 +674,70 @@ class TestSeriesB(OcppTestBase):
 
         logger.info("")
 
-        # Prepare local authorization list for the test
-        logger.info("📋 Step 0: Preparing local authorization list...")
-        logger.info("   💡 This test requires RFID cards in the local authorization cache")
-        logger.info("   💡 Note: This test uses LOCAL cache authorization (LocalAuthListEnabled=true)")
+        # Prepare authorization cache for the test
+        logger.info("📋 Step 0: Populating authorization cache...")
+        logger.info("   💡 This test requires the RFID card to be in AuthorizationCache")
+        logger.info("   💡 Performing online authorization to cache the card")
+        logger.info("")
 
-        # Clear existing local authorization cache
-        from app.messages import ClearCacheRequest, SendLocalListRequest, AuthorizationData, IdTagInfo, UpdateType
-        from datetime import datetime, timezone, timedelta
+        # Ensure EV simulator is unplugged during cache preparation
+        logger.info("   🔧 EV SIMULATOR: Ensuring state A (Unplugged)")
+        await self._set_ev_state("A")
+        await asyncio.sleep(2)
+        logger.info("   ✅ EV cable unplugged")
+        logger.info("")
 
-        logger.info("   🗑️  Step 0a: Clearing existing RFID cache...")
-        try:
-            clear_response = await self.handler.send_and_wait("ClearCache", ClearCacheRequest(), timeout=10)
-            if clear_response and clear_response.get("status") == "Accepted":
-                logger.info("   ✅ Local RFID cache cleared successfully")
-            else:
-                status = clear_response.get("status", "Unknown") if clear_response else "No response"
-                logger.warning(f"   ⚠️  ClearCache returned: {status}")
-        except Exception as e:
-            logger.warning(f"   ⚠️  Error clearing cache: {e}")
+        # Enable RFID test mode to accept any card
+        from app.ocpp_message_handlers import rfid_test_state
+        rfid_test_state["active"] = True
+        rfid_test_state["cards_presented"] = []
+        logger.debug("🔓 RFID test mode enabled - any card will be accepted")
 
-        await asyncio.sleep(1)
+        # Perform a quick online authorization to populate cache
+        logger.info("   📡 Step 0a: Performing online authorization to populate cache...")
+        logger.info("")
+        logger.info("👤 USER ACTION REQUIRED:")
+        logger.info("   • TAP your RFID card NOW to populate the authorization cache")
+        logger.info("   • This authorization will be cached for the main test")
+        logger.info("")
+        logger.info("⏳ Waiting for RFID card tap (timeout: 30 seconds)...")
 
-        # Send local authorization list with test cards
-        logger.info("   📤 Step 0b: Sending local authorization list to wallbox...")
-        logger.info("   💡 Adding test RFID cards to local cache for offline authorization")
+        # Clear any stale RFID data
+        from app.core import CHARGE_POINTS
+        if self.charge_point_id in CHARGE_POINTS:
+            CHARGE_POINTS[self.charge_point_id]["accepted_rfid"] = None
+            logger.debug("🔄 Cleared stale RFID data")
 
-        # Create authorization list with test cards
-        # Note: Add your physical RFID card IDs here if you know them in advance
-        # Otherwise, the test will accept any card via RFID test mode
-        expiry_date = (datetime.now(timezone.utc) + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        auth_list = [
-            AuthorizationData(
-                idTag="TEST_CARD_B2",
-                idTagInfo=IdTagInfo(status="Accepted", expiryDate=expiry_date)
-            )
-        ]
+        # Wait for RFID tap for cache population
+        cache_card_id = None
+        start_time = asyncio.get_event_loop().time()
+        timeout = 30
 
-        try:
-            send_list_request = SendLocalListRequest(
-                listVersion=1,
-                updateType=UpdateType.Full,
-                localAuthorizationList=auth_list
-            )
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            await asyncio.sleep(0.5)
+            self._check_cancellation()
 
-            send_list_response = await self.handler.send_and_wait(
-                "SendLocalList",
-                send_list_request,
-                timeout=15
-            )
+            # Check if we received an authorization
+            if self.charge_point_id in CHARGE_POINTS:
+                cp_data = CHARGE_POINTS[self.charge_point_id]
+                if cp_data.get("accepted_rfid"):
+                    cache_card_id = cp_data.get("accepted_rfid")
+                    logger.info(f"   ✅ RFID card authorized and cached: {cache_card_id}")
+                    logger.info("   💡 Card is now in AuthorizationCache for offline use")
+                    break
 
-            if send_list_response and send_list_response.get("status") == "Accepted":
-                logger.info(f"   ✅ Local authorization list sent successfully ({len(auth_list)} cards)")
-                logger.info("   💡 Cards can now be authorized offline (no backend required)")
-            else:
-                status = send_list_response.get("status", "Unknown") if send_list_response else "No response"
-                logger.warning(f"   ⚠️  SendLocalList returned: {status}")
-                logger.warning("   💡 Test may fail if wallbox doesn't support local authorization lists")
-        except Exception as e:
-            logger.warning(f"   ⚠️  Error sending local list: {e}")
-            logger.warning("   💡 Test will continue but may fail without local authorization list")
+        if not cache_card_id:
+            logger.error("❌ No RFID card detected within 30 seconds")
+            logger.info("   💡 Please tap your RFID card to populate the cache")
+            rfid_test_state["active"] = False
+            self._set_test_result(step_name, "FAILED")
+            return
+
+        # Disable RFID test mode after cache preparation
+        logger.info("")
+        logger.info("   ✅ Cache preparation complete")
+        rfid_test_state["active"] = False
+        await asyncio.sleep(1)  # Brief pause to let UI update
 
         await asyncio.sleep(2)
         logger.info("")
@@ -740,12 +745,8 @@ class TestSeriesB(OcppTestBase):
         logger.info("START TEST")
         logger.info("=" * 80)
         logger.info("")
-
-        # Enable RFID test mode - accept ANY card during B.2 test
-        from app.ocpp_message_handlers import rfid_test_state
-        rfid_test_state["active"] = True
-        rfid_test_state["cards_presented"] = []
-        logger.debug("🔓 RFID test mode enabled - any card will be accepted")
+        logger.info(f"   📋 Using cached card: {cache_card_id}")
+        logger.info("")
 
         # Step 1: Plug in EV first (before RFID tap)
         logger.info("📡 Step 1: Plugging in EV cable...")
@@ -785,8 +786,8 @@ class TestSeriesB(OcppTestBase):
         logger.info("   • TAP your RFID card on the wallbox reader within 30 seconds")
         logger.info("   • Test will FAIL if no card is presented")
         logger.info("")
-        logger.info("🤖 EXPECTED OCPP BEHAVIOR (Local Cache Authorization):")
-        logger.info("   • Wallbox checks LOCAL authorization list (instant)")
+        logger.info("🤖 EXPECTED OCPP BEHAVIOR (Authorization Cache):")
+        logger.info("   • Wallbox checks LOCAL authorization cache (instant)")
         logger.info("   • StartTransaction sent IMMEDIATELY (< 1 second)")
         logger.info("   • Authorize.req MAY be sent to backend (asynchronously, after StartTransaction)")
         logger.info("   • Backend response NOT required for charging to start")
@@ -858,9 +859,10 @@ class TestSeriesB(OcppTestBase):
         if not transaction_id:
             logger.error("❌ Transaction did not start")
             logger.info("   💡 Possible reasons:")
-            logger.info("   • RFID card not in local authorization list")
-            logger.info("   • LocalAuthListEnabled was not set correctly")
-            logger.info("   • Run B.6 (Send RFID List) to add your card to local cache")
+            logger.info("   • RFID card authorization was not cached in Step 0")
+            logger.info("   • AuthorizationCacheEnabled is not working correctly")
+            logger.info("   • LocalAuthorizeOffline may not be set to true")
+            logger.info("   • Wallbox may require backend Authorize.conf (cache not used)")
             await self._set_ev_state("A")
             self._set_test_result(step_name, "FAILED")
             return
