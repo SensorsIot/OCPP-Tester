@@ -1,8 +1,33 @@
-.local/
+# Security - SSH keys, tokens, credentials
 .ssh/
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.pub
+
+# Security - Environment variables and secrets
+.env
+.env.*
+*.secrets
+credentials.json
+secrets.yaml
+secrets.yml
+config.secrets.*
+
+# Security - Git credentials
+.git-credentials
+.netrc
+
+# User directories
+.local/
 .dotnet/
 .cache/
 .vscode-server/
+
 # Python virtual environment
 venv/
 
