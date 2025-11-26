@@ -682,7 +682,7 @@ class TestSeriesA(OcppTestBase):
             results["ChangeConfiguration WebSocketPingInterval"] = "FAILED"
             all_success = False
 
-        # 5.5: TriggerMessage for BootNotification
+        # 5.5: TriggerMessage for BootNotification (optional - not all wallboxes support this)
         logger.info("  5.5 - Sending TriggerMessage (BootNotification)...")
         try:
             trigger_response = await self.handler.send_and_wait(
@@ -695,13 +695,12 @@ class TestSeriesA(OcppTestBase):
                 results["TriggerMessage BootNotification"] = "PASSED"
             else:
                 status = trigger_response.get("status") if trigger_response else "NO_RESPONSE"
-                logger.error(f"    [FAIL] TriggerMessage (BootNotification): {status}")
-                results["TriggerMessage BootNotification"] = "FAILED"
-                all_success = False
+                logger.warning(f"    [WARN] TriggerMessage (BootNotification): {status} (optional per OCPP spec)")
+                results["TriggerMessage BootNotification"] = f"WARNING ({status})"
+                # Don't fail test - triggering BootNotification is optional per OCPP 1.6 spec
         except Exception as e:
-            logger.error(f"    [FAIL] TriggerMessage error: {e}")
-            results["TriggerMessage BootNotification"] = "FAILED"
-            all_success = False
+            logger.warning(f"    [WARN] TriggerMessage error: {e} (optional command)")
+            results["TriggerMessage BootNotification"] = "WARNING"
 
         # 5.6: TriggerMessage for MeterValues
         logger.info("  5.6 - Sending TriggerMessage (MeterValues)...")
