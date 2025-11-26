@@ -58,16 +58,22 @@ Triggers and waits for MeterValues messages.
 - Tests immediate data retrieval capability
 
 #### A.6: EVCC Reboot Behavior
-Tests wallbox behavior during EVCC server restart (manual test).
-- Monitors WebSocket connection state
-- Waits for user to restart EVCC server
-- Detects connection disconnection
-- Verifies automatic wallbox reconnection (within 2 minutes)
-- Validates correct OCPP message sequence after reconnection:
-  - BootNotification (must be first message)
+Tests wallbox behavior during EVCC server restart (fully automated test).
+- **Phase 1**: Stops OCPP server (closes port 8887)
+- **Phase 2**: 10-second offline period (simulates EVCC startup)
+- **Phase 3**: Restarts OCPP server (reopens port 8887)
+- **Phase 4**: Verifies wallbox reconnection and message sequence:
+  - BootNotification (should be first message per OCPP spec)
   - StatusNotification
-- Confirms compliance with EVCC reboot specification
-- **Note**: Designed for real OCPP wallboxes only, not EV simulator
+- **Phase 5**: Sends EVCC configuration commands (GetConfiguration, ChangeConfiguration, TriggerMessage)
+- **Optional Features**: TriggerMessage for BootNotification is optional per OCPP 1.6 spec
+  - If rejected: Logged as WARNING, test continues with PARTIAL result
+  - If accepted: Test passes normally
+- **Result Codes**:
+  - PASSED (green): All steps successful, no warnings
+  - PARTIAL (yellow): Test passed but with warnings (e.g., optional features not supported)
+  - FAILED (red): Critical failures (reconnection failed, configuration rejected)
+- **Note**: Works with both real wallboxes and EV simulator
 
 ### B. Authorization & Transaction Management (7 tests)
 
