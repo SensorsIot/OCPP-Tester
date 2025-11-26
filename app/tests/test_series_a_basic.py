@@ -424,7 +424,7 @@ class TestSeriesA(OcppTestBase):
         logger.info("=" * 80)
         logger.info("")
 
-        # Phase 1: Stop OCPP server (emulating EVCC shutdown - port 8888 closed)
+        # Phase 1: Stop OCPP server (emulating EVCC shutdown - port 8887 closed)
         logger.info("Phase 1: Stopping OCPP server (emulating EVCC shutdown)...")
         from app.core import stop_ocpp_server, start_ocpp_server
 
@@ -439,7 +439,7 @@ class TestSeriesA(OcppTestBase):
             cp_info.pop("vendor", None)
             logger.info(f"  Cleared BootNotification data (was: {old_vendor} {old_model})")
 
-        # Stop the server (closes port 8888 - like EVCC not running)
+        # Stop the server (closes port 8887 - like EVCC not running)
         stop_success = await stop_ocpp_server()
         if not stop_success:
             logger.error("  [FAIL] Failed to stop OCPP server")
@@ -449,16 +449,16 @@ class TestSeriesA(OcppTestBase):
             logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
             return
 
-        logger.info("  [OK] OCPP server stopped - port 8888 closed (wallbox cannot connect)")
+        logger.info("  [OK] OCPP server stopped - port 8887 closed (wallbox cannot connect)")
         results["Server Stopped"] = "PASSED"
 
         # Phase 2: EVCC offline period (simulates EVCC startup time)
-        logger.info("Phase 2: EVCC offline period (port 8888 not listening, wallbox cannot connect)...")
+        logger.info("Phase 2: EVCC offline period (port 8887 not listening, wallbox cannot connect)...")
         offline_period = 10  # seconds (matches typical EVCC startup time from spec)
-        logger.info(f"  Port 8888 closed for {offline_period}s (simulating EVCC startup)")
+        logger.info(f"  Port 8887 closed for {offline_period}s (simulating EVCC startup)")
         await asyncio.sleep(offline_period)
 
-        # Restart the server (opens port 8888 - like EVCC finished starting)
+        # Restart the server (opens port 8887 - like EVCC finished starting)
         logger.info("  Restarting OCPP server (EVCC back online)...")
         start_success = await start_ocpp_server()
         if not start_success:
@@ -469,7 +469,7 @@ class TestSeriesA(OcppTestBase):
             logger.info(f"--- Step A.6 for {self.charge_point_id} complete. ---")
             return
 
-        logger.info("  [OK] OCPP server restarted - port 8888 listening again")
+        logger.info("  [OK] OCPP server restarted - port 8887 listening again")
         results["Server Restarted"] = "PASSED"
 
         # Phase 3: Wait for wallbox reconnection

@@ -148,7 +148,7 @@ CHANGELOG = {
     "1.3.7": {
         "date": "2025-11-15",
         "changes": [
-            "Test A.6: Now actually closes port 8888 instead of just blocking connections",
+            "Test A.6: Now actually closes port 8887 instead of just blocking connections",
             "Added server control functions: stop_ocpp_server() and start_ocpp_server()",
             "Server factory function allows tests to stop/restart WebSocket server",
             "Accurately emulates EVCC offline (port not listening, not just rejecting)",

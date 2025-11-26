@@ -1,6 +1,6 @@
 # ⚡ OCPP 1.6-J Wallbox Tester
 
-**Version 1.3.20** | Last Updated: 2025-11-15
+**Version 1.3.22** | Last Updated: 2025-11-15
 
 A comprehensive OCPP 1.6-J test server for validating electric vehicle charge point implementations with real-time monitoring and automated test sequences.
 
@@ -11,8 +11,8 @@ WallboxTester provides a complete suite of OCPP 1.6-J protocol tests through a W
 ## ✨ Key Features
 
 - **🔌 Full OCPP 1.6-J Support**: Complete protocol implementation with automated message handling
-- **🧪 20 Individual Tests**: Covering communication, authorization, transactions, and smart charging
-- **🤖 Automated Test Sequences**: B All Tests (4 tests) and C All Tests (8 iterations) with comprehensive logging
+- **🧪 19 Individual Tests**: Covering communication, authorization, transactions, and smart charging
+- **🤖 Automated Test Sequences**: C All Tests (8 iterations) with comprehensive logging
 - **📊 Real-time Monitoring**: WebSocket-streamed logs and live EV status updates
 - **✅ Profile Verification**: Automatic verification of charging profiles using GetCompositeSchedule
 - **🎨 Visual Feedback**: 7 button states (success/failure/running/skipped/partial/not-supported/disabled)
@@ -56,6 +56,17 @@ Environment variables (defaults in `app/core.py`):
 | `EV_SIMULATOR_BASE_URL` | http://192.168.0.151 | EV simulator service URL |
 | `EV_SIMULATOR_CHARGE_POINT_ID` | Wallbox001 | Charge point ID for simulator |
 
+### Charging Rate Unit Auto-Detection
+
+The server automatically detects the charging rate unit (Amperes vs Watts) supported by the wallbox:
+
+- **Auto-Detection**: Runs automatically after BootNotification using `GetConfiguration` for `ChargingScheduleAllowedChargingRateUnit`
+- **Default Fallback**: A (Amperes) - most universally supported by OCPP 1.6 wallboxes
+- **Fallback Scenarios**: Used if detection fails (timeout, parameter not found, or exception)
+- **Manual Override**: Available via web UI or API endpoint
+
+This ensures C.1 and C.2 tests use the correct unit compatible with the wallbox.
+
 ## 📊 Test Categories
 
 ### A. Core Communication & Status (6 tests)
@@ -71,7 +82,7 @@ Environment variables (defaults in `app/core.py`):
 - **B.2**: RFID Authorization After Plug-in - Backend authorization flow with modal
 - **B.3**: Remote Smart Charging - RemoteStartTransaction with authorization
 - **B.4**: Plug & Charge - Automated charging with pre-authorization
-- **B.5**: Local Stop - RFID tap to stop transaction
+- **B.5**: Clear RFID Cache - ClearCache command to clear authorization cache
 - **B.6**: Send RFID List - SendLocalList command
 - **B.7**: Get RFID List Version - GetLocalListVersion command
 
@@ -82,23 +93,10 @@ Environment variables (defaults in `app/core.py`):
 - **C.4**: ClearChargingProfile - Remove charging profiles
 - **C.5**: Cleanup - Stop transactions, clear profiles, reset EV state
 
-### X. System Control (2 tests)
+### X. System Control (1 test)
 - **X.1**: Reboot Wallbox - OCPP Reset command
-- **X.2**: Dump All Configuration - Export config to log file
 
 ## 🤖 Automated Test Sequences
-
-### B All Tests
-Runs B.1 → B.2 → B.3 → B.4 sequentially.
-
-**Features**:
-- GetConfiguration called at start
-- Combined log with config, test results, and OCPP messages
-- Frontend-driven (supports B.1 and B.2 modals)
-- 10-minute timeout
-- Result summary popup
-
-**Log Location**: `/home/ocpp-tester/logs/b_all_tests_{charge_point_id}_{timestamp}.log`
 
 ### C All Tests
 Runs C.1 and C.2 tests 4 times each (8 iterations total).
@@ -106,8 +104,8 @@ Runs C.1 and C.2 tests 4 times each (8 iterations total).
 **Test Levels**: disable (0A/0W), low (6A/4000W), medium (10A/8000W), high (16A/11000W)
 
 **Features**:
-- GetConfiguration called at start
-- Comprehensive log with config, test parameters, verification results, and OCPP messages
+- GetConfiguration called at start (stored internally, not logged)
+- Comprehensive log with test parameters, verification results, and OCPP messages
 - Backend-driven (single API call)
 - 8-minute timeout
 - Verification for all 8 iterations
@@ -158,16 +156,14 @@ Contains: Test name, parameters, OCPP messages, result
 
 ### Combined Test Logs
 ```
-/home/ocpp-tester/logs/b_all_tests_{charge_point_id}_{timestamp}.log
 /home/ocpp-tester/logs/c_all_tests_{charge_point_id}_{timestamp}.log
 ```
 
 Structure:
-1. **Configuration Section**: Complete GetConfiguration results
-2. **Test Parameters**: Detailed test configuration (C All Tests only)
-3. **Test Results Summary**: Pass/fail status for each test
-4. **Verification Results**: Expected vs actual comparison (C All Tests only)
-5. **OCPP Messages**: Timestamped request/response pairs
+1. **Test Parameters**: Detailed test configuration (C All Tests only)
+2. **Test Results Summary**: Pass/fail status for each test
+3. **Verification Results**: Expected vs actual comparison (C All Tests only)
+4. **OCPP Messages**: Timestamped request/response pairs
 
 ### Smart Message Filtering
 
@@ -190,14 +186,22 @@ Structure:
 ocpp-tester.py              # Entry point & WebSocket routing
 ├── app/
 │   ├── core.py            # Global state & configuration
+│   ├── version.py         # Version management & changelog
 │   ├── ocpp_handler.py    # WebSocket connection management
 │   ├── ocpp_server_logic.py # OCPP message processing
 │   ├── ocpp_message_handlers.py # Individual message handlers
-│   ├── ocpp_test_steps.py # Test implementations
+│   ├── ocpp_test_steps.py # Test implementations facade
+│   ├── test_helpers.py    # Shared test utility functions
 │   ├── messages.py        # OCPP message payloads (dataclasses)
 │   ├── web_ui_server.py   # Flask REST API
 │   ├── ev_simulator_manager.py # EV simulator integration
 │   ├── streamers.py       # WebSocket streaming (logs, EV status)
+│   ├── tests/             # Modular test implementations
+│   │   ├── test_base.py   # Base test class
+│   │   ├── test_series_a_basic.py # A-series tests
+│   │   ├── test_series_b_auth.py  # B-series tests
+│   │   ├── test_series_c_charging.py # C-series tests
+│   │   └── test_series_x_utility.py  # X-series tests
 │   └── templates/
 │       └── index.html     # Web UI
 ```
@@ -206,7 +210,6 @@ ocpp-tester.py              # Entry point & WebSocket routing
 
 ### Test Execution
 - `POST /api/test/<step_name>` - Run individual test
-- `POST /api/test/b_all_tests` - Run B All Tests
 - `POST /api/test/c_all_tests` - Run C All Tests
 - `POST /api/test/get_configuration` - Call GetConfiguration
 - `POST /api/test/combine_logs` - Combine multiple log files
@@ -259,8 +262,8 @@ Enabled automatically during B.1 and B.2 RFID authorization tests:
 - websockets
 - flask
 - uvicorn
-- requests
 - aiohttp
+- python-dateutil
 
 Install via: `pip install -r requirements.txt`
 
@@ -289,9 +292,9 @@ Install via: `pip install -r requirements.txt`
 
 ## 📊 System Statistics
 
-- **Total Tests**: 20 individual + 2 automated sequences
-- **Individual Test Breakdown**: A: 6, B: 7, C: 5, X: 2
-- **Test Iterations**: 12 (B All: 4, C All: 8)
+- **Total Tests**: 19 individual + 1 automated sequence
+- **Individual Test Breakdown**: A: 6, B: 7, C: 5, X: 1
+- **Test Iterations**: 8 (C All: 8)
 - **API Endpoints**: 20+
 - **WebSocket Streams**: 3 (logs, ev-status, ocpp)
 - **Button States**: 7

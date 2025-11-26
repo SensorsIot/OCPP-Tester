@@ -13,7 +13,7 @@ def _env(name: str, default: str) -> str:
     return os.getenv(name, default)
 
 OCPP_HOST = _env("OCPP_HOST", "0.0.0.0")
-OCPP_PORT = int(_env("OCPP_PORT", "8888"))
+OCPP_PORT = int(_env("OCPP_PORT", "8887"))
 
 LOG_WS_PATH = _env("LOG_WS_PATH", "/logs")
 EV_STATUS_WS_PATH = _env("EV_STATUS_WS_PATH", "/ev-status")
@@ -157,10 +157,10 @@ async def stop_ocpp_server():
         return False
 
     try:
-        logger.info("🛑 Stopping OCPP WebSocket server (closing port 8888)...")
+        logger.info("🛑 Stopping OCPP WebSocket server (closing port 8887)...")
         _ws_server.close()
         await _ws_server.wait_closed()
-        logger.info("✅ OCPP WebSocket server stopped - port 8888 closed")
+        logger.info("✅ OCPP WebSocket server stopped - port 8887 closed")
         return True
     except Exception as e:
         logger.error(f"❌ Failed to stop OCPP server: {e}")
@@ -174,9 +174,9 @@ async def start_ocpp_server():
         return False
 
     try:
-        logger.info("🚀 Restarting OCPP WebSocket server (opening port 8888)...")
+        logger.info("🚀 Restarting OCPP WebSocket server (opening port 8887)...")
         _ws_server = await _ws_server_factory()
-        logger.info("✅ OCPP WebSocket server restarted - port 8888 listening")
+        logger.info("✅ OCPP WebSocket server restarted - port 8887 listening")
         return True
     except Exception as e:
         logger.error(f"❌ Failed to start OCPP server: {e}")
@@ -188,7 +188,7 @@ SERVER_SETTINGS = {
     "use_simulator": False,
     "ev_simulator_available": False,
     "ev_simulator_charge_point_id": EV_SIMULATOR_CHARGE_POINT_ID,
-    "charging_rate_unit": "W",
+    "charging_rate_unit": "A",  # Default to Amperes (most universally supported)
     "charging_rate_unit_auto_detected": False,
     "auto_detection_completed": False,
     "enforce_ocpp_compliance": False,

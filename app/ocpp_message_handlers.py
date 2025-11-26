@@ -74,6 +74,10 @@ class OcppMessageHandlers:
         if self.initial_status_received and not self.initial_status_received.is_set():
             self.initial_status_received.set()
 
+        # Trigger auto-detection of charging rate unit (A vs W) after boot
+        # This runs asynchronously and won't block the BootNotification response
+        asyncio.create_task(auto_detect_charging_rate_unit(self.handler))
+
         return BootNotificationResponse(
             status="Accepted",
             currentTime=datetime.now(timezone.utc).isoformat(),

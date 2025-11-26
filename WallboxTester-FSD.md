@@ -15,7 +15,7 @@ WallboxTester is an OCPP 1.6-J compliant test server for validating electric veh
 ### 1.3 Key Capabilities
 - 19 individual OCPP tests covering all protocol aspects
 - Complete coverage of 4 standard OCPP transaction scenarios
-- 2 automated test sequences (B All Tests, C All Tests) with combined logging
+- 1 automated test sequence (C All Tests) with combined logging
 - Real-time visual feedback with 7 button states
 - GetConfiguration integration for comprehensive test documentation
 - Smart charging profile verification with GetCompositeSchedule for validation
@@ -169,62 +169,16 @@ Comprehensive cleanup operation for test environment.
 - Resets EV state to disconnected (State A)
 - Available as a button in the UI
 
-### X. System Control (2 tests)
+### X. System Control (1 test)
 
 #### X.1: Reboot Wallbox
 Sends OCPP Reset command to reboot charge point.
 - Hard reset terminates all transactions
 - Forces charge point reboot
 
-#### X.2: Dump All Configuration
-Exports complete configuration to log file.
-- Comprehensive configuration documentation
-- Includes all GetConfiguration results
-
 ## 3. Automated Test Sequences
 
-### 3.1 B All Tests
-Runs B.1 → B.2 → B.3 → B.4 sequentially covering all OCPP authorization scenarios.
-
-**Features:**
-- Frontend-driven execution (supports B.1 and B.2 RFID modals)
-- GetConfiguration called at start
-- Creates combined log file with:
-  - Charge point configuration
-  - All 4 test results
-  - Complete OCPP message history
-- Result summary popup
-- 10-minute timeout
-- Button color: Green (all passed) / Red (any failed)
-
-**Test Coverage:**
-- B.1: RFID Authorization Before Plug-in (Online authorization with modal)
-- B.2: RFID Authorization After Plug-in (Local cache with modal)
-- B.3: Remote Smart Charging (Remote start with authorization)
-- B.4: Plug & Charge (Automatic start)
-
-**Log Structure:**
-```
-CHARGE POINT CONFIGURATION (from GetConfiguration)
-================================================================================
-[All configuration keys with values and readonly indicators]
-================================================================================
-
-TEST RESULTS SUMMARY
-================================================================================
-B.1: RFID Authorization Before Plug-in - PASSED/FAILED
-B.2: RFID Authorization After Plug-in - PASSED/FAILED
-B.3: Remote Smart Charging - PASSED/FAILED
-B.4: Plug & Charge - PASSED/FAILED
-================================================================================
-
-OCPP MESSAGES
-================================================================================
-[Timestamped request/response pairs for all tests]
-================================================================================
-```
-
-### 3.2 C All Tests (C.1 and C.2 Tests)
+### 3.1 C All Tests (C.1 and C.2 Tests)
 Runs C.1 test 4 times + C.2 test 4 times (8 total iterations).
 
 **Charging Rate Values:**
@@ -556,11 +510,15 @@ Allows any RFID card to be accepted during B.1 (RFID Authorization Before Plug-i
 ### 9.1 Charging Rate Unit
 Toggle between W (Watts) and A (Amperes):
 - Auto-detection from `ChargingScheduleAllowedChargingRateUnit`
+- Runs automatically after BootNotification (asyncio.create_task)
+- Default fallback: A (Amperes) if detection fails
 - Manual override available
 - Affects C.1 and C.2 test defaults
 - API endpoint: `/api/charging_rate_unit`
 
 ### 9.2 Default Values
+- Default unit: A (Amperes) - most universally supported by OCPP 1.6 wallboxes
+- Fallback: A if auto-detection fails (timeout, no parameter, or exception)
 - C.1/C.2 default to "medium" (10A or 8000W)
 - Configurable via modal dialogs
 - Stored in server configuration
@@ -577,11 +535,6 @@ Contents:
 - Test result (PASSED/FAILED/SKIPPED)
 
 ### 10.2 Combined Test Logs
-**B All Tests**: `b_all_tests_{charge_point_id}_{timestamp}.log`
-- GetConfiguration results
-- 4 test results summary
-- Complete OCPP messages for all tests
-
 **C All Tests**: `c_all_tests_{charge_point_id}_{timestamp}.log`
 - GetConfiguration results
 - Test parameters for all iterations
@@ -674,14 +627,13 @@ Filtering is applied based on test type to balance debugging visibility with log
 
 ---
 
-*Version: 1.3.20*
-*Last Updated: 2025-11-15*
+*Version: 1.3.22*
+*Last Updated: 2025-11-26*
 
 ## 11. API Endpoints
 
 ### 11.1 Test Execution
 - `POST /api/test/<step_name>` - Run individual test
-- `POST /api/test/b_all_tests` - Run B All Tests
 - `POST /api/test/c_all_tests` - Run C All Tests
 - `POST /api/test/get_configuration` - Call GetConfiguration
 - `POST /api/test/combine_logs` - Combine multiple log files
@@ -736,9 +688,9 @@ Tests can send these OCPP commands:
 
 ## 13. System Statistics
 
-- **Total Individual Tests**: 20 (A: 6, B: 7, C: 5, X: 2)
-- **Automated Sequences**: 2 (B All Tests, C All Tests)
-- **Total Test Iterations**: 12 (B: 4 tests, C: 8 iterations)
+- **Total Individual Tests**: 19 (A: 6, B: 7, C: 5, X: 1)
+- **Automated Sequences**: 1 (C All Tests)
+- **Total Test Iterations**: 8 (C: 8 iterations)
 - **OCPP Scenarios Covered**: 4 (Plug & Charge, RFID Before Plug-in, RFID After Plug-in, Remote Smart Charging)
 - **API Endpoints**: 20+
 - **WebSocket Streams**: 3 (logs, ev-status, ocpp)
