@@ -1,6 +1,6 @@
 # ⚡ OCPP 1.6-J Wallbox Tester
 
-**Version 1.3.22** | Last Updated: 2025-11-15
+**Version 1.3.22** | Last Updated: 2025-11-26
 
 A comprehensive OCPP 1.6-J test server for validating electric vehicle charge point implementations with real-time monitoring and automated test sequences.
 
