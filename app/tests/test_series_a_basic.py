@@ -737,9 +737,16 @@ class TestSeriesA(OcppTestBase):
                 logger.error(f"  [FAIL] {key}: {result}")
         logger.info("=" * 80)
 
+        # Check if there are any warnings
+        has_warnings = any("WARNING" in str(result) for result in results.values())
+
         if all_success:
-            self._set_test_result(step_name, "PASSED")
-            logger.info("[OK] Test PASSED: Wallbox correctly handles EVCC reboot")
+            if has_warnings:
+                self._set_test_result(step_name, "PARTIAL")
+                logger.warning("[PARTIAL] Test PASSED with warnings: Wallbox handles EVCC reboot but has minor compliance issues")
+            else:
+                self._set_test_result(step_name, "PASSED")
+                logger.info("[OK] Test PASSED: Wallbox correctly handles EVCC reboot")
         else:
             self._set_test_result(step_name, "FAILED")
             logger.error("[FAIL] Test FAILED: Check results above for details")
